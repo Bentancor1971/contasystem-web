@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
@@ -27,6 +27,23 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "ContaSystem Carga",
   description: "Carga online de comprobantes para ContaSystem",
+  applicationName: "ContaSystem Carga",
+  appleWebApp: {
+    capable: true,
+    title: "CS Carga",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f59e0b",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
