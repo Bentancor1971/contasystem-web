@@ -25,22 +25,26 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ContaSystem Carga",
+  title: "ContaSystem",
   description: "Carga online de comprobantes para ContaSystem",
-  applicationName: "ContaSystem Carga",
+  applicationName: "ContaSystem",
   appleWebApp: {
     capable: true,
-    title: "CS Carga",
+    title: "ContaSystem",
     statusBarStyle: "default",
   },
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/icon-180.png", type: "image/png", sizes: "180x180" }],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f59e0b",
+  themeColor: "#230d66",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
