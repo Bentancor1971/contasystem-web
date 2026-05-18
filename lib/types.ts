@@ -42,6 +42,9 @@ export type MedioTipo = 'efectivo' | 'banco' | 'tarjeta'
 export interface HaberOption {
   id: string
   nombre: string
+  /** Código de moneda de la cuenta (UYU, USD, …). Puede faltar en plantillas
+   *  sincronizadas con versiones desktop viejas — en ese caso no se valida. */
+  moneda: string | null
   medio_tipo: MedioTipo | null
   sello: string | null
   emisor: string | null
@@ -60,8 +63,10 @@ export interface PlantillaRemota {
   iva_porcentaje: number
   descripcion_default: string | null
   cuenta_debe_nombre: string | null
+  cuenta_debe_moneda: string | null
   cuenta_haber_id: string | null
   cuenta_haber_nombre: string | null
+  cuenta_haber_moneda: string | null
   cuenta_haber_medio_tipo: MedioTipo | null
   cuenta_haber_sello: string | null
   cuenta_haber_emisor: string | null
@@ -72,6 +77,10 @@ export interface PlantillaRemota {
   tipo_comprobante_credito_id: string | null
   tipo_credito_nombre: string | null
   haberes_alternativos: HaberOption[]
+  /** Contacto asociado opcional. Si está seteado, la web pre-rellena y bloquea
+   *  el selector al elegir esta plantilla (override por carga via "cambiar"). */
+  contacto_id: string | null
+  contacto_nombre: string | null
   activo: number
   row_updated_at: string
   created_at: string
@@ -85,6 +94,7 @@ export interface CuentaRemota {
   codigo: string
   nombre: string
   tipo: TipoCuenta
+  moneda_codigo: string
   activo: number
   row_updated_at: string
   created_at: string

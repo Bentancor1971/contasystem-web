@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Save,
   Loader2,
@@ -14,6 +14,7 @@ import {
   Search,
   ArrowDown,
   ArrowUp,
+  RefreshCw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
@@ -52,6 +53,7 @@ function opcionesHaber(p: PlantillaRemota | null): HaberOption[] {
   const base: HaberOption = {
     id: p.cuenta_haber_id,
     nombre: p.cuenta_haber_nombre,
+    moneda: p.cuenta_haber_moneda,
     medio_tipo: p.cuenta_haber_medio_tipo,
     sello: p.cuenta_haber_sello,
     emisor: p.cuenta_haber_emisor,
@@ -65,6 +67,25 @@ function opcionesHaber(p: PlantillaRemota | null): HaberOption[] {
   return [base, ...extras]
 }
 
+/**
+ * Devuelve un mensaje de warning si la moneda elegida no coincide con la
+ * moneda de alguna de las cuentas involucradas. Si las cuentas no tienen
+ * `moneda` (plantillas viejas, antes de la migración), no valida.
+ */
+function warningMoneda(
+  monedaElegida: string,
+  cuentas: { label: string; moneda: string | null | undefined }[],
+): string | null {
+  const conflictos = cuentas.filter(
+    (c) => c.moneda && c.moneda !== monedaElegida,
+  )
+  if (conflictos.length === 0) return null
+  const detalle = conflictos
+    .map((c) => `${c.label} es ${c.moneda}`)
+    .join(' · ')
+  return `Atención: cargás en ${monedaElegida} pero ${detalle}.`
+}
+
 export default function CargaPage() {
   const { empresa, userId } = useApp()
   const [plantillas, setPlantillas] = useState<PlantillaRemota[]>([])
@@ -75,6 +96,10 @@ export default function CargaPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [tab, setTab] = useState<Tab>('cargar')
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshingRef = useRef(false)
+  const lastRefetchRef = useRef(0)
+  const REFETCH_THROTTLE_MS = 30_000
 
   // Form (plantilla)
   const [fecha, setFecha] = useState(hoyISO())
@@ -86,6 +111,11 @@ export default function CargaPage() {
   const [descripcion, setDescripcion] = useState('')
   const [descripcionTocada, setDescripcionTocada] = useState(false)
   const [haberId, setHaberId] = useState<string>('')
+  // Contacto: lo setea el useEffect de plantillaSeleccionada (pre-fill del
+  // plantilla.contacto_id si existe). El usuario lo puede sobreescribir con
+  // "cambiar" cuando viene bloqueado por la plantilla.
+  const [contactoId, setContactoId] = useState<string>('')
+  const [contactoLocked, setContactoLocked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [anulandoId, setAnulandoId] = useState<string | null>(null)
@@ -175,6 +205,71 @@ export default function CargaPage() {
     }
   }
 
+  // Refetch del listado para sincronizar cambios de estado (ej: el contador
+  // importó un comprobante desde el desktop). Mantiene el tamaño de página
+  // actual del usuario.
+  const refetchComprobantes = useCallback(
+    async (opts: { silencioso?: boolean; forzar?: boolean } = {}) => {
+      if (refreshingRef.current) return
+      const ahora = Date.now()
+      if (!opts.forzar && ahora - lastRefetchRef.current < REFETCH_THROTTLE_MS) {
+        return
+      }
+      refreshingRef.current = true
+      if (!opts.silencioso) setRefreshing(true)
+      try {
+        const supabase = createClient()
+        const limit = Math.max(comprobantes.length, PAGE_SIZE)
+        const { data, error } = await supabase
+          .from('comprobantes_remoto')
+          .select('*')
+          .eq('empresa_id', empresa.empresa_id)
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        if (error) throw new Error(error.message)
+        const rows = (data ?? []) as ComprobanteRemoto[]
+        setComprobantes(rows)
+        lastRefetchRef.current = Date.now()
+      } catch (err) {
+        if (!opts.silencioso) {
+          toast.error(
+            err instanceof Error ? err.message : 'No se pudo actualizar',
+          )
+        }
+      } finally {
+        refreshingRef.current = false
+        setRefreshing(false)
+      }
+    },
+    [comprobantes.length, empresa.empresa_id],
+  )
+
+  // Refetch al cambiar a "Últimos"
+  useEffect(() => {
+    if (tab !== 'ultimos' || loading) return
+    void refetchComprobantes({ silencioso: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, loading])
+
+  // Refetch al recuperar foco / volver a la pestaña del navegador
+  useEffect(() => {
+    if (loading) return
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        void refetchComprobantes({ silencioso: true })
+      }
+    }
+    function onFocus() {
+      void refetchComprobantes({ silencioso: true })
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [loading, refetchComprobantes])
+
   const plantillaSeleccionada = useMemo(
     () => plantillas.find((p) => p.id === plantillaId) ?? null,
     [plantillas, plantillaId],
@@ -189,10 +284,22 @@ export default function CargaPage() {
   useEffect(() => {
     if (!plantillaSeleccionada) {
       setHaberId('')
+      setContactoId('')
+      setContactoLocked(false)
       return
     }
     if (!descripcionTocada) {
       setDescripcion(plantillaSeleccionada.descripcion_default ?? '')
+    }
+
+    // Si la plantilla tiene contacto asociado, pre-rellenar y bloquear.
+    // Si es genérica, dejar el selector libre.
+    if (plantillaSeleccionada.contacto_id) {
+      setContactoId(plantillaSeleccionada.contacto_id)
+      setContactoLocked(true)
+    } else {
+      setContactoId('')
+      setContactoLocked(false)
     }
 
     const defaultId = plantillaSeleccionada.cuenta_haber_id ?? ''
@@ -286,6 +393,8 @@ export default function CargaPage() {
     setDescripcion('')
     setDescripcionTocada(false)
     setHaberId('')
+    setContactoId('')
+    setContactoLocked(false)
     setEditandoId(null)
   }
 
@@ -311,6 +420,18 @@ export default function CargaPage() {
     // si el override existe entre las opciones; lo forzamos acá si vino override.
     if (c.cuenta_haber_override_id) {
       setHaberId(c.cuenta_haber_override_id)
+    }
+    // Contacto: respetar lo que se guardó (puede ser override del default de
+    // la plantilla, o cualquier valor si la plantilla era genérica).
+    if (c.contacto_id) {
+      setContactoId(c.contacto_id)
+      // Si difiere del default de la plantilla, dejarlo desbloqueado para
+      // que se vea que fue elegido manualmente.
+      const pl = plantillas.find((p) => p.id === c.plantilla_id)
+      setContactoLocked(!!pl?.contacto_id && pl.contacto_id === c.contacto_id)
+    } else {
+      setContactoId('')
+      setContactoLocked(false)
     }
   }
 
@@ -490,7 +611,7 @@ export default function CargaPage() {
           ...(editandoId ? { id: editandoId } : {}),
           empresa_id: empresa.empresa_id,
           plantilla_id: plantillaId,
-          contacto_id: null,
+          contacto_id: contactoId || null,
           fecha,
           moneda_codigo: moneda,
           monto_total: montoNum,
@@ -636,6 +757,18 @@ export default function CargaPage() {
                   </button>
                 ))}
               </div>
+              {plantillaSeleccionada && (() => {
+                const haberSel = haberOpciones.find((o) => o.id === haberId)
+                const msg = warningMoneda(moneda, [
+                  { label: 'Debe', moneda: plantillaSeleccionada.cuenta_debe_moneda },
+                  { label: 'Haber', moneda: haberSel?.moneda ?? plantillaSeleccionada.cuenta_haber_moneda },
+                ])
+                return msg ? (
+                  <p className="mt-2 text-[11px] font-mono text-amber-deep">
+                    {msg}
+                  </p>
+                ) : null
+              })()}
             </div>
 
             <div className="space-y-7">
@@ -688,6 +821,68 @@ export default function CargaPage() {
                   />
                 )}
               </div>
+
+              {/* Contacto — sólo si hay plantilla elegida. Si la plantilla tiene
+                  contacto asociado, se pre-rellena y bloquea (con link "cambiar"
+                  para esta carga puntual). Si la plantilla es genérica, selector
+                  libre opcional. */}
+              {plantillaSeleccionada && (
+                <div>
+                  <label htmlFor="contacto" className="label-mono block mb-2">
+                    Contacto {contactoLocked ? '' : '(opcional)'}
+                  </label>
+                  {contactoLocked && contactoId ? (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-line bg-paper-2">
+                      <span className="text-[14px] text-ink-1 truncate">
+                        {plantillaSeleccionada.contacto_nombre ??
+                          contactos.find((c) => c.id === contactoId)?.nombre_razon_social ??
+                          '—'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setContactoLocked(false)}
+                        disabled={busy}
+                        className="font-mono text-[11px] uppercase tracking-wider text-ink-3 hover:text-ink-1 transition-colors"
+                      >
+                        cambiar
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        id="contacto"
+                        className="field"
+                        value={contactoId}
+                        onChange={(e) => setContactoId(e.target.value)}
+                        disabled={busy}
+                      >
+                        <option value="">— Sin contacto —</option>
+                        {contactos
+                          .filter((c) => c.tipo === 'proveedor' || c.tipo === 'otro')
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre_razon_social}
+                              {c.rut_ci ? ` · ${c.rut_ci}` : ''}
+                            </option>
+                          ))}
+                      </select>
+                      {plantillaSeleccionada.contacto_id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setContactoId(plantillaSeleccionada.contacto_id!)
+                            setContactoLocked(true)
+                          }}
+                          disabled={busy}
+                          className="mt-2 font-mono text-[11px] uppercase tracking-wider text-ink-3 hover:text-ink-1 transition-colors"
+                        >
+                          ← volver al contacto de la plantilla
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* Modalidad de pago (cuenta Haber) — solo si hay alternativas */}
               {plantillaSeleccionada && haberOpciones.length > 1 && (
@@ -857,6 +1052,8 @@ export default function CargaPage() {
             onEliminar={eliminarPendiente}
             onDuplicar={duplicarComoNuevo}
             onSolicitarAnulacion={(c) => setAnulandoId(c.id)}
+            onActualizar={() => refetchComprobantes({ forzar: true })}
+            refreshing={refreshing}
           />
         )}
       </main>
@@ -908,6 +1105,8 @@ function ListaUltimos({
   onEliminar,
   onDuplicar,
   onSolicitarAnulacion,
+  onActualizar,
+  refreshing,
 }: {
   comprobantes: ComprobanteRemoto[]
   stats: {
@@ -927,21 +1126,40 @@ function ListaUltimos({
   onEliminar: (c: ComprobanteRemoto) => void
   onDuplicar: (c: ComprobanteRemoto) => void
   onSolicitarAnulacion: (c: ComprobanteRemoto) => void
+  onActualizar: () => void
+  refreshing: boolean
 }) {
   return (
     <div className="card p-6 lg:p-10">
-      <div className="flex items-baseline justify-between mb-5">
+      <div className="flex items-baseline justify-between gap-3 mb-5">
         <div>
           <p className="label-mono mb-2">Tu actividad</p>
           <h2 className="font-display text-3xl font-medium">
             Últimos {comprobantes.length}
           </h2>
         </div>
-        {stats.pendientes > 0 && (
-          <span className="font-mono text-xs text-amber-deep font-semibold">
-            {stats.pendientes} pendiente{stats.pendientes === 1 ? '' : 's'}
-          </span>
-        )}
+        <div className="flex items-center gap-3 shrink-0">
+          {stats.pendientes > 0 && (
+            <span className="font-mono text-xs text-amber-deep font-semibold">
+              {stats.pendientes} pendiente{stats.pendientes === 1 ? '' : 's'}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onActualizar}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[11px] uppercase tracking-wider text-ink-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            aria-label="Actualizar lista"
+            title="Actualizar lista"
+          >
+            <RefreshCw
+              size={12}
+              strokeWidth={2.5}
+              className={refreshing ? 'animate-spin' : ''}
+            />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {comprobantes.length > 0 && (
@@ -1448,6 +1666,17 @@ function FormularioLibre({
             </button>
           ))}
         </div>
+        {(() => {
+          const msg = warningMoneda(moneda, [
+            { label: 'Debe', moneda: cuentaDebe?.moneda_codigo },
+            { label: 'Haber', moneda: cuentaHaber?.moneda_codigo },
+          ])
+          return msg ? (
+            <p className="mt-2 text-[11px] font-mono text-amber-deep">
+              {msg}
+            </p>
+          ) : null
+        })()}
       </div>
 
       <div className="space-y-7">
