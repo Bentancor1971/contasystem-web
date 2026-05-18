@@ -3,7 +3,12 @@
  * Coinciden con docs/supabase/05_comprobantes_online.sql del repo desktop.
  */
 
-export type EstadoComprobante = 'pendiente' | 'importado' | 'rechazado'
+export type EstadoComprobante =
+  | 'pendiente'
+  | 'importado'
+  | 'rechazado'
+  | 'anulacion_solicitada'
+  | 'anulado'
 export type TipoContacto = 'proveedor' | 'otro' | 'cliente'
 
 export interface EmpresaOnline {
@@ -32,12 +37,54 @@ export interface ContactoRemoto {
   created_at: string
 }
 
+export type MedioTipo = 'efectivo' | 'banco' | 'tarjeta'
+
+export interface HaberOption {
+  id: string
+  nombre: string
+  medio_tipo: MedioTipo | null
+  sello: string | null
+  emisor: string | null
+  logo_key: string | null
+  /**
+   * Solo para tarjetas: true si es de crédito. Cuando true, al elegir esta
+   * opción la web muestra una advertencia "se cargará como Compra Crédito".
+   */
+  es_credito: boolean | null
+}
+
 export interface PlantillaRemota {
   id: string
   empresa_id: string
   nombre: string
   iva_porcentaje: number
   descripcion_default: string | null
+  cuenta_debe_nombre: string | null
+  cuenta_haber_id: string | null
+  cuenta_haber_nombre: string | null
+  cuenta_haber_medio_tipo: MedioTipo | null
+  cuenta_haber_sello: string | null
+  cuenta_haber_emisor: string | null
+  cuenta_haber_logo_key: string | null
+  cuenta_haber_es_credito: boolean | null
+  cuenta_iva_nombre: string | null
+  /** Auto-promote: tipo a usar si pagás con tarjeta crédito (display name). */
+  tipo_comprobante_credito_id: string | null
+  tipo_credito_nombre: string | null
+  haberes_alternativos: HaberOption[]
+  activo: number
+  row_updated_at: string
+  created_at: string
+}
+
+export type TipoCuenta = 'ingreso' | 'egreso'
+
+export interface CuentaRemota {
+  id: string
+  empresa_id: string
+  codigo: string
+  nombre: string
+  tipo: TipoCuenta
   activo: number
   row_updated_at: string
   created_at: string
@@ -46,17 +93,27 @@ export interface PlantillaRemota {
 export interface ComprobanteRemoto {
   id: string
   empresa_id: string
-  plantilla_id: string
+  plantilla_id: string | null
   contacto_id: string | null
   fecha: string                // ISO date YYYY-MM-DD
   moneda_codigo: string
   monto_total: number
   descripcion: string | null
+  cuenta_haber_override_id: string | null
+  cuenta_haber_override_nombre: string | null
+  cuenta_debe_libre_id: string | null
+  cuenta_debe_libre_nombre: string | null
+  cuenta_haber_libre_id: string | null
+  cuenta_haber_libre_nombre: string | null
   numero_borrador: string | null
   numero_oficial: string | null
   estado: EstadoComprobante
   asiento_id_local: string | null
   motivo_rechazo: string | null
+  anulacion_solicitada_at: string | null
+  anulacion_motivo: string | null
+  anulacion_confirmada_at: string | null
+  nota_credito_asiento_id: string | null
   created_by: string
   created_at: string
   impactado_at: string | null

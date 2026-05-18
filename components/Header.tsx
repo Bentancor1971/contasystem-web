@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, LogOut, RefreshCw } from 'lucide-react'
+import { ChevronDown, LogOut, Menu, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { EmpresaOnline } from '@/lib/types'
 
@@ -11,9 +11,11 @@ const LS_KEY = 'cs-carga-empresa-id'
 interface HeaderProps {
   empresa: EmpresaOnline
   userEmail?: string
+  /** Si se provee, renderiza un botón de menú hamburguesa visible solo en mobile. */
+  onMenuClick?: () => void
 }
 
-export function Header({ empresa, userEmail }: HeaderProps) {
+export function Header({ empresa, userEmail, onMenuClick }: HeaderProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -45,7 +47,16 @@ export function Header({ empresa, userEmail }: HeaderProps) {
   return (
     <header className="border-b border-line bg-white sticky top-0 z-20">
       <div className="max-w-7xl mx-auto px-5 md:px-8 lg:px-10 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-3 md:gap-5">
+          {onMenuClick && (
+            <button
+              onClick={onMenuClick}
+              className="md:hidden -ml-1 p-2 rounded hover:bg-paper-2 transition-colors"
+              aria-label="Abrir menú"
+            >
+              <Menu size={20} />
+            </button>
+          )}
           <div className="flex items-baseline gap-2.5">
             <span className="font-display text-xl font-medium">ContaSystem</span>
             <span className="label-mono">Carga</span>

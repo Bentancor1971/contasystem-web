@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& npx --prefix $d tsc --noEmit -p $d 2>&1)",
+      "PowerShell($d = \"c:\\\\Users\\\\benta\\\\Documents\\\\Proyecto Contable Socios V1\\\\contasystem-desktop\")",
+      "Bash(sqlite3 \"C:/Users/benta/AppData/Roaming/com.contasystem.app/contasystem.db\" \"SELECT p.nombre AS plantilla, tc.clasificacion, ch.codigo, ch.nombre AS haber_default, ch.tipo, ch.naturaleza, ch.es_disponibilidad FROM plantillas_comprobante p LEFT JOIN tipos_comprobante tc ON tc.id = p.tipo_comprobante_id LEFT JOIN cuentas_contables ch ON ch.id = p.cuenta_haber_id WHERE p.activo = 1 ORDER BY p.nombre;\")",
+      "Read(//c/Program Files/**)",
+      "Bash(grep -n \"anulados, return\\\\|return { pendientes\\\\|}, \\\\[comprobantes\\\\]\" \"C:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/app/\\(app\\)/carga/page.tsx\")"
+    ]
+  }
+}
