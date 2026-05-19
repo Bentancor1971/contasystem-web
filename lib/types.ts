@@ -86,6 +86,17 @@ export interface PlantillaRemota {
   created_at: string
 }
 
+export interface TipoComprobanteRemoto {
+  id: string
+  empresa_id: string
+  abreviacion: string
+  nombre: string
+  clasificacion: string | null
+  activo: number
+  row_updated_at: string
+  created_at: string
+}
+
 export type TipoCuenta = 'ingreso' | 'egreso'
 
 export interface CuentaRemota {
@@ -115,6 +126,9 @@ export interface ComprobanteRemoto {
   cuenta_debe_libre_nombre: string | null
   cuenta_haber_libre_id: string | null
   cuenta_haber_libre_nombre: string | null
+  contacto_nombre: string | null
+  tipo_comprobante_id: string | null
+  tipo_comprobante_nombre: string | null
   numero_borrador: string | null
   numero_oficial: string | null
   estado: EstadoComprobante
@@ -135,5 +149,4 @@ export interface ComprobanteRemoto {
  */
 export interface ComprobanteListItem extends ComprobanteRemoto {
   plantilla_nombre?: string
-  contacto_nombre?: string | null
 }

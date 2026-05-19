@@ -29,6 +29,7 @@ import type {
   HaberOption,
   CuentaRemota,
   TipoCuenta,
+  TipoComprobanteRemoto,
 } from '@/lib/types'
 import {
   formatMonto,
@@ -91,6 +92,7 @@ export default function CargaPage() {
   const [plantillas, setPlantillas] = useState<PlantillaRemota[]>([])
   const [contactos, setContactos] = useState<ContactoRemoto[]>([])
   const [cuentas, setCuentas] = useState<CuentaRemota[]>([])
+  const [tiposComprobante, setTiposComprobante] = useState<TipoComprobanteRemoto[]>([])
   const [comprobantes, setComprobantes] = useState<ComprobanteRemoto[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -129,6 +131,8 @@ export default function CargaPage() {
   const [descripcionLibre, setDescripcionLibre] = useState('')
   const [cuentaDebeLibreId, setCuentaDebeLibreId] = useState<string>('')
   const [cuentaHaberLibreId, setCuentaHaberLibreId] = useState<string>('')
+  const [contactoLibreId, setContactoLibreId] = useState<string>('')
+  const [tipoComprobanteLibreId, setTipoComprobanteLibreId] = useState<string>('')
   const [pickerLibre, setPickerLibre] = useState<null | 'debe' | 'haber'>(null)
   const [busyLibre, setBusyLibre] = useState(false)
   const [editandoLibreId, setEditandoLibreId] = useState<string | null>(null)
@@ -139,7 +143,7 @@ export default function CargaPage() {
       const supabase = createClient()
       const empresaId = empresa.empresa_id
 
-      const [plRes, ctRes, cuRes, cmpRes] = await Promise.all([
+      const [plRes, ctRes, cuRes, tcRes, cmpRes] = await Promise.all([
         supabase
           .from('plantillas_remoto')
           .select('*')
@@ -162,6 +166,12 @@ export default function CargaPage() {
           .eq('activo', 1)
           .order('codigo'),
         supabase
+          .from('tipos_comprobante_remoto')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('activo', 1)
+          .order('abreviacion'),
+        supabase
           .from('comprobantes_remoto')
           .select('*')
           .eq('empresa_id', empresaId)
@@ -172,6 +182,7 @@ export default function CargaPage() {
       if (plRes.data) setPlantillas(plRes.data as PlantillaRemota[])
       if (ctRes.data) setContactos(ctRes.data as ContactoRemoto[])
       if (cuRes.data) setCuentas(cuRes.data as CuentaRemota[])
+      if (tcRes.data) setTiposComprobante(tcRes.data as TipoComprobanteRemoto[])
       if (cmpRes.data) {
         const rows = cmpRes.data as ComprobanteRemoto[]
         setComprobantes(rows)
@@ -405,6 +416,8 @@ export default function CargaPage() {
     setDescripcionLibre('')
     setCuentaDebeLibreId('')
     setCuentaHaberLibreId('')
+    setContactoLibreId('')
+    setTipoComprobanteLibreId('')
     setEditandoLibreId(null)
   }
 
@@ -442,6 +455,8 @@ export default function CargaPage() {
     setDescripcionLibre(c.descripcion ?? '')
     setCuentaDebeLibreId(c.cuenta_debe_libre_id ?? '')
     setCuentaHaberLibreId(c.cuenta_haber_libre_id ?? '')
+    setContactoLibreId(c.contacto_id ?? '')
+    setTipoComprobanteLibreId(c.tipo_comprobante_id ?? '')
   }
 
   function modificarPendiente(c: ComprobanteRemoto) {
@@ -543,6 +558,13 @@ export default function CargaPage() {
       return
     }
 
+    const contactoSel = contactoLibreId
+      ? contactos.find((c) => c.id === contactoLibreId) ?? null
+      : null
+    const tipoCompSel = tipoComprobanteLibreId
+      ? tiposComprobante.find((t) => t.id === tipoComprobanteLibreId) ?? null
+      : null
+
     setBusyLibre(true)
     try {
       const supabase = createClient()
@@ -560,6 +582,12 @@ export default function CargaPage() {
             cuenta_debe_libre_nombre: cuentaDebe.nombre,
             cuenta_haber_libre_id: cuentaHaber.id,
             cuenta_haber_libre_nombre: cuentaHaber.nombre,
+            contacto_id: contactoSel?.id ?? null,
+            contacto_nombre: contactoSel?.nombre_razon_social ?? null,
+            tipo_comprobante_id: tipoCompSel?.id ?? null,
+            tipo_comprobante_nombre: tipoCompSel
+              ? `${tipoCompSel.abreviacion} - ${tipoCompSel.nombre}`
+              : null,
           },
         },
       )
@@ -712,6 +740,17 @@ export default function CargaPage() {
             onCancelarEdicion={cancelarEdicionLibre}
             onSubmit={guardarLibre}
             cuentasDisponibles={cuentas.length}
+            contactos={contactos}
+            contactoId={contactoLibreId}
+            setContactoId={setContactoLibreId}
+            tiposComprobante={tiposComprobante}
+            tipoComprobanteId={tipoComprobanteLibreId}
+            setTipoComprobanteId={setTipoComprobanteLibreId}
+            numeroBorrador={
+              editandoLibreId
+                ? comprobantes.find((c) => c.id === editandoLibreId)?.numero_borrador ?? null
+                : null
+            }
           />
         ) : tab === 'cargar' ? (
           <form onSubmit={guardar} className="card p-6 lg:p-10 rise">
@@ -1600,6 +1639,13 @@ function FormularioLibre({
   onCancelarEdicion,
   onSubmit,
   cuentasDisponibles,
+  contactos,
+  contactoId,
+  setContactoId,
+  tiposComprobante,
+  tipoComprobanteId,
+  setTipoComprobanteId,
+  numeroBorrador,
 }: {
   fecha: string
   setFecha: (s: string) => void
@@ -1617,6 +1663,13 @@ function FormularioLibre({
   onCancelarEdicion: () => void
   onSubmit: (e: React.FormEvent) => void
   cuentasDisponibles: number
+  contactos: ContactoRemoto[]
+  contactoId: string
+  setContactoId: (s: string) => void
+  tiposComprobante: TipoComprobanteRemoto[]
+  tipoComprobanteId: string
+  setTipoComprobanteId: (s: string) => void
+  numeroBorrador: string | null
 }) {
   return (
     <form onSubmit={onSubmit} className="card p-6 lg:p-10 rise">
@@ -1693,6 +1746,74 @@ function FormularioLibre({
             disabled={busy}
             required
           />
+        </div>
+
+        <div>
+          <label htmlFor="contacto-libre" className="label-mono block mb-2">
+            Contacto
+          </label>
+          <select
+            id="contacto-libre"
+            className="field"
+            value={contactoId}
+            onChange={(e) => setContactoId(e.target.value)}
+            disabled={busy || contactos.length === 0}
+          >
+            <option value="">— Seleccionar —</option>
+            {contactos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre_razon_social}
+              </option>
+            ))}
+          </select>
+          {contactos.length === 0 && (
+            <p className="mt-2 text-[11px] font-mono text-ink-3">
+              No hay contactos visibles para esta empresa. El contador los habilita en ContaSystem.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="numero-libre" className="label-mono block mb-2">
+            Número
+          </label>
+          <input
+            id="numero-libre"
+            type="text"
+            className="field"
+            value={numeroBorrador ?? ''}
+            placeholder="Auto"
+            disabled
+            readOnly
+          />
+          <p className="mt-2 text-[11px] font-mono text-ink-3">
+            El sistema asigna un número automático al guardar.
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="tipo-comp-libre" className="label-mono block mb-2">
+            Comprobante
+          </label>
+          <select
+            id="tipo-comp-libre"
+            className="field"
+            value={tipoComprobanteId}
+            onChange={(e) => setTipoComprobanteId(e.target.value)}
+            disabled={busy || tiposComprobante.length === 0}
+          >
+            <option value="">— Seleccionar tipo —</option>
+            {tiposComprobante.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.abreviacion} - {t.nombre}
+              </option>
+            ))}
+          </select>
+          {tiposComprobante.length === 0 && (
+            <p className="mt-2 text-[11px] font-mono text-ink-3">
+              No hay tipos de comprobante sincronizados. El contador debe correr el push de catálogos.
+            </p>
+          )}
         </div>
 
         <CuentaSelector

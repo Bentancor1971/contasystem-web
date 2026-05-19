@@ -7,7 +7,8 @@
       "Read(//c/Program Files/**)",
       "Bash(grep -n \"anulados, return\\\\|return { pendientes\\\\|}, \\\\[comprobantes\\\\]\" \"C:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/app/\\(app\\)/carga/page.tsx\")",
       "PowerShell(npx --prefix \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop\" tsc -p \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop/tsconfig.json\" --noEmit 2>&1)",
-      "Bash(git -C \"c:\\\\Users\\\\benta\\\\Documents\\\\Proyecto Contable Socios V1\\\\contasystem-web-carga\" diff app/\\\\\\(app\\\\\\)/carga/page.tsx)"
+      "Bash(git -C \"c:\\\\Users\\\\benta\\\\Documents\\\\Proyecto Contable Socios V1\\\\contasystem-web-carga\" diff app/\\\\\\(app\\\\\\)/carga/page.tsx)",
+      "Bash(\"/c/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop/node_modules/.bin/tsc\" --noEmit -p \"/c/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop/tsconfig.json\")"
     ]
   }
 }
