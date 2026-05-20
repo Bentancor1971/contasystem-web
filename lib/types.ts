@@ -9,6 +9,13 @@ export type EstadoComprobante =
   | 'rechazado'
   | 'anulacion_solicitada'
   | 'anulado'
+  /**
+   * Estado solo local (cliente). Indica que la carga quedó en la cola
+   * offline y todavía no se subió al servidor. Nunca se persiste en la base
+   * remota; cuando se sincroniza, el item pasa a `pendiente` con número de
+   * borrador asignado por el servidor.
+   */
+  | 'en_cola'
 export type TipoContacto = 'proveedor' | 'otro' | 'cliente'
 
 export interface EmpresaOnline {

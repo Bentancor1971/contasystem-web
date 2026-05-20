@@ -64,18 +64,23 @@ async function assertCallerPuedeGestionarRoles(empresaId: string): Promise<
 // ────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const empresaId = req.nextUrl.searchParams.get('empresa_id') ?? ''
-  const check = await assertCallerPuedeGestionarRoles(empresaId)
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status })
-  }
-
-  const admin = createAdminClient()
   try {
+    const empresaId = req.nextUrl.searchParams.get('empresa_id') ?? ''
+    const check = await assertCallerPuedeGestionarRoles(empresaId)
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status })
+    }
+
+    const admin = createAdminClient()
     const matriz = await getMatrizPermisos(admin, empresaId)
     return NextResponse.json({ matriz })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Error al leer permisos'
+    // Cualquier excepción inesperada (createAdminClient sin env, fallo de red
+    // hacia Supabase, etc.) se registra y se devuelve como JSON legible en
+    // vez de un 500 opaco con body vacío.
+    console.error('[GET /api/admin/permisos] error inesperado:', err)
+    const msg =
+      err instanceof Error ? err.message : 'Error interno al leer permisos'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
@@ -158,27 +163,34 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const check = await assertCallerPuedeGestionarRoles(empresaId)
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status })
+  try {
+    const check = await assertCallerPuedeGestionarRoles(empresaId)
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status })
+    }
+
+    const admin = createAdminClient()
+
+    const rows = ROLES_LIST.map((rol) => ({
+      empresa_id: empresaId,
+      rol,
+      ...matriz[rol],
+      row_updated_at: new Date().toISOString(),
+    }))
+
+    const { error } = await admin
+      .from('rol_permisos')
+      .upsert(rows, { onConflict: 'empresa_id,rol' })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, matriz })
+  } catch (err) {
+    console.error('[PUT /api/admin/permisos] error inesperado:', err)
+    const msg =
+      err instanceof Error ? err.message : 'Error interno al guardar permisos'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  const admin = createAdminClient()
-
-  const rows = ROLES_LIST.map((rol) => ({
-    empresa_id: empresaId,
-    rol,
-    ...matriz[rol],
-    row_updated_at: new Date().toISOString(),
-  }))
-
-  const { error } = await admin
-    .from('rol_permisos')
-    .upsert(rows, { onConflict: 'empresa_id,rol' })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true, matriz })
 }

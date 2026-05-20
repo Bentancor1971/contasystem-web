@@ -97,7 +97,15 @@ export async function getPermisosEfectivos(
     .eq('rol', rol)
     .maybeSingle()
 
-  if (permErr) throw permErr
+  // Si no se puede leer la fila de permisos (sin fila, error de red, RLS),
+  // degradamos a los defaults del rol — igual que hace el cliente en
+  // AppShell. Un error de lectura no debe ser más fatal que una fila
+  // ausente: ambos casos están cubiertos por DEFAULT_PERMISOS.
+  if (permErr) {
+    console.warn(
+      `[permisos] no se pudo leer rol_permisos para empresa=${empresaId} rol=${rol}, usando defaults · ${permErr.message}`,
+    )
+  }
 
   const permisos = permisosConDefaults(rol, permRow ?? null)
   return { rol, permisos }

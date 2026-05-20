@@ -273,6 +273,7 @@ html, body {
 .badge-rejected { background: var(--color-status-no-bg);      color: var(--color-status-no); }
 .badge-anulacion-solicitada { background: var(--color-status-warn-bg); color: var(--color-status-warn); }
 .badge-anulado  { background: var(--color-status-mute-bg);    color: var(--color-status-mute); }
+.badge-encola   { background: #e8eaf2; color: #3d4a7a; }
 
 /* ============================================================
    Pill group (selector moneda)

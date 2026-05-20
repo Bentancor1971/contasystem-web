@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const fs=require\\('fs'\\);const e=fs.readFileSync\\('.env.local','utf8'\\);const u=e.match\\(/NEXT_PUBLIC_SUPABASE_URL=\\(.*\\)/\\);const k=e.match\\(/SUPABASE_SERVICE_ROLE_KEY=\\(.*\\)/\\);console.log\\('url_ok='+!!u, u?u[1].trim\\(\\).slice\\(0,30\\):''\\);console.log\\('key_len='+\\(k?k[1].trim\\(\\).length:0\\)\\);console.log\\('key_prefix='+\\(k?k[1].trim\\(\\).slice\\(0,8\\):''\\)\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(node --use-system-ca -e ' *)",
+      "Bash(curl -s -i \"http://localhost:3199/api/admin/permisos?empresa_id=4cf463cb-66c9-4f93-a070-5530b617302e\")",
+      "Bash(node --use-system-ca tmp_mint.js)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3199 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt \\(Get-Date\\).AddMinutes\\(-30\\) } | Select-Object Id,StartTime | Format-Table -AutoSize)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3207,3199 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; \"dev servers de prueba detenidos\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"home HTTP %{http_code}\\\\n\" \"http://localhost:3211/\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3001/\")",
+      "Bash(curl -s -i \"http://localhost:3001/carga\")",
+      "Bash(cd \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga\" && rm -f tmp_mint.js tmp_cookie.txt /tmp/body.txt && echo \"temp limpio\")"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
+    ]
+  }
+}

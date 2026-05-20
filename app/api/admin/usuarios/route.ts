@@ -60,65 +60,75 @@ async function assertCallerPuedeGestionarUsuarios(empresaId: string): Promise<
 // ────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const empresaId = req.nextUrl.searchParams.get('empresa_id') ?? ''
-  const check = await assertCallerPuedeGestionarUsuarios(empresaId)
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status })
-  }
-
-  const admin = createAdminClient()
-
-  // 1) Pertenencias a la empresa
-  const { data: rows, error: rowsErr } = await admin
-    .from('user_empresas')
-    .select('user_id, rol, created_at')
-    .eq('empresa_id', empresaId)
-    .order('created_at', { ascending: true })
-
-  if (rowsErr) {
-    return NextResponse.json({ error: rowsErr.message }, { status: 500 })
-  }
-
-  // 2) Email + nombre (de user_metadata) desde auth.users (vía admin.listUsers)
-  const userIds = new Set((rows ?? []).map((r) => r.user_id as string))
-  const metaById = new Map<
-    string,
-    { email: string | null; nombre: string | null }
-  >()
-
-  // listUsers pagina; pedimos páginas hasta cubrir el set
-  let page = 1
-  const perPage = 200
-  while (metaById.size < userIds.size) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const empresaId = req.nextUrl.searchParams.get('empresa_id') ?? ''
+    const check = await assertCallerPuedeGestionarUsuarios(empresaId)
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: check.status })
     }
-    if (!data || data.users.length === 0) break
-    for (const u of data.users) {
-      if (userIds.has(u.id)) {
-        const meta = (u.user_metadata ?? {}) as Record<string, unknown>
-        const nombre = typeof meta.nombre === 'string' ? meta.nombre : null
-        metaById.set(u.id, { email: u.email ?? null, nombre })
+
+    const admin = createAdminClient()
+
+    // 1) Pertenencias a la empresa
+    const { data: rows, error: rowsErr } = await admin
+      .from('user_empresas')
+      .select('user_id, rol, created_at')
+      .eq('empresa_id', empresaId)
+      .order('created_at', { ascending: true })
+
+    if (rowsErr) {
+      return NextResponse.json({ error: rowsErr.message }, { status: 500 })
+    }
+
+    // 2) Email + nombre (de user_metadata) desde auth.users (vía admin.listUsers)
+    const userIds = new Set((rows ?? []).map((r) => r.user_id as string))
+    const metaById = new Map<
+      string,
+      { email: string | null; nombre: string | null }
+    >()
+
+    // listUsers pagina; pedimos páginas hasta cubrir el set
+    let page = 1
+    const perPage = 200
+    while (metaById.size < userIds.size) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
       }
+      if (!data || data.users.length === 0) break
+      for (const u of data.users) {
+        if (userIds.has(u.id)) {
+          const meta = (u.user_metadata ?? {}) as Record<string, unknown>
+          const nombre = typeof meta.nombre === 'string' ? meta.nombre : null
+          metaById.set(u.id, { email: u.email ?? null, nombre })
+        }
+      }
+      if (data.users.length < perPage) break
+      page++
+      if (page > 50) break // safety net
     }
-    if (data.users.length < perPage) break
-    page++
-    if (page > 50) break // safety net
+
+    const usuarios: UsuarioRow[] = (rows ?? []).map((r) => {
+      const meta = metaById.get(r.user_id as string)
+      return {
+        user_id: r.user_id as string,
+        email: meta?.email ?? null,
+        nombre: meta?.nombre ?? null,
+        rol: (isRolValido(r.rol) ? r.rol : ROLES.USUARIO) as Rol,
+        created_at: r.created_at as string,
+      }
+    })
+
+    return NextResponse.json({ usuarios })
+  } catch (err) {
+    // Sin este catch, cualquier excepción (createAdminClient sin env,
+    // fallo de red a Supabase, etc.) devolvía un 500 con body vacío —
+    // imposible de diagnosticar desde el toast del frontend.
+    console.error('[GET /api/admin/usuarios] error inesperado:', err)
+    const msg =
+      err instanceof Error ? err.message : 'Error interno al listar usuarios'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  const usuarios: UsuarioRow[] = (rows ?? []).map((r) => {
-    const meta = metaById.get(r.user_id as string)
-    return {
-      user_id: r.user_id as string,
-      email: meta?.email ?? null,
-      nombre: meta?.nombre ?? null,
-      rol: (isRolValido(r.rol) ? r.rol : ROLES.USUARIO) as Rol,
-      created_at: r.created_at as string,
-    }
-  })
-
-  return NextResponse.json({ usuarios })
 }
 
 // ────────────────────────────────────────────────────────────────────

@@ -15,12 +15,27 @@ import {
   ArrowDown,
   ArrowUp,
   RefreshCw,
+  CloudOff,
+  UploadCloud,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { Highlight } from '@/components/Highlight'
 import { HaberLogo } from '@/components/HaberLogo'
 import { useApp } from '@/lib/app-context'
+import { useOnlineStatus } from '@/lib/useOnlineStatus'
+import {
+  type ColaItem,
+  type ColaItemDisplay,
+  type ColaRpc,
+  type ColaTipo,
+  agregarACola,
+  actualizarEnCola,
+  eliminarDeCola,
+  esErrorDeRed,
+  generarIdLocal,
+  listarCola,
+} from '@/lib/offlineQueue'
 import type {
   PlantillaRemota,
   ContactoRemoto,
@@ -121,6 +136,15 @@ export default function CargaPage() {
   const [busy, setBusy] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [anulandoId, setAnulandoId] = useState<string | null>(null)
+
+  // ── Cola offline (cargas que no llegaron a Supabase) ─────────────────────
+  const online = useOnlineStatus()
+  const [enCola, setEnCola] = useState<ColaItem[]>([])
+  const [sincronizando, setSincronizando] = useState(false)
+  const enColaRef = useRef<ColaItem[]>([])
+  const sincronizandoRef = useRef(false)
+  useEffect(() => { enColaRef.current = enCola }, [enCola])
+  useEffect(() => { sincronizandoRef.current = sincronizando }, [sincronizando])
 
   // Form (libre) — estado independiente, no se cruza con plantilla
   const [fechaLibre, setFechaLibre] = useState(hoyISO())
@@ -255,6 +279,184 @@ export default function CargaPage() {
     [comprobantes.length, empresa.empresa_id],
   )
 
+  // ── Convertir items de la cola a la forma de ComprobanteRemoto para
+  //    poder reutilizar la fila/badge/render de la lista. El `id` local
+  //    arranca con "local-" para que el resto del código pueda distinguirlos
+  //    si necesita; pero la fuente de verdad es `estado === 'en_cola'`.
+  function colaItemAComprobante(item: ColaItem): ComprobanteRemoto {
+    return {
+      id: item.id,
+      empresa_id: item.empresaId,
+      plantilla_id: item.display.plantilla_id,
+      contacto_id: item.display.contacto_id,
+      fecha: item.display.fecha,
+      moneda_codigo: item.display.moneda_codigo,
+      monto_total: item.display.monto_total,
+      descripcion: item.display.descripcion,
+      cuenta_haber_override_id: item.display.cuenta_haber_override_id,
+      cuenta_haber_override_nombre: item.display.cuenta_haber_override_nombre,
+      cuenta_debe_libre_id: item.display.cuenta_debe_libre_id,
+      cuenta_debe_libre_nombre: item.display.cuenta_debe_libre_nombre,
+      cuenta_haber_libre_id: item.display.cuenta_haber_libre_id,
+      cuenta_haber_libre_nombre: item.display.cuenta_haber_libre_nombre,
+      contacto_nombre: item.display.contacto_nombre,
+      tipo_comprobante_id: item.display.tipo_comprobante_id,
+      tipo_comprobante_nombre: item.display.tipo_comprobante_nombre,
+      numero_borrador: null,
+      numero_oficial: null,
+      estado: 'en_cola',
+      asiento_id_local: null,
+      motivo_rechazo: item.ultimoError,
+      anulacion_solicitada_at: null,
+      anulacion_motivo: null,
+      anulacion_confirmada_at: null,
+      nota_credito_asiento_id: null,
+      created_by: item.userId,
+      created_at: item.createdAt,
+      impactado_at: null,
+      row_updated_at: item.createdAt,
+    }
+  }
+
+  // ── Cargar cola persistida al montar / cambiar empresa ───────────────────
+  useEffect(() => {
+    void (async () => {
+      const items = await listarCola(empresa.empresa_id)
+      setEnCola(items)
+    })()
+  }, [empresa.empresa_id])
+
+  // ── Encolar un payload que no se pudo subir ahora ────────────────────────
+  const encolar = useCallback(
+    async (args: {
+      tipo: ColaTipo
+      rpc: ColaRpc
+      payload: Record<string, unknown>
+      display: ColaItemDisplay
+    }) => {
+      const item: ColaItem = {
+        id: generarIdLocal(),
+        empresaId: empresa.empresa_id,
+        userId,
+        tipo: args.tipo,
+        rpc: args.rpc,
+        payload: args.payload,
+        createdAt: new Date().toISOString(),
+        intentos: 0,
+        ultimoError: null,
+        display: args.display,
+      }
+      try {
+        await agregarACola(item)
+        setEnCola((prev) => [item, ...prev])
+        return true
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? `No se pudo guardar en cola: ${err.message}`
+            : 'No se pudo guardar en cola',
+        )
+        return false
+      }
+    },
+    [empresa.empresa_id, userId],
+  )
+
+  // ── Sincronizar la cola contra Supabase ──────────────────────────────────
+  const sincronizarCola = useCallback(
+    async (opts: { silencioso?: boolean } = {}) => {
+      if (sincronizandoRef.current) return
+      const pendientes = enColaRef.current
+      if (pendientes.length === 0) return
+      setSincronizando(true)
+      const supabase = createClient()
+      let okCount = 0
+      let failCount = 0
+      const updated: ColaItem[] = []
+      for (const item of pendientes) {
+        try {
+          const { data, error } = await supabase.rpc(item.rpc, {
+            p_row: item.payload,
+          })
+          if (error) throw new Error(error.message)
+          const guardado = data as ComprobanteRemoto
+          try { await eliminarDeCola(item.id) } catch { /* ignorar */ }
+          setComprobantes((prev) => {
+            // Evitar duplicar si refetch ya lo trajo
+            if (prev.some((c) => c.id === guardado.id)) return prev
+            return [guardado, ...prev]
+          })
+          okCount++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          const next: ColaItem = {
+            ...item,
+            intentos: item.intentos + 1,
+            ultimoError: msg,
+          }
+          try { await actualizarEnCola(next) } catch { /* ignorar */ }
+          updated.push(next)
+          failCount++
+          // Si es error de red, no tiene sentido seguir intentando los demás
+          if (esErrorDeRed(err)) {
+            // mantener los restantes intactos
+            const restantes = pendientes.slice(pendientes.indexOf(item) + 1)
+            updated.push(...restantes)
+            break
+          }
+        }
+      }
+      setEnCola((prev) => {
+        // Reconstruir respetando lo que actualizamos arriba; los items que
+        // se subieron ya no figuran en `updated`.
+        const updMap = new Map(updated.map((x) => [x.id, x]))
+        return prev
+          .filter((x) => updMap.has(x.id))
+          .map((x) => updMap.get(x.id)!)
+      })
+      setSincronizando(false)
+      if (!opts.silencioso) {
+        if (okCount > 0) {
+          toast.success(
+            okCount === 1
+              ? '1 comprobante subido'
+              : `${okCount} comprobantes subidos`,
+          )
+        }
+        if (failCount > 0 && okCount === 0) {
+          toast.error(
+            failCount === 1
+              ? 'No se pudo subir el comprobante en cola'
+              : `No se pudieron subir ${failCount} comprobantes`,
+          )
+        }
+      }
+    },
+    [],
+  )
+
+  // Auto-sincronizar al recuperar conexión
+  useEffect(() => {
+    function onOnline() {
+      if (enColaRef.current.length > 0 && !sincronizandoRef.current) {
+        void sincronizarCola({ silencioso: false })
+      }
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [sincronizarCola])
+
+  // Al montar (o al cambiar el tab a "ultimos"), si hay cola y estamos online,
+  // intentar un sync en background.
+  useEffect(() => {
+    if (loading) return
+    if (!online) return
+    if (enCola.length === 0) return
+    if (sincronizando) return
+    void sincronizarCola({ silencioso: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, online])
+
   // Refetch al cambiar a "Últimos"
   useEffect(() => {
     if (tab !== 'ultimos' || loading) return
@@ -354,8 +556,24 @@ export default function CargaPage() {
       (c) => c.estado === 'anulacion_solicitada',
     ).length
     const anulados = comprobantes.filter((c) => c.estado === 'anulado').length
-    return { pendientes, importados, rechazados, anulSolicitada, anulados }
-  }, [comprobantes])
+    return {
+      pendientes,
+      importados,
+      rechazados,
+      anulSolicitada,
+      anulados,
+      enCola: enCola.length,
+    }
+  }, [comprobantes, enCola.length])
+
+  // Lista combinada: en cola primero (más recientes que cualquier server),
+  // luego los del servidor. Se la pasamos a ListaUltimos como un único array.
+  const comprobantesUI = useMemo<ComprobanteRemoto[]>(
+    () => [...enCola.map(colaItemAComprobante), ...comprobantes],
+    // colaItemAComprobante es puro sobre su argumento, no necesita estar en deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enCola, comprobantes],
+  )
 
   // ── Auto-reset por inactividad (3 min sin tocar nada) ────────────────────
   // Si el form tiene datos sin grabar, avisamos a los 2:30 y reseteamos a los 3:00.
@@ -496,6 +714,20 @@ export default function CargaPage() {
   }
 
   async function eliminarPendiente(c: ComprobanteRemoto) {
+    if (c.estado === 'en_cola') {
+      const ok = window.confirm(
+        '¿Eliminar este comprobante de la cola? Todavía no se subió al servidor.',
+      )
+      if (!ok) return
+      try {
+        await eliminarDeCola(c.id)
+        setEnCola((prev) => prev.filter((x) => x.id !== c.id))
+        toast.success('Eliminado de la cola')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'No se pudo eliminar de la cola')
+      }
+      return
+    }
     if (c.estado !== 'pendiente') return
     const ok = window.confirm(
       `¿Eliminar el comprobante ${c.numero_borrador ?? ''}? Esta acción no se puede deshacer.`,
@@ -516,8 +748,20 @@ export default function CargaPage() {
     }
   }
 
+  async function reintentarEnCola(_c: ComprobanteRemoto) {
+    if (!online) {
+      toast.error('Sin conexión — no se puede sincronizar ahora')
+      return
+    }
+    await sincronizarCola({ silencioso: false })
+  }
+
   async function confirmarAnulacion(motivo: string) {
     if (!anulandoId) return
+    if (!online) {
+      toast.error('Sin conexión — la anulación se solicita al recuperar la red')
+      return
+    }
     try {
       const supabase = createClient()
       const { data, error } = await supabase.rpc(
@@ -565,31 +809,76 @@ export default function CargaPage() {
       ? tiposComprobante.find((t) => t.id === tipoComprobanteLibreId) ?? null
       : null
 
+    const payload = {
+      ...(editandoLibreId ? { id: editandoLibreId } : {}),
+      empresa_id: empresa.empresa_id,
+      fecha: fechaLibre,
+      moneda_codigo: monedaLibre,
+      monto_total: montoNum,
+      descripcion: descripcionLibre.trim() || null,
+      cuenta_debe_libre_id: cuentaDebe.id,
+      cuenta_debe_libre_nombre: cuentaDebe.nombre,
+      cuenta_haber_libre_id: cuentaHaber.id,
+      cuenta_haber_libre_nombre: cuentaHaber.nombre,
+      contacto_id: contactoSel?.id ?? null,
+      contacto_nombre: contactoSel?.nombre_razon_social ?? null,
+      tipo_comprobante_id: tipoCompSel?.id ?? null,
+      tipo_comprobante_nombre: tipoCompSel
+        ? `${tipoCompSel.abreviacion} - ${tipoCompSel.nombre}`
+        : null,
+    }
+
+    const display: ColaItemDisplay = {
+      fecha: fechaLibre,
+      moneda_codigo: monedaLibre,
+      monto_total: montoNum,
+      descripcion: descripcionLibre.trim() || null,
+      plantilla_id: null,
+      contacto_id: contactoSel?.id ?? null,
+      contacto_nombre: contactoSel?.nombre_razon_social ?? null,
+      cuenta_debe_libre_id: cuentaDebe.id,
+      cuenta_debe_libre_nombre: cuentaDebe.nombre,
+      cuenta_haber_libre_id: cuentaHaber.id,
+      cuenta_haber_libre_nombre: cuentaHaber.nombre,
+      cuenta_haber_override_id: null,
+      cuenta_haber_override_nombre: null,
+      tipo_comprobante_id: tipoCompSel?.id ?? null,
+      tipo_comprobante_nombre: tipoCompSel
+        ? `${tipoCompSel.abreviacion} - ${tipoCompSel.nombre}`
+        : null,
+    }
+
+    if (!online) {
+      if (editandoLibreId) {
+        toast.error('Sin conexión — no se puede modificar un comprobante ya guardado')
+        return
+      }
+      setBusyLibre(true)
+      try {
+        const ok = await encolar({
+          tipo: 'libre',
+          rpc: 'upsert_comprobante_libre_web',
+          payload,
+          display,
+        })
+        if (ok) {
+          toast.success('Guardado en cola · se subirá al recuperar la conexión', {
+            duration: 4500,
+          })
+          resetFormLibre()
+        }
+      } finally {
+        setBusyLibre(false)
+      }
+      return
+    }
+
     setBusyLibre(true)
     try {
       const supabase = createClient()
       const { data, error } = await supabase.rpc(
         'upsert_comprobante_libre_web',
-        {
-          p_row: {
-            ...(editandoLibreId ? { id: editandoLibreId } : {}),
-            empresa_id: empresa.empresa_id,
-            fecha: fechaLibre,
-            moneda_codigo: monedaLibre,
-            monto_total: montoNum,
-            descripcion: descripcionLibre.trim() || null,
-            cuenta_debe_libre_id: cuentaDebe.id,
-            cuenta_debe_libre_nombre: cuentaDebe.nombre,
-            cuenta_haber_libre_id: cuentaHaber.id,
-            cuenta_haber_libre_nombre: cuentaHaber.nombre,
-            contacto_id: contactoSel?.id ?? null,
-            contacto_nombre: contactoSel?.nombre_razon_social ?? null,
-            tipo_comprobante_id: tipoCompSel?.id ?? null,
-            tipo_comprobante_nombre: tipoCompSel
-              ? `${tipoCompSel.abreviacion} - ${tipoCompSel.nombre}`
-              : null,
-          },
-        },
+        { p_row: payload },
       )
       if (error) throw new Error(error.message)
       const guardado = data as ComprobanteRemoto
@@ -608,6 +897,21 @@ export default function CargaPage() {
       }
       resetFormLibre()
     } catch (err) {
+      if (!editandoLibreId && esErrorDeRed(err)) {
+        const ok = await encolar({
+          tipo: 'libre',
+          rpc: 'upsert_comprobante_libre_web',
+          payload,
+          display,
+        })
+        if (ok) {
+          toast.success('Sin red · guardado en cola para reintentar', {
+            duration: 4500,
+          })
+          resetFormLibre()
+          return
+        }
+      }
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
       setBusyLibre(false)
@@ -631,26 +935,39 @@ export default function CargaPage() {
     const esOverride =
       !!haberElegido && !!defaultHaberId && haberElegido.id !== defaultHaberId
 
-    setBusy(true)
-    try {
-      const supabase = createClient()
-      const { data, error } = await supabase.rpc('upsert_comprobante_web', {
-        p_row: {
-          ...(editandoId ? { id: editandoId } : {}),
-          empresa_id: empresa.empresa_id,
-          plantilla_id: plantillaId,
-          contacto_id: contactoId || null,
-          fecha,
-          moneda_codigo: moneda,
-          monto_total: montoNum,
-          descripcion: descripcion.trim() || null,
-          cuenta_haber_override_id: esOverride ? haberElegido!.id : null,
-          cuenta_haber_override_nombre: esOverride ? haberElegido!.nombre : null,
-        },
-      })
-      if (error) throw new Error(error.message)
-      const guardado = data as ComprobanteRemoto
-      // Persistir preferencia para la próxima carga (per user + plantilla)
+    const payload = {
+      ...(editandoId ? { id: editandoId } : {}),
+      empresa_id: empresa.empresa_id,
+      plantilla_id: plantillaId,
+      contacto_id: contactoId || null,
+      fecha,
+      moneda_codigo: moneda,
+      monto_total: montoNum,
+      descripcion: descripcion.trim() || null,
+      cuenta_haber_override_id: esOverride ? haberElegido!.id : null,
+      cuenta_haber_override_nombre: esOverride ? haberElegido!.nombre : null,
+    }
+
+    const display: ColaItemDisplay = {
+      fecha,
+      moneda_codigo: moneda,
+      monto_total: montoNum,
+      descripcion: descripcion.trim() || null,
+      plantilla_id: plantillaId,
+      contacto_id: contactoId || null,
+      contacto_nombre:
+        contactos.find((c) => c.id === contactoId)?.nombre_razon_social ?? null,
+      cuenta_debe_libre_id: null,
+      cuenta_debe_libre_nombre: null,
+      cuenta_haber_libre_id: null,
+      cuenta_haber_libre_nombre: null,
+      cuenta_haber_override_id: esOverride ? haberElegido!.id : null,
+      cuenta_haber_override_nombre: esOverride ? haberElegido!.nombre : null,
+      tipo_comprobante_id: null,
+      tipo_comprobante_nombre: null,
+    }
+
+    const persistirHaberPref = () => {
       if (haberElegido) {
         try {
           window.localStorage.setItem(
@@ -658,9 +975,48 @@ export default function CargaPage() {
             haberElegido.id,
           )
         } catch {
-          // localStorage bloqueado — la carga ya se hizo, no rompemos por esto
+          // localStorage bloqueado — ignorar
         }
       }
+    }
+
+    // Sin conexión: si es edición de un pendiente, no se puede; si es nueva
+    // carga, la encolamos para subir cuando vuelva la red.
+    if (!online) {
+      if (editandoId) {
+        toast.error('Sin conexión — no se puede modificar un comprobante ya guardado')
+        return
+      }
+      setBusy(true)
+      try {
+        const ok = await encolar({
+          tipo: 'plantilla',
+          rpc: 'upsert_comprobante_web',
+          payload,
+          display,
+        })
+        if (ok) {
+          persistirHaberPref()
+          toast.success('Guardado en cola · se subirá al recuperar la conexión', {
+            duration: 4500,
+          })
+          resetForm()
+        }
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+
+    setBusy(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('upsert_comprobante_web', {
+        p_row: payload,
+      })
+      if (error) throw new Error(error.message)
+      const guardado = data as ComprobanteRemoto
+      persistirHaberPref()
       if (editandoId) {
         toast.success(`Actualizado · ${guardado.numero_borrador ?? 'WEB-…'}`, {
           duration: 4000,
@@ -676,6 +1032,24 @@ export default function CargaPage() {
       }
       resetForm()
     } catch (err) {
+      // Si fue caída de red durante el request y no estamos editando,
+      // encolamos en vez de perder la carga.
+      if (!editandoId && esErrorDeRed(err)) {
+        const ok = await encolar({
+          tipo: 'plantilla',
+          rpc: 'upsert_comprobante_web',
+          payload,
+          display,
+        })
+        if (ok) {
+          persistirHaberPref()
+          toast.success('Sin red · guardado en cola para reintentar', {
+            duration: 4500,
+          })
+          resetForm()
+          return
+        }
+      }
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
       setBusy(false)
@@ -715,11 +1089,18 @@ export default function CargaPage() {
               aria-selected={tab === 'ultimos'}
               onClick={() => setTab('ultimos')}
             >
-              Últimos {comprobantes.length > 0 && `· ${comprobantes.length}`}
+              Últimos {comprobantesUI.length > 0 && `· ${comprobantesUI.length}`}
             </button>
           </div>
         </div>
       </div>
+
+      <BannerCola
+        online={online}
+        enColaCount={enCola.length}
+        sincronizando={sincronizando}
+        onSincronizar={() => sincronizarCola({ silencioso: false })}
+      />
 
       <main className="max-w-3xl mx-auto px-5 md:px-8 py-7 lg:py-10 flex-1 w-full">
         {tab === 'libre' ? (
@@ -1079,7 +1460,7 @@ export default function CargaPage() {
           </form>
         ) : (
           <ListaUltimos
-            comprobantes={comprobantes}
+            comprobantes={comprobantesUI}
             stats={stats}
             plantillaPorId={plantillaPorId}
             contactoPorId={contactoPorId}
@@ -1091,8 +1472,10 @@ export default function CargaPage() {
             onEliminar={eliminarPendiente}
             onDuplicar={duplicarComoNuevo}
             onSolicitarAnulacion={(c) => setAnulandoId(c.id)}
+            onReintentar={reintentarEnCola}
             onActualizar={() => refetchComprobantes({ forzar: true })}
             refreshing={refreshing}
+            sincronizando={sincronizando}
           />
         )}
       </main>
@@ -1144,8 +1527,10 @@ function ListaUltimos({
   onEliminar,
   onDuplicar,
   onSolicitarAnulacion,
+  onReintentar,
   onActualizar,
   refreshing,
+  sincronizando,
 }: {
   comprobantes: ComprobanteRemoto[]
   stats: {
@@ -1154,6 +1539,7 @@ function ListaUltimos({
     rechazados: number
     anulSolicitada: number
     anulados: number
+    enCola: number
   }
   plantillaPorId: Record<string, string>
   contactoPorId: Record<string, string>
@@ -1165,8 +1551,10 @@ function ListaUltimos({
   onEliminar: (c: ComprobanteRemoto) => void
   onDuplicar: (c: ComprobanteRemoto) => void
   onSolicitarAnulacion: (c: ComprobanteRemoto) => void
+  onReintentar: (c: ComprobanteRemoto) => void
   onActualizar: () => void
   refreshing: boolean
+  sincronizando: boolean
 }) {
   return (
     <div className="card p-6 lg:p-10">
@@ -1178,6 +1566,11 @@ function ListaUltimos({
           </h2>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {stats.enCola > 0 && (
+            <span className="font-mono text-xs font-semibold" style={{ color: '#3d4a7a' }}>
+              {sincronizando ? 'Sincronizando…' : `${stats.enCola} en cola`}
+            </span>
+          )}
           {stats.pendientes > 0 && (
             <span className="font-mono text-xs text-amber-deep font-semibold">
               {stats.pendientes} pendiente{stats.pendientes === 1 ? '' : 's'}
@@ -1203,6 +1596,9 @@ function ListaUltimos({
 
       {comprobantes.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-5">
+          {stats.enCola > 0 && (
+            <span className="badge badge-encola">En cola · {stats.enCola}</span>
+          )}
           {stats.pendientes > 0 && (
             <span className="badge badge-pending">Pendiente · {stats.pendientes}</span>
           )}
@@ -1251,6 +1647,7 @@ function ListaUltimos({
                 onEliminar={onEliminar}
                 onDuplicar={onDuplicar}
                 onSolicitarAnulacion={onSolicitarAnulacion}
+                onReintentar={onReintentar}
               />
               {i < comprobantes.length - 1 && <div className="perforated mx-1" />}
             </div>
@@ -1301,6 +1698,7 @@ function ComprobanteRow({
   onEliminar,
   onDuplicar,
   onSolicitarAnulacion,
+  onReintentar,
 }: {
   c: ComprobanteRemoto
   plantillaNombre: string | null
@@ -1309,6 +1707,7 @@ function ComprobanteRow({
   onEliminar: (c: ComprobanteRemoto) => void
   onDuplicar: (c: ComprobanteRemoto) => void
   onSolicitarAnulacion: (c: ComprobanteRemoto) => void
+  onReintentar: (c: ComprobanteRemoto) => void
 }) {
   const tachado = c.estado === 'rechazado' || c.estado === 'anulado'
   const esLibre = !c.plantilla_id
@@ -1339,10 +1738,18 @@ function ComprobanteRow({
         )}
         <div className="text-[13px] text-ink-2 mt-0.5">
           {contactoNombre ?? '—'} · {formatFecha(c.fecha)}
-          {c.motivo_rechazo && (
+          {c.estado === 'rechazado' && c.motivo_rechazo && (
             <>
               {' · '}
               <span className="text-status-no">{c.motivo_rechazo}</span>
+            </>
+          )}
+          {c.estado === 'en_cola' && c.motivo_rechazo && (
+            <>
+              {' · '}
+              <span className="text-amber-deep">
+                Reintento falló: {c.motivo_rechazo}
+              </span>
             </>
           )}
           {c.estado === 'anulacion_solicitada' && c.anulacion_motivo && (
@@ -1358,6 +1765,7 @@ function ComprobanteRow({
           onEliminar={onEliminar}
           onDuplicar={onDuplicar}
           onSolicitarAnulacion={onSolicitarAnulacion}
+          onReintentar={onReintentar}
         />
       </div>
       <div className="text-right">
@@ -1382,12 +1790,14 @@ function AccionesComprobante({
   onEliminar,
   onDuplicar,
   onSolicitarAnulacion,
+  onReintentar,
 }: {
   c: ComprobanteRemoto
   onModificar: (c: ComprobanteRemoto) => void
   onEliminar: (c: ComprobanteRemoto) => void
   onDuplicar: (c: ComprobanteRemoto) => void
   onSolicitarAnulacion: (c: ComprobanteRemoto) => void
+  onReintentar: (c: ComprobanteRemoto) => void
 }) {
   const acciones: {
     key: string
@@ -1397,7 +1807,21 @@ function AccionesComprobante({
     variant?: 'danger' | 'default'
   }[] = []
 
-  if (c.estado === 'pendiente') {
+  if (c.estado === 'en_cola') {
+    acciones.push({
+      key: 'retry',
+      label: 'Reintentar',
+      icon: <UploadCloud size={12} strokeWidth={2.5} />,
+      onClick: () => onReintentar(c),
+    })
+    acciones.push({
+      key: 'del-local',
+      label: 'Eliminar',
+      icon: <Trash2 size={12} strokeWidth={2.5} />,
+      onClick: () => onEliminar(c),
+      variant: 'danger',
+    })
+  } else if (c.estado === 'pendiente') {
     acciones.push({
       key: 'mod',
       label: 'Modificar',
@@ -1604,6 +2028,7 @@ function CuentasPlantilla({
 
 function EstadoBadge({ estado }: { estado: EstadoComprobante }) {
   const map: Record<EstadoComprobante, { cls: string; label: string }> = {
+    en_cola: { cls: 'badge-encola', label: 'En cola' },
     pendiente: { cls: 'badge-pending', label: 'Pendiente' },
     importado: { cls: 'badge-imported', label: 'Importado' },
     rechazado: { cls: 'badge-rejected', label: 'Rechazado' },
@@ -1615,6 +2040,87 @@ function EstadoBadge({ estado }: { estado: EstadoComprobante }) {
   }
   const { cls, label } = map[estado]
   return <span className={`badge ${cls}`}>{label}</span>
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Banner de estado de conexión / cola offline
+// ──────────────────────────────────────────────────────────────────────
+
+function BannerCola({
+  online,
+  enColaCount,
+  sincronizando,
+  onSincronizar,
+}: {
+  online: boolean
+  enColaCount: number
+  sincronizando: boolean
+  onSincronizar: () => void
+}) {
+  if (online && enColaCount === 0) return null
+
+  if (!online) {
+    return (
+      <div
+        className="border-b border-line"
+        style={{ background: '#fff4e0' }}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="max-w-3xl mx-auto px-5 md:px-8 py-2.5 flex items-center gap-2.5">
+          <CloudOff size={14} strokeWidth={2.5} className="text-amber-deep shrink-0" />
+          <span className="text-[13px] text-ink-1">
+            <strong>Sin conexión.</strong>{' '}
+            {enColaCount > 0 ? (
+              <>
+                Tenés {enColaCount} comprobante{enColaCount === 1 ? '' : 's'} en cola.
+                Se subirá{enColaCount === 1 ? '' : 'n'} automáticamente al recuperar la red.
+              </>
+            ) : (
+              <>Tus cargas quedarán en cola y se subirán cuando vuelva la red.</>
+            )}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  // Online con cola pendiente (ej: hubo errores que no eran de red)
+  return (
+    <div
+      className="border-b border-line"
+      style={{ background: '#eef1fb' }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="max-w-3xl mx-auto px-5 md:px-8 py-2.5 flex items-center justify-between gap-3">
+        <span className="text-[13px] text-ink-1 flex items-center gap-2.5 min-w-0">
+          <UploadCloud size={14} strokeWidth={2.5} className="shrink-0" style={{ color: '#3d4a7a' }} />
+          <span className="truncate">
+            <strong>{enColaCount}</strong> en cola — pendiente{enColaCount === 1 ? '' : 's'} de subir
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={onSincronizar}
+          disabled={sincronizando}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[11px] uppercase tracking-wider text-ink-2 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+        >
+          {sincronizando ? (
+            <>
+              <Loader2 size={12} className="animate-spin" />
+              Sincronizando…
+            </>
+          ) : (
+            <>
+              <UploadCloud size={12} strokeWidth={2.5} />
+              Sincronizar
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2029,7 +2535,7 @@ function CuentaPickerModal({
               autoFocus
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Buscar por código o nombre…"
+              placeholder="Buscar por nombre…"
               className="w-full bg-paper-2 border border-line rounded-md pl-8 pr-3 py-2 text-[14px] focus:outline-none focus:border-ink-2 transition-colors"
             />
           </div>
@@ -2055,7 +2561,7 @@ function CuentaPickerModal({
                 Sin resultados
               </p>
               <p className="text-[12px] text-ink-3">
-                Probá con otro código o nombre.
+                Probá con otro nombre.
               </p>
             </div>
           ) : (
@@ -2073,9 +2579,6 @@ function CuentaPickerModal({
                         elegida ? 'bg-paper-2' : 'hover:bg-paper-2'
                       }`}
                     >
-                      <span className="font-mono text-[11px] text-ink-3 uppercase tracking-wider w-32 shrink-0">
-                        {c.codigo}
-                      </span>
                       <span className="flex-1 min-w-0 truncate text-[14px] text-ink-1">
                         {c.nombre}
                       </span>
