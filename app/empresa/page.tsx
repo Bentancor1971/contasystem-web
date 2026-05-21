@@ -59,14 +59,9 @@ export default function EmpresaPage() {
     router.refresh()
   }
 
-  if (empresas === null) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin text-amber" size={32} />
-      </main>
-    )
-  }
-
+  // El error se chequea ANTES que el spinner: si la query falla, `empresas`
+  // queda en null, así que si el spinner fuera primero taparía el error
+  // para siempre (spinner infinito).
   if (error) {
     return (
       <main className="min-h-screen flex items-center justify-center p-6">
@@ -77,6 +72,14 @@ export default function EmpresaPage() {
             <LogOut size={14} /> Cerrar sesión
           </button>
         </div>
+      </main>
+    )
+  }
+
+  if (empresas === null) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <Loader2 className="animate-spin text-amber" size={32} />
       </main>
     )
   }

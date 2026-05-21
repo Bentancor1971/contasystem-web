@@ -12,7 +12,14 @@
       "Bash(curl -s -o /dev/null -w \"home HTTP %{http_code}\\\\n\" \"http://localhost:3211/\")",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3001/\")",
       "Bash(curl -s -i \"http://localhost:3001/carga\")",
-      "Bash(cd \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga\" && rm -f tmp_mint.js tmp_cookie.txt /tmp/body.txt && echo \"temp limpio\")"
+      "Bash(cd \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga\" && rm -f tmp_mint.js tmp_cookie.txt /tmp/body.txt && echo \"temp limpio\")",
+      "Bash(ls -la .env*)",
+      "Bash(node --use-system-ca tmp_probe.js)",
+      "PowerShell(\"=== Puertos en escucha \\(3000-3300\\) ===\"; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge 3000 -and $_.LocalPort -le 3300 } | Select-Object LocalPort,OwningProcess | Format-Table -AutoSize; \"=== Procesos node ===\"; Get-Process node -ErrorAction SilentlyContinue | Select-Object Id,StartTime,@{N='WS_MB';E={[math]::Round\\($_.WorkingSet/1MB\\)}} | Format-Table -AutoSize)",
+      "Bash(rm -f tmp_probe.js tmp_mint.js tmp_cookie.txt)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const t=fs.readFileSync\\('.env.local','utf8'\\);const has=t.split\\(/\\\\r?\\\\n/\\).some\\(l=>l.startsWith\\('SUPABASE_SERVICE_ROLE_KEY='\\)&&l.length>30\\);console.log\\('SUPABASE_SERVICE_ROLE_KEY presente y con valor:',has\\);\")",
+      "Bash(node --use-system-ca tmp_prod.js)",
+      "Bash(node --use-system-ca tmp_diag.js)"
     ],
     "additionalDirectories": [
       "\\tmp"
