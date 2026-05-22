@@ -19,7 +19,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBirthdayEmail, type SendResult } from '@/lib/mailer'
-import { loadActiveEmpresas, loadHoraEnvio } from '@/lib/birthday-template-store'
+import { loadActiveEmpresas } from '@/lib/birthday-template-store'
 
 // Nodemailer necesita el runtime Node (sockets TCP/TLS), no Edge.
 export const runtime = 'nodejs'
@@ -39,21 +39,17 @@ interface MontevideoToday {
   year: number
   month: number
   day: number
-  /** Hora actual 0-23. */
-  hour: number
   /** YYYY-MM-DD */
   iso: string
 }
 
-/** Fecha y hora de ahora en America/Montevideo (UTC-3, sin horario de verano). */
+/** Fecha de hoy en America/Montevideo (UTC-3, sin horario de verano). */
 function getMontevideoToday(): MontevideoToday {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Montevideo',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
   }).formatToParts(new Date())
 
   const pick = (type: string) =>
@@ -62,9 +58,8 @@ function getMontevideoToday(): MontevideoToday {
   const year = pick('year')
   const month = pick('month')
   const day = pick('day')
-  const hour = pick('hour') % 24
   const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  return { year, month, day, hour, iso }
+  return { year, month, day, iso }
 }
 
 function isLeapYear(year: number): boolean {
@@ -132,28 +127,6 @@ export async function GET(req: NextRequest) {
     const today = getMontevideoToday()
 
     const admin = createAdminClient()
-
-    // ── 1.b) ¿Es la hora de envío? ─────────────────────────────────────
-    // El cron de Vercel corre cada hora (heartbeat). Solo se envía cuando
-    // la hora de Montevideo coincide con la configurada en birthday_settings.
-    // ?force=true saltea el chequeo (para pruebas manuales).
-    const horaEnvio = await loadHoraEnvio(admin)
-    const force = req.nextUrl.searchParams.get('force') === 'true'
-
-    if (!force && today.hour !== horaEnvio) {
-      console.log(
-        `[cron/birthdays] ${today.iso} ${today.hour}h · fuera de hora (envío ${horaEnvio}h)`,
-      )
-      return NextResponse.json({
-        ok: true,
-        fecha: today.iso,
-        motivo: `Fuera de la hora de envío (configurada ${horaEnvio}:00, ahora ${today.hour}:00)`,
-        found: 0,
-        sent: 0,
-        skipped: 0,
-        errors: [],
-      })
-    }
 
     // ── 2) Empresas activas (plantilla con activo = true) ──────────────
     // La lista de empresas sale de la base, no de variables de entorno:

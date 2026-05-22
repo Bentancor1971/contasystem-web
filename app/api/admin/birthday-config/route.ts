@@ -20,15 +20,20 @@ import { assertPuedeVerConfig } from '@/lib/birthday-auth'
 import {
   TEMPLATE_TABLE,
   loadEmpresasRegistro,
-  loadHoraEnvio,
   esTablaInexistente,
 } from '@/lib/birthday-template-store'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Heartbeat: el cron de Vercel corre cada hora (ver vercel.json). */
-const HEARTBEAT_CRON = '0 * * * *'
+/**
+ * Cron de Vercel: una corrida diaria a las 12:00 UTC = 09:00 Montevideo
+ * (ver vercel.json). En plan Hobby no se permiten crons sub-diarios, así
+ * que la hora queda fija en el repo. Si hay que cambiarla, editar
+ * vercel.json y HORA_ENVIO_MONTEVIDEO, y hacer redeploy.
+ */
+const HEARTBEAT_CRON = '0 12 * * *'
+const HORA_ENVIO_MONTEVIDEO = 9
 
 interface LogRow {
   socio_id: string
@@ -49,7 +54,7 @@ export async function GET(req: NextRequest) {
 
     const admin = createAdminClient()
     const cronSecretConfigurado = !!process.env.CRON_SECRET?.trim()
-    const horaEnvio = await loadHoraEnvio(admin)
+    const horaEnvio = HORA_ENVIO_MONTEVIDEO
 
     // ── Empresas: registro (nombre) + plantilla / activo / casilla Gmail ──
     const registro = await loadEmpresasRegistro(admin)

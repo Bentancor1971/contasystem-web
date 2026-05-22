@@ -78,8 +78,6 @@ export default function MailsConfigPage() {
   const { empresa, permisos } = useApp()
   const [config, setConfig] = useState<BirthdayConfig | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [horaEnvio, setHoraEnvio] = useState<number | null>(null)
-  const [savingHora, setSavingHora] = useState(false)
 
   useEffect(() => {
     if (!canSeeConfig(permisos)) router.replace('/configuracion')
@@ -101,7 +99,6 @@ export default function MailsConfigPage() {
       }
       const cfg = data as BirthdayConfig
       setConfig(cfg)
-      setHoraEnvio(cfg.cron.horaEnvio)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al cargar')
     } finally {
@@ -114,31 +111,6 @@ export default function MailsConfigPage() {
   }, [cargar, permisos])
 
   if (!canSeeConfig(permisos)) return null
-
-  async function guardarHora(h: number) {
-    const previa = horaEnvio
-    setHoraEnvio(h)
-    setSavingHora(true)
-    try {
-      const res = await fetch('/api/admin/birthday-settings', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ empresa_id: empresa.empresa_id, hora_envio: h }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(data.error ?? `Error · ${res.status}`)
-        setHoraEnvio(previa)
-        return
-      }
-      toast.success(`Hora de envío: ${String(h).padStart(2, '0')}:00`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al guardar')
-      setHoraEnvio(previa)
-    } finally {
-      setSavingHora(false)
-    }
-  }
 
   const operativo =
     !!config &&
@@ -213,18 +185,9 @@ export default function MailsConfigPage() {
             <dl className="space-y-2.5">
               <InfoRow label="Frecuencia">Todos los días</InfoRow>
               <InfoRow label="Hora de envío">
-                <select
-                  value={horaEnvio ?? config.cron.horaEnvio}
-                  disabled={savingHora}
-                  onChange={(e) => void guardarHora(Number(e.target.value))}
-                  className="border border-line rounded-lg px-2 py-1 text-sm bg-white outline-none focus:border-amber-deep disabled:opacity-50"
-                >
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <option key={h} value={h}>
-                      {String(h).padStart(2, '0')}:00
-                    </option>
-                  ))}
-                </select>
+                <span className="font-mono text-sm">
+                  {String(config.cron.horaEnvio).padStart(2, '0')}:00
+                </span>
               </InfoRow>
               <InfoRow label="CRON_SECRET">
                 <BoolChip
@@ -235,8 +198,9 @@ export default function MailsConfigPage() {
               </InfoRow>
             </dl>
             <p className="font-mono text-[11px] text-ink-3 mt-3 leading-relaxed">
-              Hora de Montevideo. El cron se ejecuta cada hora y manda los
-              saludos cuando llega la hora configurada.
+              Hora de Montevideo, fija (plan Hobby de Vercel solo permite una
+              corrida diaria). Para cambiarla, editar <code>vercel.json</code>{' '}
+              y <code>HORA_ENVIO_MONTEVIDEO</code> y redeployar.
             </p>
           </section>
 

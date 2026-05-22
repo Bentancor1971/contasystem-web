@@ -39,7 +39,11 @@
       "Bash(rm -f diag-emp.mjs)",
       "WebFetch(domain:www.atri.com.uy)",
       "Bash(NODE_OPTIONS=\"--use-system-ca\" npm install sharp --no-save)",
-      "Bash(node \"c:/tmp/gen-atri-bg.mjs\")"
+      "Bash(node \"c:/tmp/gen-atri-bg.mjs\")",
+      "Bash(node -e \"import\\('sharp'\\).then\\(s=>console.log\\('OK',s.default.format\\)\\).catch\\(e=>console.error\\('ERR:',e.message\\)\\)\")",
+      "Bash(node \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design/_gen-atri-bg.mjs\")",
+      "WebFetch(domain:aup-new.vercel.app)",
+      "Bash(node \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design/_gen-aup-bg.mjs\")"
     ],
     "additionalDirectories": [
       "\\tmp"
