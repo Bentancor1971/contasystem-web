@@ -36,7 +36,10 @@
       "Bash(node -e \"const v=require\\('./package.json'\\).version; console.log\\('lucide-react', v\\)\")",
       "Bash([ -f \"dist/esm/icons/$n.mjs\" ])",
       "Bash(rm -f diag-tpl.mjs)",
-      "Bash(rm -f diag-emp.mjs)"
+      "Bash(rm -f diag-emp.mjs)",
+      "WebFetch(domain:www.atri.com.uy)",
+      "Bash(NODE_OPTIONS=\"--use-system-ca\" npm install sharp --no-save)",
+      "Bash(node \"c:/tmp/gen-atri-bg.mjs\")"
     ],
     "additionalDirectories": [
       "\\tmp"
