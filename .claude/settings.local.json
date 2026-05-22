@@ -19,7 +19,24 @@
       "Bash(rm -f tmp_probe.js tmp_mint.js tmp_cookie.txt)",
       "Bash(node -e \"const fs=require\\('fs'\\);const t=fs.readFileSync\\('.env.local','utf8'\\);const has=t.split\\(/\\\\r?\\\\n/\\).some\\(l=>l.startsWith\\('SUPABASE_SERVICE_ROLE_KEY='\\)&&l.length>30\\);console.log\\('SUPABASE_SERVICE_ROLE_KEY presente y con valor:',has\\);\")",
       "Bash(node --use-system-ca tmp_prod.js)",
-      "Bash(node --use-system-ca tmp_diag.js)"
+      "Bash(node --use-system-ca tmp_diag.js)",
+      "Bash(sed -n '20,90p' 01_schema.sql)",
+      "Bash(sed -n '32,70p' 05_comprobantes_online.sql)",
+      "Bash(NODE_OPTIONS=\"--use-system-ca\" npm install -D @types/nodemailer@^6)",
+      "Bash(node -e \"setTimeout\\(\\(\\)=>{},12000\\)\")",
+      "Bash(curl.exe -s -o NUL -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl.exe -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:3000/api/cron/birthdays)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(taskkill //F //IM node.exe //T)",
+      "Bash(node -e \"setTimeout\\(\\(\\)=>{},9000\\)\")",
+      "Bash(curl.exe -s -w \"\\\\nHTTP %{http_code}\\\\n\" -H \"Authorization: Bearer 2c680bf04befa3c3f722120b6f637bfb2f08e202b454a588b0b26d5ec76188ba\" http://localhost:3000/api/cron/birthdays)",
+      "Bash(cd \"c:/tmp\")",
+      "Bash(rm -f diag-birthdays.mjs diag2.mjs diag3.mjs diag4.mjs)",
+      "Bash(taskkill //PID 3892 //F)",
+      "Bash(node -e \"const v=require\\('./package.json'\\).version; console.log\\('lucide-react', v\\)\")",
+      "Bash([ -f \"dist/esm/icons/$n.mjs\" ])",
+      "Bash(rm -f diag-tpl.mjs)",
+      "Bash(rm -f diag-emp.mjs)"
     ],
     "additionalDirectories": [
       "\\tmp"

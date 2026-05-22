@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { ChevronRight, Users, Lock, ShieldCheck } from 'lucide-react'
+import { ChevronRight, Users, Lock, ShieldCheck, Cake } from 'lucide-react'
 import { useApp } from '@/lib/app-context'
 import {
   canManageRoles,
@@ -50,6 +50,12 @@ export default function ConfiguracionPage() {
       disabledReason: canManageRoles(permisos)
         ? undefined
         : 'Tu rol no tiene permiso para editar la matriz de permisos',
+    },
+    {
+      href: '/configuracion/mails',
+      label: 'Saludos de cumpleaños',
+      description: 'Estado del envío automático de mails de cumpleaños',
+      icon: Cake,
     },
   ]
 
