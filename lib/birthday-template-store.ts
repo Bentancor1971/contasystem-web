@@ -36,7 +36,7 @@ export const DEFAULT_HORA_ENVIO = 9
 // Debe ser UN string literal (sin concatenar) para que el cliente de
 // Supabase pueda inferir el tipo de las filas.
 export const TEMPLATE_COLUMNS =
-  'empresa_id, asunto, denominacion, cuerpo, imagen_fondo_path, texto_color, panel_color, panel_opacidad, activo, gmail_user, gmail_app_password, from_name'
+  'empresa_id, asunto, denominacion, cuerpo, imagen_fondo_path, texto_color, panel_color, panel_opacidad, activo, solo_activos, gmail_user, gmail_app_password, from_name'
 
 export interface TemplateRow {
   empresa_id: string
@@ -48,9 +48,25 @@ export interface TemplateRow {
   panel_color: string
   panel_opacidad: number
   activo: boolean
+  solo_activos: boolean
   gmail_user: string | null
   gmail_app_password: string | null
   from_name: string | null
+}
+
+/**
+ * ¿Este `estado_registro_nombre` representa un socio "activo"?
+ * Comparación tolerante a tildes/case: 'Activo', 'ACTIVO', 'Activa', etc.
+ * Lo usan el cron (para saber a quién saludar) y el panel /configuracion/personas.
+ */
+export function esEstadoActivo(estado: string | null | undefined): boolean {
+  if (!estado) return false
+  const norm = estado
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+  return norm.startsWith('activ')
 }
 
 /** Credenciales SMTP de la casilla Gmail remitente de una empresa. */
@@ -64,6 +80,8 @@ export interface GmailAccount {
 export interface ActiveEmpresa {
   plantilla: BirthdayTemplate
   cuenta: GmailAccount | null
+  /** Si true, el cron solo saluda a socios con estado "activo". */
+  soloActivos: boolean
 }
 
 /** Una empresa del registro. */
@@ -200,6 +218,7 @@ export async function loadActiveEmpresas(
     map.set(row.empresa_id, {
       plantilla: rowToTemplate(row, supabase),
       cuenta: rowToGmailAccount(row),
+      soloActivos: row.solo_activos !== false,
     })
   }
   return map

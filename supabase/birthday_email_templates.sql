@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS public.birthday_email_templates (
   -- Si false, el cron NO le manda saludos a esta empresa.
   activo            BOOLEAN NOT NULL DEFAULT FALSE,
 
+  -- Audiencia. Si true, el cron solo saluda a socios cuyo
+  -- `estado_registro_nombre` empieza con 'activ' (Activo/Activa,
+  -- case/tilde-insensitive). Si false, saluda a todos los socios con
+  -- mail + fecha_nacimiento, sin importar el estado.
+  solo_activos      BOOLEAN NOT NULL DEFAULT TRUE,
+
   -- Casilla Gmail remitente de esta empresa.
   gmail_user         TEXT,         -- ej. saludos.empresa@gmail.com
   gmail_app_password TEXT,         -- App Password de 16 caracteres (secreto)
@@ -54,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.birthday_email_templates (
 -- Para instalaciones donde la tabla ya existía sin estas columnas.
 ALTER TABLE public.birthday_email_templates
   ADD COLUMN IF NOT EXISTS activo             BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS solo_activos       BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS gmail_user         TEXT,
   ADD COLUMN IF NOT EXISTS gmail_app_password TEXT,
   ADD COLUMN IF NOT EXISTS from_name          TEXT;

@@ -35,6 +35,8 @@ interface EmpresaOpcion {
 
 interface FormState {
   activo: boolean
+  /** true = solo saludar a socios con estado "activo". false = saludar a todos. */
+  soloActivos: boolean
   asunto: string
   denominacion: string
   cuerpo: string
@@ -144,6 +146,7 @@ export default function PlantillaMailPage() {
         setTablaExiste(data.tablaExiste !== false)
         setForm({
           activo: !!data.activo,
+          soloActivos: data.soloActivos !== false,
           asunto: data.asunto,
           denominacion: data.denominacion,
           cuerpo: data.cuerpo,
@@ -244,6 +247,7 @@ export default function PlantillaMailPage() {
           empresa_id: empresa.empresa_id,
           plantilla_empresa: selected,
           activo: form.activo,
+          solo_activos: form.soloActivos,
           asunto: form.asunto,
           denominacion: form.denominacion,
           cuerpo: form.cuerpo,
@@ -376,6 +380,26 @@ export default function PlantillaMailPage() {
                       on={form.activo}
                       onChange={(v) => patch({ activo: v })}
                       label="Activar envío para esta empresa"
+                    />
+                  </div>
+
+                  <div className="perforated my-4" />
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="font-display-tight text-base font-medium">
+                        Solo a socios activos
+                      </h3>
+                      <p className="text-sm text-ink-2 mt-0.5">
+                        {form.soloActivos
+                          ? 'Solo reciben el saludo los socios con estado "Activo".'
+                          : 'Reciben el saludo todos los socios con mail y fecha de nacimiento.'}
+                      </p>
+                    </div>
+                    <Toggle
+                      on={form.soloActivos}
+                      onChange={(v) => patch({ soloActivos: v })}
+                      label="Filtrar por estado activo"
                     />
                   </div>
                 </section>

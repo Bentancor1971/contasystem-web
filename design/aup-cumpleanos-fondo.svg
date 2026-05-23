@@ -1,65 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
   <defs>
-    <radialGradient id="glow" cx="50%" cy="42%" r="72%">
-      <stop offset="0%"  stop-color="#E78838"/>
-      <stop offset="50%" stop-color="#DD701F"/>
-      <stop offset="100%" stop-color="#9A4A0E"/>
+    <radialGradient id="glow" cx="50%" cy="42%" r="75%">
+      <stop offset="0%"  stop-color="#fdf3c9"/>
+      <stop offset="35%" stop-color="#fae3c5"/>
+      <stop offset="70%" stop-color="#f5cba1"/>
+      <stop offset="100%" stop-color="#e0a373"/>
     </radialGradient>
   </defs>
 
-  <!-- 1. Fondo naranja con glow + viñeta -->
-  <rect width="1200" height="800" fill="#DD701F"/>
+  <!-- 1. Fondo cálido: amarillo-crema glow → durazno → durazno profundo -->
+  <rect width="1200" height="800" fill="#f5cba1"/>
   <rect width="1200" height="800" fill="url(#glow)"/>
 
-  <!-- 2. Anillos navy como guiño al badge AUP — centrados off-canvas
-       (se ve solo el arco elegante en la esquina) -->
+  <!-- 2. Anillos navy (guiño al badge AUP), centrados off-canvas -->
   <g>
-    <circle cx="0" cy="0" r="310" fill="none" stroke="#27397B" stroke-width="10.85" opacity="0.85"/>
-    <circle cx="0" cy="0" r="279.00" fill="none" stroke="#27397B" stroke-width="3.72" opacity="0.59"/>
+    <circle cx="0" cy="0" r="310" fill="none" stroke="#230d66" stroke-width="10.85" opacity="0.85"/>
+    <circle cx="0" cy="0" r="279.00" fill="none" stroke="#230d66" stroke-width="3.72" opacity="0.59"/>
   </g>
   <g>
-    <circle cx="1200" cy="800" r="345" fill="none" stroke="#27397B" stroke-width="12.08" opacity="0.85"/>
-    <circle cx="1200" cy="800" r="310.50" fill="none" stroke="#27397B" stroke-width="4.14" opacity="0.59"/>
+    <circle cx="1200" cy="800" r="345" fill="none" stroke="#230d66" stroke-width="12.08" opacity="0.85"/>
+    <circle cx="1200" cy="800" r="310.50" fill="none" stroke="#230d66" stroke-width="4.14" opacity="0.59"/>
   </g>
 
-  <!-- 3. Ondas blancas (movimiento) — abajo y arriba del centro -->
-  <path d="M -20.00 215.00 Q 32.50 204.00 85.00 215.00 Q 137.50 226.00 190.00 215.00 Q 242.50 204.00 295.00 215.00 Q 347.50 226.00 400.00 215.00 Q 452.50 204.00 505.00 215.00 Q 557.50 226.00 610.00 215.00 Q 662.50 204.00 715.00 215.00 Q 767.50 226.00 820.00 215.00 Q 872.50 204.00 925.00 215.00 Q 977.50 226.00 1030.00 215.00 Q 1082.50 204.00 1135.00 215.00 Q 1187.50 226.00 1240.00 215.00" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" opacity="0.38"/>
-  <path d="M -20.00 590.00 Q 37.50 577.00 95.00 590.00 Q 152.50 603.00 210.00 590.00 Q 267.50 577.00 325.00 590.00 Q 382.50 603.00 440.00 590.00 Q 497.50 577.00 555.00 590.00 Q 612.50 603.00 670.00 590.00 Q 727.50 577.00 785.00 590.00 Q 842.50 603.00 900.00 590.00 Q 957.50 577.00 1015.00 590.00 Q 1072.50 603.00 1130.00 590.00 Q 1187.50 577.00 1245.00 590.00 Q 1302.50 603.00 1360.00 590.00" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" opacity="0.4"/>
-  <!-- onda navy muy sutil cruzando el área del texto -->
-  <path d="M -20.00 405.00 Q 45.00 396.00 110.00 405.00 Q 175.00 414.00 240.00 405.00 Q 305.00 396.00 370.00 405.00 Q 435.00 414.00 500.00 405.00 Q 565.00 396.00 630.00 405.00 Q 695.00 414.00 760.00 405.00 Q 825.00 396.00 890.00 405.00 Q 955.00 414.00 1020.00 405.00 Q 1085.00 396.00 1150.00 405.00 Q 1215.00 414.00 1280.00 405.00" fill="none" stroke="#1E2E5D" stroke-width="5" stroke-linecap="round" opacity="0.1"/>
+  <!-- 3. Ondas navy (movimiento, psicomotricidad) -->
+  <path d="M -20.00 215.00 Q 32.50 204.00 85.00 215.00 Q 137.50 226.00 190.00 215.00 Q 242.50 204.00 295.00 215.00 Q 347.50 226.00 400.00 215.00 Q 452.50 204.00 505.00 215.00 Q 557.50 226.00 610.00 215.00 Q 662.50 204.00 715.00 215.00 Q 767.50 226.00 820.00 215.00 Q 872.50 204.00 925.00 215.00 Q 977.50 226.00 1030.00 215.00 Q 1082.50 204.00 1135.00 215.00 Q 1187.50 226.00 1240.00 215.00" fill="none" stroke="#230d66" stroke-width="6" stroke-linecap="round" opacity="0.22"/>
+  <path d="M -20.00 590.00 Q 37.50 577.00 95.00 590.00 Q 152.50 603.00 210.00 590.00 Q 267.50 577.00 325.00 590.00 Q 382.50 603.00 440.00 590.00 Q 497.50 577.00 555.00 590.00 Q 612.50 603.00 670.00 590.00 Q 727.50 577.00 785.00 590.00 Q 842.50 603.00 900.00 590.00 Q 957.50 577.00 1015.00 590.00 Q 1072.50 603.00 1130.00 590.00 Q 1187.50 577.00 1245.00 590.00 Q 1302.50 603.00 1360.00 590.00" fill="none" stroke="#230d66" stroke-width="7" stroke-linecap="round" opacity="0.24"/>
+  <!-- onda sutil que cruza el área del texto -->
+  <path d="M -20.00 405.00 Q 45.00 396.00 110.00 405.00 Q 175.00 414.00 240.00 405.00 Q 305.00 396.00 370.00 405.00 Q 435.00 414.00 500.00 405.00 Q 565.00 396.00 630.00 405.00 Q 695.00 414.00 760.00 405.00 Q 825.00 396.00 890.00 405.00 Q 955.00 414.00 1020.00 405.00 Q 1085.00 396.00 1150.00 405.00 Q 1215.00 414.00 1280.00 405.00" fill="none" stroke="#230d66" stroke-width="4" stroke-linecap="round" opacity="0.08"/>
 
   <!-- 4. Confeti orgánico -->
-  <circle cx="80" cy="70" r="5" fill="#FFFFFF" opacity="0.9"/>
-  <path d="M -18 0 Q -9 -11.700000000000001 0 0 Q 9 11.700000000000001 18 0" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.65" transform="translate(160 110) rotate(25)"/>
-  <circle cx="60" cy="175" r="8" fill="none" stroke="#1E2E5D" stroke-width="2.2" opacity="0.55"/>
-  <path d="M 245 134 Q 249.48 145.52 261 150 Q 249.48 154.48 245 166 Q 240.52 154.48 229 150 Q 240.52 145.52 245 134 Z" fill="#FFFFFF" opacity="0.85"/>
-  <circle cx="305" cy="70" r="4" fill="#FFE6BE" opacity="0.85"/>
-  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#1E2E5D" stroke-width="2.5" stroke-linecap="round" opacity="0.5" transform="translate(330 165) rotate(-15)"/>
-  <circle cx="195" cy="60" r="3.5" fill="#FFFFFF" opacity="0.8"/>
-  <path d="M -20 0 Q -10 -13 0 0 Q 10 13 20 0" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.7" transform="translate(945 90) rotate(-20)"/>
-  <path d="M 1075 127 Q 1080.04 139.96 1093 145 Q 1080.04 150.04 1075 163 Q 1069.96 150.04 1057 145 Q 1069.96 139.96 1075 127 Z" fill="#FFFFFF" opacity="0.85"/>
-  <circle cx="1145" cy="65" r="5" fill="#1E2E5D" opacity="0.6"/>
-  <circle cx="1000" cy="75" r="7" fill="none" stroke="#FFFFFF" stroke-width="2.2" opacity="0.65"/>
-  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#FFE6BE" stroke-width="2.5" stroke-linecap="round" opacity="0.65" transform="translate(1110 185) rotate(30)"/>
-  <circle cx="880" cy="175" r="4" fill="#1E2E5D" opacity="0.55"/>
-  <circle cx="45" cy="360" r="3.5" fill="#FFFFFF" opacity="0.4"/>
-  <path d="M 1140 408 Q 1143.36 416.64 1152 420 Q 1143.36 423.36 1140 432 Q 1136.64 423.36 1128 420 Q 1136.64 416.64 1140 408 Z" fill="#FFFFFF" opacity="0.6"/>
-  <path d="M -12 0 Q -6 -7.800000000000001 0 0 Q 6 7.800000000000001 12 0" fill="none" stroke="#FFE6BE" stroke-width="2.5" stroke-linecap="round" opacity="0.45" transform="translate(45 510) rotate(60)"/>
-  <circle cx="1160" cy="320" r="4" fill="#1E2E5D" opacity="0.45"/>
-  <circle cx="35" cy="250" r="3" fill="#FFE6BE" opacity="0.5"/>
-  <path d="M -15 0 Q -7.5 -9.75 0 0 Q 7.5 9.75 15 0" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.7" transform="translate(95 660) rotate(35)"/>
-  <circle cx="140" cy="745" r="5" fill="#FFE6BE" opacity="0.85"/>
-  <circle cx="60" cy="710" r="7" fill="none" stroke="#1E2E5D" stroke-width="2.2" opacity="0.55"/>
-  <path d="M 55 602 Q 58.64 611.36 68 615 Q 58.64 618.64 55 628 Q 51.36 618.64 42 615 Q 51.36 611.36 55 602 Z" fill="#FFFFFF" opacity="0.7"/>
-  <circle cx="180" cy="615" r="4" fill="#FFFFFF" opacity="0.65"/>
-  <path d="M 1085 644 Q 1089.48 655.52 1101 660 Q 1089.48 664.48 1085 676 Q 1080.52 664.48 1069 660 Q 1080.52 655.52 1085 644 Z" fill="#FFFFFF" opacity="0.8"/>
-  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#FFE6BE" stroke-width="2.5" stroke-linecap="round" opacity="0.7" transform="translate(1145 745) rotate(-25)"/>
-  <circle cx="1020" cy="745" r="7" fill="none" stroke="#1E2E5D" stroke-width="2.2" opacity="0.55"/>
-  <circle cx="1150" cy="640" r="4.5" fill="#FFFFFF" opacity="0.7"/>
-  <path d="M -12 0 Q -6 -7.800000000000001 0 0 Q 6 7.800000000000001 12 0" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" opacity="0.6" transform="translate(1115 615) rotate(18)"/>
+  <circle cx="80" cy="70" r="5" fill="#230d66" opacity="0.75"/>
+  <path d="M -18 0 Q -9 -11.700000000000001 0 0 Q 9 11.700000000000001 18 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.55" transform="translate(160 110) rotate(25)"/>
+  <circle cx="60" cy="175" r="8" fill="none" stroke="#230d66" stroke-width="2.2" opacity="0.55"/>
+  <path d="M 245 134 Q 249.48 145.52 261 150 Q 249.48 154.48 245 166 Q 240.52 154.48 229 150 Q 240.52 145.52 245 134 Z" fill="#fcfbf8" opacity="0.95"/>
+  <circle cx="305" cy="70" r="4" fill="#e57c15" opacity="0.85"/>
+  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.5" transform="translate(330 165) rotate(-15)"/>
+  <circle cx="195" cy="60" r="3.5" fill="#fbeb83" opacity="0.95"/>
+  <path d="M -20 0 Q -10 -13 0 0 Q 10 13 20 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.55" transform="translate(945 90) rotate(-20)"/>
+  <path d="M 1075 127 Q 1080.04 139.96 1093 145 Q 1080.04 150.04 1075 163 Q 1069.96 150.04 1057 145 Q 1069.96 139.96 1075 127 Z" fill="#fcfbf8" opacity="0.95"/>
+  <circle cx="1145" cy="65" r="5" fill="#230d66" opacity="0.7"/>
+  <circle cx="1000" cy="75" r="7" fill="none" stroke="#230d66" stroke-width="2.2" opacity="0.55"/>
+  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#fbeb83" stroke-width="2.5" stroke-linecap="round" opacity="0.9" transform="translate(1110 185) rotate(30)"/>
+  <circle cx="880" cy="175" r="4" fill="#e57c15" opacity="0.85"/>
+  <circle cx="45" cy="360" r="3.5" fill="#230d66" opacity="0.45"/>
+  <path d="M 1140 408 Q 1143.36 416.64 1152 420 Q 1143.36 423.36 1140 432 Q 1136.64 423.36 1128 420 Q 1136.64 416.64 1140 408 Z" fill="#fcfbf8" opacity="0.7"/>
+  <path d="M -12 0 Q -6 -7.800000000000001 0 0 Q 6 7.800000000000001 12 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.45" transform="translate(45 510) rotate(60)"/>
+  <circle cx="1160" cy="320" r="4" fill="#e57c15" opacity="0.65"/>
+  <circle cx="35" cy="250" r="3" fill="#fbeb83" opacity="0.85"/>
+  <path d="M -15 0 Q -7.5 -9.75 0 0 Q 7.5 9.75 15 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.55" transform="translate(95 660) rotate(35)"/>
+  <circle cx="140" cy="745" r="5" fill="#fbeb83" opacity="0.95"/>
+  <circle cx="60" cy="710" r="7" fill="none" stroke="#230d66" stroke-width="2.2" opacity="0.55"/>
+  <path d="M 55 602 Q 58.64 611.36 68 615 Q 58.64 618.64 55 628 Q 51.36 618.64 42 615 Q 51.36 611.36 55 602 Z" fill="#fcfbf8" opacity="0.85"/>
+  <circle cx="180" cy="615" r="4" fill="#e57c15" opacity="0.85"/>
+  <path d="M 1085 644 Q 1089.48 655.52 1101 660 Q 1089.48 664.48 1085 676 Q 1080.52 664.48 1069 660 Q 1080.52 655.52 1085 644 Z" fill="#fcfbf8" opacity="0.9"/>
+  <path d="M -14 0 Q -7 -9.1 0 0 Q 7 9.1 14 0" fill="none" stroke="#fbeb83" stroke-width="2.5" stroke-linecap="round" opacity="0.95" transform="translate(1145 745) rotate(-25)"/>
+  <circle cx="1020" cy="745" r="7" fill="none" stroke="#230d66" stroke-width="2.2" opacity="0.55"/>
+  <circle cx="1150" cy="640" r="4.5" fill="#e57c15" opacity="0.85"/>
+  <path d="M -12 0 Q -6 -7.800000000000001 0 0 Q 6 7.800000000000001 12 0" fill="none" stroke="#230d66" stroke-width="2.5" stroke-linecap="round" opacity="0.5" transform="translate(1115 615) rotate(18)"/>
 
-  <!-- 5. Wordmark "AUP" (abajo) — italic serif evocando el lettering del logo -->
+  <!-- 5. Wordmark "AUP" en navy (la marca) -->
   <text x="600" y="660"
         text-anchor="middle"
         font-family="Georgia, 'Times New Roman', serif"
@@ -67,7 +67,7 @@
         font-weight="700"
         font-size="96"
         letter-spacing="6"
-        fill="#FFFFFF">AUP</text>
+        fill="#230d66">AUP</text>
 
   <!-- 6. Tagline -->
   <text x="600" y="702"
@@ -77,5 +77,6 @@
         font-weight="400"
         font-size="18"
         letter-spacing="2"
-        fill="#FCE2BA">Asociación Uruguaya de Psicomotricidad</text>
+        fill="#230d66"
+        opacity="0.75">Asociación Uruguaya de Psicomotricidad</text>
 </svg>

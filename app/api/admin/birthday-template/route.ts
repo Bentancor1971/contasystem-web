@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
       panelColor: row?.panel_color ?? d.panelColor,
       panelOpacidad: row?.panel_opacidad ?? d.panelOpacidad,
       activo: row?.activo ?? false,
+      soloActivos: row?.solo_activos !== false,
       gmailUser: row?.gmail_user ?? '',
       fromName: row?.from_name ?? '',
       // Nunca se devuelve la App Password — solo si está cargada.
@@ -109,6 +110,7 @@ interface PutBody {
   panel_color?: unknown
   panel_opacidad?: unknown
   activo?: unknown
+  solo_activos?: unknown
   gmail_user?: unknown
   from_name?: unknown
   gmail_app_password?: unknown
@@ -157,6 +159,10 @@ export async function PUT(req: NextRequest) {
   const panelOpacidad =
     typeof body.panel_opacidad === 'number' ? Math.round(body.panel_opacidad) : NaN
   const activo = typeof body.activo === 'boolean' ? body.activo : false
+  // Default seguro: si el cliente no manda el campo, asumimos "solo activos"
+  // (coincide con el DEFAULT TRUE de la columna).
+  const soloActivos =
+    typeof body.solo_activos === 'boolean' ? body.solo_activos : true
 
   // Casilla Gmail. La App Password solo se actualiza si vino una nueva
   // (el editor manda el campo vacío cuando no se cambia).
@@ -231,6 +237,7 @@ export async function PUT(req: NextRequest) {
         panel_color: panelColor,
         panel_opacidad: panelOpacidad,
         activo,
+        solo_activos: soloActivos,
         gmail_user: gmailUser || null,
         from_name: fromName || null,
         // Solo se escribe la App Password si el editor mandó una nueva.

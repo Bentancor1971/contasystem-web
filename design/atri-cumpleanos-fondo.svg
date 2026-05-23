@@ -2,65 +2,57 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
   <defs>
     <radialGradient id="glow" cx="50%" cy="42%" r="70%">
-      <stop offset="0%"  stop-color="#303a3d"/>
-      <stop offset="48%" stop-color="#22282a"/>
-      <stop offset="100%" stop-color="#15191b"/>
+      <stop offset="0%"  stop-color="#f3f8f7"/>
+      <stop offset="48%" stop-color="#fbfaf5"/>
+      <stop offset="100%" stop-color="#ece8d8"/>
     </radialGradient>
   </defs>
 
-  <!-- 1. Fondo con glow + viñeta -->
-  <rect width="1200" height="800" fill="#15191b"/>
+  <rect width="1200" height="800" fill="#fbfaf5"/>
   <rect width="1200" height="800" fill="url(#glow)"/>
 
-  <!-- 2. Watermarks de la apertura, en esquinas, muy tenues -->
-  <g opacity="0.55"><path d="M54.35 -204.56 A235 235 0 0 1 235.96 -99.71 L157.58 -47.82 A141 141 0 0 0 48.61 -110.74 Z" fill="#2a3437"/><path d="M250.31 -74.86 A235 235 0 0 1 250.31 134.86 L166.19 92.91 A141 141 0 0 0 166.19 -32.91 Z" fill="#2a3437"/><path d="M235.96 159.71 A235 235 0 0 1 54.35 264.56 L48.61 170.74 A141 141 0 0 0 157.58 107.82 Z" fill="#2a3437"/><path d="M25.65 264.56 A235 235 0 0 1 -155.96 159.71 L-77.58 107.82 A141 141 0 0 0 31.39 170.74 Z" fill="#2a3437"/><path d="M-170.31 134.86 A235 235 0 0 1 -170.31 -74.86 L-86.19 -32.91 A141 141 0 0 0 -86.19 92.91 Z" fill="#2a3437"/><path d="M-155.96 -99.71 A235 235 0 0 1 25.65 -204.56 L31.39 -110.74 A141 141 0 0 0 -77.58 -47.82 Z" fill="#2a3437"/><circle cx="40" cy="30" r="108.10" fill="none" stroke="#2a3437" stroke-width="10.57" stroke-opacity="0.55"/><circle cx="40" cy="30" r="79.90" fill="#15191b"/><circle cx="40" cy="30" r="79.90" fill="none" stroke="#2a3437" stroke-width="10.57" stroke-opacity="0.7"/><circle cx="40" cy="30" r="30.55" fill="#2a3437"/></g>
-  <g opacity="0.65"><path d="M1199.54 470.60 A320 320 0 0 1 1446.84 613.38 L1340.11 684.03 A192 192 0 0 0 1191.72 598.36 Z" fill="#2a3437"/><path d="M1466.38 647.22 A320 320 0 0 1 1466.38 932.78 L1351.83 875.67 A192 192 0 0 0 1351.83 704.33 Z" fill="#2a3437"/><path d="M1446.84 966.62 A320 320 0 0 1 1199.54 1109.40 L1191.72 981.64 A192 192 0 0 0 1340.11 895.97 Z" fill="#2a3437"/><path d="M1160.46 1109.40 A320 320 0 0 1 913.16 966.62 L1019.89 895.97 A192 192 0 0 0 1168.28 981.64 Z" fill="#2a3437"/><path d="M893.62 932.78 A320 320 0 0 1 893.62 647.22 L1008.17 704.33 A192 192 0 0 0 1008.17 875.67 Z" fill="#2a3437"/><path d="M913.16 613.38 A320 320 0 0 1 1160.46 470.60 L1168.28 598.36 A192 192 0 0 0 1019.89 684.03 Z" fill="#2a3437"/><circle cx="1180" cy="790" r="147.20" fill="none" stroke="#2a3437" stroke-width="14.40" stroke-opacity="0.55"/><circle cx="1180" cy="790" r="108.80" fill="#15191b"/><circle cx="1180" cy="790" r="108.80" fill="none" stroke="#2a3437" stroke-width="14.40" stroke-opacity="0.7"/><circle cx="1180" cy="790" r="41.60" fill="#2a3437"/></g>
+  <g opacity="0.55"><path d="M54.35 -204.56 A235 235 0 0 1 235.96 -99.71 L157.58 -47.82 A141 141 0 0 0 48.61 -110.74 Z" fill="#d5dfe0"/><path d="M250.31 -74.86 A235 235 0 0 1 250.31 134.86 L166.19 92.91 A141 141 0 0 0 166.19 -32.91 Z" fill="#d5dfe0"/><path d="M235.96 159.71 A235 235 0 0 1 54.35 264.56 L48.61 170.74 A141 141 0 0 0 157.58 107.82 Z" fill="#d5dfe0"/><path d="M25.65 264.56 A235 235 0 0 1 -155.96 159.71 L-77.58 107.82 A141 141 0 0 0 31.39 170.74 Z" fill="#d5dfe0"/><path d="M-170.31 134.86 A235 235 0 0 1 -170.31 -74.86 L-86.19 -32.91 A141 141 0 0 0 -86.19 92.91 Z" fill="#d5dfe0"/><path d="M-155.96 -99.71 A235 235 0 0 1 25.65 -204.56 L31.39 -110.74 A141 141 0 0 0 -77.58 -47.82 Z" fill="#d5dfe0"/><circle cx="40" cy="30" r="108.10" fill="none" stroke="#d5dfe0" stroke-width="10.57" stroke-opacity="0.55"/><circle cx="40" cy="30" r="79.90" fill="#d5dfe0"/><circle cx="40" cy="30" r="79.90" fill="none" stroke="#d5dfe0" stroke-width="10.57" stroke-opacity="0.7"/><circle cx="40" cy="30" r="30.55" fill="#d5dfe0"/></g>
+  <g opacity="0.55"><path d="M1199.54 470.60 A320 320 0 0 1 1446.84 613.38 L1340.11 684.03 A192 192 0 0 0 1191.72 598.36 Z" fill="#d5dfe0"/><path d="M1466.38 647.22 A320 320 0 0 1 1466.38 932.78 L1351.83 875.67 A192 192 0 0 0 1351.83 704.33 Z" fill="#d5dfe0"/><path d="M1446.84 966.62 A320 320 0 0 1 1199.54 1109.40 L1191.72 981.64 A192 192 0 0 0 1340.11 895.97 Z" fill="#d5dfe0"/><path d="M1160.46 1109.40 A320 320 0 0 1 913.16 966.62 L1019.89 895.97 A192 192 0 0 0 1168.28 981.64 Z" fill="#d5dfe0"/><path d="M893.62 932.78 A320 320 0 0 1 893.62 647.22 L1008.17 704.33 A192 192 0 0 0 1008.17 875.67 Z" fill="#d5dfe0"/><path d="M913.16 613.38 A320 320 0 0 1 1160.46 470.60 L1168.28 598.36 A192 192 0 0 0 1019.89 684.03 Z" fill="#d5dfe0"/><circle cx="1180" cy="790" r="147.20" fill="none" stroke="#d5dfe0" stroke-width="14.40" stroke-opacity="0.55"/><circle cx="1180" cy="790" r="108.80" fill="#d5dfe0"/><circle cx="1180" cy="790" r="108.80" fill="none" stroke="#d5dfe0" stroke-width="14.40" stroke-opacity="0.7"/><circle cx="1180" cy="790" r="41.60" fill="#d5dfe0"/></g>
 
-  <!-- 3. Confeti -->
-  <rect x="101.8" y="85.9" width="36.4" height="8.1" rx="4.1" fill="#3FA9AF" opacity="0.85" transform="rotate(30 120 90)"/>
-  <circle cx="70" cy="60" r="5" fill="#F08C21" opacity="0.85"/>
-  <path d="M 245 133 Q 249.76 145.24 262 150 Q 249.76 154.76 245 167 Q 240.24 154.76 228 150 Q 240.24 145.24 245 133 Z" fill="#5FC5CB" opacity="0.9"/>
-  <circle cx="60" cy="175" r="8" fill="none" stroke="#9AA1A2" stroke-width="2" opacity="0.55"/>
-  <circle cx="290" cy="55" r="4" fill="#5FC5CB" opacity="0.8"/>
-  <rect x="164.4" y="171.5" width="31.2" height="7.0" rx="3.5" fill="#F08C21" opacity="0.75" transform="rotate(-20 180 175)"/>
-  <circle cx="340" cy="110" r="3.5" fill="#3FA9AF" opacity="0.7"/>
-  <path d="M 965 54 Q 970.88 69.12 986 75 Q 970.88 80.88 965 96 Q 959.12 80.88 944 75 Q 959.12 69.12 965 54 Z" fill="#F08C21" opacity="0.9"/>
-  <circle cx="1080" cy="135" r="5" fill="#3FA9AF" opacity="0.85"/>
-  <rect x="991.8" y="170.9" width="36.4" height="8.1" rx="4.1" fill="#5FC5CB" opacity="0.85" transform="rotate(-38 1010 175)"/>
-  <circle cx="1150" cy="60" r="7" fill="none" stroke="#9AA1A2" stroke-width="2" opacity="0.55"/>
-  <circle cx="885" cy="165" r="4" fill="#F08C21" opacity="0.75"/>
-  <rect x="1095.7" y="96.8" width="28.6" height="6.4" rx="3.2" fill="#3FA9AF" opacity="0.75" transform="rotate(22 1110 100)"/>
-  <circle cx="45" cy="360" r="3" fill="#9AA1A2" opacity="0.45"/>
-  <path d="M 1140 408 Q 1143.36 416.64 1152 420 Q 1143.36 423.36 1140 432 Q 1136.64 423.36 1128 420 Q 1136.64 416.64 1140 408 Z" fill="#5FC5CB" opacity="0.7"/>
-  <circle cx="1160" cy="320" r="4" fill="#F08C21" opacity="0.55"/>
-  <circle cx="35" cy="510" r="3.5" fill="#3FA9AF" opacity="0.4"/>
-  <rect x="76.8" y="655.9" width="36.4" height="8.1" rx="4.1" fill="#F08C21" opacity="0.8" transform="rotate(40 95 660)"/>
-  <circle cx="140" cy="745" r="5" fill="#3FA9AF" opacity="0.85"/>
-  <circle cx="60" cy="700" r="7" fill="none" stroke="#9AA1A2" stroke-width="2" opacity="0.55"/>
-  <path d="M 60 607 Q 63.64 616.36 73 620 Q 63.64 623.64 60 633 Q 56.36 623.64 47 620 Q 56.36 616.36 60 607 Z" fill="#5FC5CB" opacity="0.7"/>
-  <path d="M 1085 649 Q 1089.48 660.52 1101 665 Q 1089.48 669.48 1085 681 Q 1080.52 669.48 1069 665 Q 1080.52 660.52 1085 649 Z" fill="#F08C21" opacity="0.85"/>
-  <circle cx="1145" cy="745" r="5" fill="#5FC5CB" opacity="0.8"/>
-  <rect x="1004.4" y="741.5" width="31.2" height="7.0" rx="3.5" fill="#3FA9AF" opacity="0.8" transform="rotate(-28 1020 745)"/>
-  <circle cx="1150" cy="640" r="7" fill="none" stroke="#9AA1A2" stroke-width="2" opacity="0.55"/>
+  <rect x="101.8" y="85.9" width="36.4" height="8.1" rx="4.1" fill="#47a5ae" opacity="0.85" transform="rotate(30 120 90)"/>
+  <circle cx="70" cy="60" r="5" fill="#f48424" opacity="0.9"/>
+  <path d="M 245 133 Q 249.76 145.24 262 150 Q 249.76 154.76 245 167 Q 240.24 154.76 228 150 Q 240.24 145.24 245 133 Z" fill="#3a8d96" opacity="0.85"/>
+  <circle cx="60" cy="175" r="8" fill="none" stroke="#9ca3af" stroke-width="2" opacity="0.6"/>
+  <circle cx="290" cy="55" r="4" fill="#f48424" opacity="0.75"/>
+  <rect x="164.4" y="171.5" width="31.2" height="7.0" rx="3.5" fill="#f48424" opacity="0.7" transform="rotate(-20 180 175)"/>
+  <circle cx="340" cy="110" r="3.5" fill="#47a5ae" opacity="0.8"/>
+  <path d="M 965 54 Q 970.88 69.12 986 75 Q 970.88 80.88 965 96 Q 959.12 80.88 944 75 Q 959.12 69.12 965 54 Z" fill="#f48424" opacity="0.9"/>
+  <circle cx="1080" cy="135" r="5" fill="#47a5ae" opacity="0.85"/>
+  <rect x="991.8" y="170.9" width="36.4" height="8.1" rx="4.1" fill="#3a8d96" opacity="0.8" transform="rotate(-38 1010 175)"/>
+  <circle cx="1150" cy="60" r="7" fill="none" stroke="#9ca3af" stroke-width="2" opacity="0.55"/>
+  <circle cx="885" cy="165" r="4" fill="#f48424" opacity="0.75"/>
+  <rect x="1095.7" y="96.8" width="28.6" height="6.4" rx="3.2" fill="#47a5ae" opacity="0.7" transform="rotate(22 1110 100)"/>
+  <circle cx="45" cy="360" r="3" fill="#9ca3af" opacity="0.6"/>
+  <path d="M 1140 408 Q 1143.36 416.64 1152 420 Q 1143.36 423.36 1140 432 Q 1136.64 423.36 1128 420 Q 1136.64 416.64 1140 408 Z" fill="#47a5ae" opacity="0.6"/>
+  <circle cx="1160" cy="320" r="4" fill="#f48424" opacity="0.5"/>
+  <circle cx="35" cy="510" r="3.5" fill="#3a8d96" opacity="0.5"/>
+  <rect x="76.8" y="655.9" width="36.4" height="8.1" rx="4.1" fill="#f48424" opacity="0.8" transform="rotate(40 95 660)"/>
+  <circle cx="140" cy="745" r="5" fill="#47a5ae" opacity="0.85"/>
+  <circle cx="60" cy="700" r="7" fill="none" stroke="#9ca3af" stroke-width="2" opacity="0.55"/>
+  <path d="M 60 607 Q 63.64 616.36 73 620 Q 63.64 623.64 60 633 Q 56.36 623.64 47 620 Q 56.36 616.36 60 607 Z" fill="#3a8d96" opacity="0.7"/>
+  <path d="M 1085 649 Q 1089.48 660.52 1101 665 Q 1089.48 669.48 1085 681 Q 1080.52 669.48 1069 665 Q 1080.52 660.52 1085 649 Z" fill="#f48424" opacity="0.85"/>
+  <circle cx="1145" cy="745" r="5" fill="#47a5ae" opacity="0.85"/>
+  <rect x="1004.4" y="741.5" width="31.2" height="7.0" rx="3.5" fill="#3a8d96" opacity="0.8" transform="rotate(-28 1020 745)"/>
+  <circle cx="1150" cy="640" r="7" fill="none" stroke="#9ca3af" stroke-width="2" opacity="0.55"/>
 
-  <!-- 4. Logo ATRI: apertura en color (arriba) -->
-  <g opacity="1"><path d="M603.79 50.12 A62 62 0 0 1 651.70 77.78 L631.02 91.47 A37.199999999999996 37.199999999999996 0 0 0 602.27 74.87 Z" fill="#3FA9AF"/><path d="M655.49 84.34 A62 62 0 0 1 655.49 139.66 L633.29 128.60 A37.199999999999996 37.199999999999996 0 0 0 633.29 95.40 Z" fill="#3FA9AF"/><path d="M651.70 146.22 A62 62 0 0 1 603.79 173.88 L602.27 149.13 A37.199999999999996 37.199999999999996 0 0 0 631.02 132.53 Z" fill="#F08C21"/><path d="M596.21 173.88 A62 62 0 0 1 548.30 146.22 L568.98 132.53 A37.199999999999996 37.199999999999996 0 0 0 597.73 149.13 Z" fill="#F08C21"/><path d="M544.51 139.66 A62 62 0 0 1 544.51 84.34 L566.71 95.40 A37.199999999999996 37.199999999999996 0 0 0 566.71 128.60 Z" fill="#3FA9AF"/><path d="M548.30 77.78 A62 62 0 0 1 596.21 50.12 L597.73 74.87 A37.199999999999996 37.199999999999996 0 0 0 568.98 91.47 Z" fill="#9AA1A2"/><circle cx="600" cy="112" r="28.52" fill="none" stroke="#9AA1A2" stroke-width="2.79" stroke-opacity="0.55"/><circle cx="600" cy="112" r="21.08" fill="#15191b"/><circle cx="600" cy="112" r="21.08" fill="none" stroke="#3FA9AF" stroke-width="2.79" stroke-opacity="0.7"/><circle cx="600" cy="112" r="8.06" fill="#3FA9AF"/></g>
-
-  <!-- 5. Wordmark "ATRI" (abajo) -->
   <text x="600" y="660"
         text-anchor="middle"
         font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
         font-weight="900"
         font-size="86"
         letter-spacing="6"
-        fill="#3FA9AF">ATRI</text>
+        fill="#47a5ae">ATRI</text>
 
-  <!-- 6. Tagline -->
   <text x="600" y="700"
         text-anchor="middle"
         font-family="Arial, 'Segoe UI', sans-serif"
         font-weight="600"
         font-size="15"
         letter-spacing="3"
-        fill="#8A9293">ASOCIACIÓN DE TÉCNICOS EN RADIACIONES E IMAGENOLOGÍA</text>
+        fill="#656464">ASOCIACIÓN DE TÉCNICOS EN RADIACIONES E IMAGENOLOGÍA</text>
 </svg>

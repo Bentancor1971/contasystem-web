@@ -19,7 +19,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBirthdayEmail, type SendResult } from '@/lib/mailer'
-import { loadActiveEmpresas } from '@/lib/birthday-template-store'
+import { loadActiveEmpresas, esEstadoActivo } from '@/lib/birthday-template-store'
 
 // Nodemailer necesita el runtime Node (sockets TCP/TLS), no Edge.
 export const runtime = 'nodejs'
@@ -33,6 +33,7 @@ interface SocioRow {
   mail: string | null
   fecha_nacimiento: string | null
   empresa_id: string | null
+  estado_registro_nombre: string | null
 }
 
 interface MontevideoToday {
@@ -152,7 +153,9 @@ export async function GET(req: NextRequest) {
     //  - mail / fecha_nacimiento no nulos → sin esos datos no hay nada que hacer
     const { data: sociosData, error: sociosErr } = await admin
       .from('socios_datos')
-      .select('id, nombre, apellido, mail, fecha_nacimiento, empresa_id')
+      .select(
+        'id, nombre, apellido, mail, fecha_nacimiento, empresa_id, estado_registro_nombre',
+      )
       .in('empresa_id', empresaIds)
       .is('deleted_at', null)
       .not('mail', 'is', null)
@@ -219,7 +222,16 @@ export async function GET(req: NextRequest) {
         // La empresa dejó de estar activa entre consultas — saltear.
         skipped++
         continue
-      } else if (!data.cuenta) {
+      }
+
+      // Filtro por estado: si la empresa configuró "solo activos" y este
+      // socio no está marcado como Activo, no se le manda saludo.
+      if (data.soloActivos && !esEstadoActivo(socio.estado_registro_nombre)) {
+        skipped++
+        continue
+      }
+
+      if (!data.cuenta) {
         result = {
           ok: false,
           error:

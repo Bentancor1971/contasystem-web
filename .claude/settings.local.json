@@ -43,7 +43,14 @@
       "Bash(node -e \"import\\('sharp'\\).then\\(s=>console.log\\('OK',s.default.format\\)\\).catch\\(e=>console.error\\('ERR:',e.message\\)\\)\")",
       "Bash(node \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design/_gen-atri-bg.mjs\")",
       "WebFetch(domain:aup-new.vercel.app)",
-      "Bash(node \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design/_gen-aup-bg.mjs\")"
+      "Bash(node \"c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design/_gen-aup-bg.mjs\")",
+      "Bash(curl.exe -sL https://www.atri.com.uy/ -o atri.html)",
+      "Bash(curl.exe -sL https://aup-new.vercel.app/ -o aup.html)",
+      "Bash(cat)",
+      "Bash(NODE_OPTIONS=\"--use-system-ca\" node fetch-css.mjs)",
+      "Bash(node design/_gen-atri-bg.mjs)",
+      "Bash(node design/_gen-aup-bg.mjs)",
+      "Bash(npx --no-install tsc --noEmit)"
     ],
     "additionalDirectories": [
       "\\tmp"
