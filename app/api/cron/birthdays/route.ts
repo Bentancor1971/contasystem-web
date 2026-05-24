@@ -1,8 +1,8 @@
 /**
  * GET /api/cron/birthdays
  *
- * Disparado por Vercel Cron una vez por día (ver vercel.json: 12:00 UTC =
- * 09:00 Montevideo). Detecta los socios que cumplen años hoy y les envía un
+ * Disparado por Vercel Cron una vez por día (ver vercel.json: 11:00 UTC =
+ * 08:00 Montevideo). Detecta los socios que cumplen años hoy y les envía un
  * saludo desde la casilla Gmail de su empresa.
  *
  * Seguridad   · exige header  Authorization: Bearer <CRON_SECRET>.

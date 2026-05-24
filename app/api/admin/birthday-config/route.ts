@@ -27,13 +27,13 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Cron de Vercel: una corrida diaria a las 12:00 UTC = 09:00 Montevideo
+ * Cron de Vercel: una corrida diaria a las 11:00 UTC = 08:00 Montevideo
  * (ver vercel.json). En plan Hobby no se permiten crons sub-diarios, así
  * que la hora queda fija en el repo. Si hay que cambiarla, editar
  * vercel.json y HORA_ENVIO_MONTEVIDEO, y hacer redeploy.
  */
-const HEARTBEAT_CRON = '0 12 * * *'
-const HORA_ENVIO_MONTEVIDEO = 9
+const HEARTBEAT_CRON = '0 11 * * *'
+const HORA_ENVIO_MONTEVIDEO = 8
 
 interface LogRow {
   socio_id: string

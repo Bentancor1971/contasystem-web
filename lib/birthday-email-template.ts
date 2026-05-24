@@ -138,9 +138,9 @@ export function renderBirthdayEmail({
   // Bloque de texto (panel semitransparente + cuerpo).
   const panelBg = hexToRgba(panelColor, plantilla.panelOpacidad)
   const textoBloque = `
-    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;">
+    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;max-width:440px;">
       <tr>
-        <td style="background-color:${panelBg};border-radius:12px;padding:30px 34px;text-align:center;">
+        <td class="panel-pad" style="background-color:${panelBg};border-radius:12px;padding:30px 34px;text-align:center;">
           <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:17px;line-height:1.65;">
             ${cuerpoHtml}
           </div>
@@ -154,15 +154,15 @@ export function renderBirthdayEmail({
   if (img) {
     const imgSafe = escapeHtml(img)
     hero = `
-      <td background="${imgSafe}" bgcolor="${panelColor}" valign="middle" height="${HERO_HEIGHT}"
-          style="background-image:url('${imgSafe}');background-size:cover;background-position:center;background-color:${panelColor};height:${HERO_HEIGHT}px;">
+      <td background="${imgSafe}" bgcolor="${panelColor}" valign="middle"
+          style="background-image:url('${imgSafe}');background-size:cover;background-position:center;background-color:${panelColor};min-height:${HERO_HEIGHT}px;">
         <!--[if gte mso 9]>
         <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${CARD_WIDTH}px;height:${HERO_HEIGHT}px;">
         <v:fill type="frame" src="${imgSafe}" color="${panelColor}" />
         <v:textbox inset="0,0,0,0">
         <![endif]-->
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td align="center" style="padding:44px 32px;">${textoBloque}</td></tr>
+          <tr><td align="center" class="hero-pad" style="padding:44px 32px;">${textoBloque}</td></tr>
         </table>
         <!--[if gte mso 9]>
         </v:textbox>
@@ -174,7 +174,7 @@ export function renderBirthdayEmail({
       <td bgcolor="${panelColor}" valign="middle"
           style="background-color:${panelColor};">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td align="center" style="padding:56px 32px;">
+          <tr><td align="center" class="hero-pad" style="padding:56px 32px;">
             <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:17px;line-height:1.65;text-align:center;">
               ${cuerpoHtml}
             </div>
@@ -189,6 +189,12 @@ export function renderBirthdayEmail({
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(subject)}</title>
+  <style>
+    @media only screen and (max-width: 480px) {
+      .hero-pad { padding: 24px 12px !important; }
+      .panel-pad { padding: 22px 18px !important; }
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f3f0;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f3f0;padding:28px 14px;">
@@ -196,13 +202,6 @@ export function renderBirthdayEmail({
       <td align="center">
         <table role="presentation" width="${CARD_WIDTH}" cellpadding="0" cellspacing="0" style="width:${CARD_WIDTH}px;max-width:100%;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e3dd;">
           <tr>${hero}</tr>
-          <tr>
-            <td style="background-color:#faf9f7;border-top:1px solid #e6e3dd;padding:16px 28px;">
-              <p style="margin:0;font-family:'Helvetica Neue',Arial,sans-serif;color:#9b958a;font-size:12px;line-height:1.5;">
-                Este es un mensaje automático de saludo. No es necesario responderlo.
-              </p>
-            </td>
-          </tr>
         </table>
       </td>
     </tr>

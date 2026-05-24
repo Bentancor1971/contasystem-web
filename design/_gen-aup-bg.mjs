@@ -4,9 +4,9 @@
  *   <repo>/design/aup-cumpleanos-fondo.svg
  *   <repo>/design/aup-cumpleanos-fondo.png   (1200x800, para subir)
  *
- * Paleta tomada del CSS real de aup-new.vercel.app (los cálidos del sitio):
- *   #f5cba1 durazno · #fbeb83 amarillo suave · #fcfbf8 crema ·
- *   #e57c15 naranja · #230d66 navy (acento).
+ * Diseño y paleta espejados del fondo de ATRI: crema/papel con
+ * acentos teal y naranja. Solo cambia el wordmark ("AUP") y el
+ * tagline. La marca queda en la parte superior.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -16,24 +16,71 @@ const W = 1200
 const H = 800
 
 const C = {
-  bgGlow:       '#fdf3c9',   // glow amarillo-crema en el centro
-  bgPeachLight: '#fae3c5',
-  bgPeach:      '#f5cba1',   // durazno (cálido AUP)
-  bgPeachDeep:  '#e0a373',   // viñeta más cálida
-  navy:         '#230d66',   // brand navy/púrpura
-  navyLight:    '#3c2a8a',
-  orange:       '#e57c15',   // brand orange
-  warmYellow:   '#fbeb83',   // amarillo suave del sitio
-  cream:        '#fcfbf8',
+  bgCream:    '#fbfaf5',
+  bgEdge:     '#ece8d8',
+  bgGlow:     '#f3f8f7',
+  watermark:  '#d5dfe0',
+  teal:       '#47a5ae',
+  tealDeep:   '#3a8d96',
+  orange:     '#f48424',
+  orangeDeep: '#d97011',
+  gray:       '#9ca3af',
+  grayDark:   '#656464',
+  iconDark:   '#2b3a3c',
 }
 
 const fx = (n) => n.toFixed(2)
+function pt(cx, cy, r, deg) {
+  const a = ((deg - 90) * Math.PI) / 180
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)]
+}
+function donutSector(cx, cy, ri, ro, a1, a2) {
+  const large = a2 - a1 > 180 ? 1 : 0
+  const [x1, y1] = pt(cx, cy, ro, a1)
+  const [x2, y2] = pt(cx, cy, ro, a2)
+  const [x3, y3] = pt(cx, cy, ri, a2)
+  const [x4, y4] = pt(cx, cy, ri, a1)
+  return (
+    `M${fx(x1)} ${fx(y1)} A${ro} ${ro} 0 ${large} 1 ${fx(x2)} ${fx(y2)} ` +
+    `L${fx(x3)} ${fx(y3)} A${ri} ${ri} 0 ${large} 0 ${fx(x4)} ${fx(y4)} Z`
+  )
+}
+
+/** Apertura segmentada (estilo ATRI), reutilizada como watermark. */
+function aperture(cx, cy, R, { opacity = 1, mono = null } = {}) {
+  const ri = R * 0.60
+  const ro = R
+  const gap = 7
+  const segs = [
+    { a1: 0,   a2: 60,  c: C.teal },
+    { a1: 60,  a2: 120, c: C.teal },
+    { a1: 120, a2: 180, c: C.orange },
+    { a1: 180, a2: 240, c: C.orange },
+    { a1: 240, a2: 300, c: C.teal },
+    { a1: 300, a2: 360, c: C.gray },
+  ]
+  let s = `<g opacity="${opacity}">`
+  for (const seg of segs) {
+    const fill = mono ?? seg.c
+    s += `<path d="${donutSector(cx, cy, ri, ro, seg.a1 + gap / 2, seg.a2 - gap / 2)}" fill="${fill}"/>`
+  }
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.46).toFixed(2)}" fill="none" stroke="${mono ?? C.gray}" stroke-width="${(R * 0.045).toFixed(2)}" stroke-opacity="0.55"/>`
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.34).toFixed(2)}" fill="${mono ?? C.iconDark}"/>`
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.34).toFixed(2)}" fill="none" stroke="${mono ?? C.teal}" stroke-width="${(R * 0.045).toFixed(2)}" stroke-opacity="0.7"/>`
+  s += `<circle cx="${cx}" cy="${cy}" r="${(R * 0.13).toFixed(2)}" fill="${mono ?? C.teal}"/>`
+  s += `</g>`
+  return s
+}
 
 function dot(x, y, r, c, o) {
   return `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" opacity="${o}"/>`
 }
-function ring(x, y, r, c, o, sw = 2) {
-  return `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${c}" stroke-width="${sw}" opacity="${o}"/>`
+function ring(x, y, r, c, o) {
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${c}" stroke-width="2" opacity="${o}"/>`
+}
+function stick(x, y, s, rot, c, o) {
+  const w = s * 2.6, h = s * 0.58
+  return `<rect x="${(x - w / 2).toFixed(1)}" y="${(y - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${(h / 2).toFixed(1)}" fill="${c}" opacity="${o}" transform="rotate(${rot} ${x} ${y})"/>`
 }
 function spark(x, y, s, c, o) {
   const h = s * 0.28
@@ -45,120 +92,77 @@ function spark(x, y, s, c, o) {
     `Q ${x - h} ${y - h} ${x} ${y - s} Z`
   return `<path d="${d}" fill="${c}" opacity="${o}"/>`
 }
-function curl(cx, cy, size, rot, color, opacity, sw = 2.5) {
-  const s = size
-  const d = `M ${-s} 0 Q ${-s / 2} ${-s * 0.65} 0 0 Q ${s / 2} ${s * 0.65} ${s} 0`
-  return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" opacity="${opacity}" transform="translate(${cx} ${cy}) rotate(${rot})"/>`
-}
 
-function wave(x0, y0, length, amp, wavelength, color, opacity, sw) {
-  const cycles = Math.ceil(length / wavelength)
-  let d = `M ${fx(x0)} ${fx(y0)}`
-  for (let i = 0; i < cycles; i++) {
-    const seg = x0 + i * wavelength
-    d += ` Q ${fx(seg + wavelength * 0.25)} ${fx(y0 - amp)} ${fx(seg + wavelength * 0.5)} ${fx(y0)}`
-    d += ` Q ${fx(seg + wavelength * 0.75)} ${fx(y0 + amp)} ${fx(seg + wavelength)} ${fx(y0)}`
-  }
-  return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" opacity="${opacity}"/>`
-}
-
-/** Doble anillo, guiño al badge circular del logo (navy sólido). */
-function badge(cx, cy, R, opacity, color) {
-  return `<g>
-    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${color}" stroke-width="${(R * 0.035).toFixed(2)}" opacity="${opacity}"/>
-    <circle cx="${cx}" cy="${cy}" r="${(R * 0.90).toFixed(2)}" fill="none" stroke="${color}" stroke-width="${(R * 0.012).toFixed(2)}" opacity="${(opacity * 0.7).toFixed(2)}"/>
-  </g>`
-}
-
-// Confeti en cálidos del sitio + navy de acento
 const confetti = [
   // top-left
-  dot(80, 70, 5, C.navy, 0.75),
-  curl(160, 110, 18, 25, C.navy, 0.55),
-  ring(60, 175, 8, C.navy, 0.55, 2.2),
-  spark(245, 150, 16, C.cream, 0.95),
-  dot(305, 70, 4, C.orange, 0.85),
-  curl(330, 165, 14, -15, C.navy, 0.5),
-  dot(195, 60, 3.5, C.warmYellow, 0.95),
+  stick(120, 90, 14, 30, C.teal, 0.85),
+  dot(70, 60, 5, C.orange, 0.9),
+  spark(245, 150, 17, C.tealDeep, 0.85),
+  ring(60, 175, 8, C.gray, 0.6),
+  dot(290, 55, 4, C.orange, 0.75),
+  stick(180, 175, 12, -20, C.orange, 0.7),
+  dot(340, 110, 3.5, C.teal, 0.8),
 
   // top-right
-  curl(945, 90, 20, -20, C.navy, 0.55),
-  spark(1075, 145, 18, C.cream, 0.95),
-  dot(1145, 65, 5, C.navy, 0.7),
-  ring(1000, 75, 7, C.navy, 0.55, 2.2),
-  curl(1110, 185, 14, 30, C.warmYellow, 0.9),
-  dot(880, 175, 4, C.orange, 0.85),
+  spark(965, 75, 21, C.orange, 0.9),
+  dot(1080, 135, 5, C.teal, 0.85),
+  stick(1010, 175, 14, -38, C.tealDeep, 0.8),
+  ring(1150, 60, 7, C.gray, 0.55),
+  dot(885, 165, 4, C.orange, 0.75),
+  stick(1110, 100, 11, 22, C.teal, 0.7),
 
   // mid sides
-  dot(45, 360, 3.5, C.navy, 0.45),
-  spark(1140, 420, 12, C.cream, 0.7),
-  curl(45, 510, 12, 60, C.navy, 0.45),
-  dot(1160, 320, 4, C.orange, 0.65),
-  dot(35, 250, 3, C.warmYellow, 0.85),
+  dot(45, 360, 3, C.gray, 0.6),
+  spark(1140, 420, 12, C.teal, 0.6),
+  dot(1160, 320, 4, C.orange, 0.5),
+  dot(35, 510, 3.5, C.tealDeep, 0.5),
 
   // bottom-left
-  curl(95, 660, 15, 35, C.navy, 0.55),
-  dot(140, 745, 5, C.warmYellow, 0.95),
-  ring(60, 710, 7, C.navy, 0.55, 2.2),
-  spark(55, 615, 13, C.cream, 0.85),
-  dot(180, 615, 4, C.orange, 0.85),
+  stick(95, 660, 14, 40, C.orange, 0.8),
+  dot(140, 745, 5, C.teal, 0.85),
+  ring(60, 700, 7, C.gray, 0.55),
+  spark(60, 620, 13, C.tealDeep, 0.7),
 
   // bottom-right
-  spark(1085, 660, 16, C.cream, 0.9),
-  curl(1145, 745, 14, -25, C.warmYellow, 0.95),
-  ring(1020, 745, 7, C.navy, 0.55, 2.2),
-  dot(1150, 640, 4.5, C.orange, 0.85),
-  curl(1115, 615, 12, 18, C.navy, 0.5),
+  spark(1085, 665, 16, C.orange, 0.85),
+  dot(1145, 745, 5, C.teal, 0.85),
+  stick(1020, 745, 12, -28, C.tealDeep, 0.8),
+  ring(1150, 640, 7, C.gray, 0.55),
 ].join('\n  ')
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
   <defs>
-    <radialGradient id="glow" cx="50%" cy="42%" r="75%">
+    <radialGradient id="glow" cx="50%" cy="42%" r="70%">
       <stop offset="0%"  stop-color="${C.bgGlow}"/>
-      <stop offset="35%" stop-color="${C.bgPeachLight}"/>
-      <stop offset="70%" stop-color="${C.bgPeach}"/>
-      <stop offset="100%" stop-color="${C.bgPeachDeep}"/>
+      <stop offset="48%" stop-color="${C.bgCream}"/>
+      <stop offset="100%" stop-color="${C.bgEdge}"/>
     </radialGradient>
   </defs>
 
-  <!-- 1. Fondo cálido: amarillo-crema glow → durazno → durazno profundo -->
-  <rect width="${W}" height="${H}" fill="${C.bgPeach}"/>
+  <rect width="${W}" height="${H}" fill="${C.bgCream}"/>
   <rect width="${W}" height="${H}" fill="url(#glow)"/>
 
-  <!-- 2. Anillos navy (guiño al badge AUP), centrados off-canvas -->
-  ${badge(0, 0, 310, 0.85, C.navy)}
-  ${badge(W, H, 345, 0.85, C.navy)}
+  ${aperture(40, 30, 235, { opacity: 0.55, mono: C.watermark })}
+  ${aperture(1180, 790, 320, { opacity: 0.55, mono: C.watermark })}
 
-  <!-- 3. Ondas navy (movimiento, psicomotricidad) -->
-  ${wave(-20, 215, W + 40, 11, 210, C.navy, 0.22, 6)}
-  ${wave(-20, 590, W + 40, 13, 230, C.navy, 0.24, 7)}
-  <!-- onda sutil que cruza el área del texto -->
-  ${wave(-20, 405, W + 40, 9, 260, C.navy, 0.08, 4)}
-
-  <!-- 4. Confeti orgánico -->
   ${confetti}
 
-  <!-- 5. Wordmark "AUP" en navy (la marca) -->
-  <text x="600" y="660"
+  <text x="600" y="115"
         text-anchor="middle"
-        font-family="Georgia, 'Times New Roman', serif"
-        font-style="italic"
-        font-weight="700"
-        font-size="96"
+        font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
+        font-weight="900"
+        font-size="86"
         letter-spacing="6"
-        fill="${C.navy}">AUP</text>
+        fill="${C.teal}">AUP</text>
 
-  <!-- 6. Tagline -->
-  <text x="600" y="702"
+  <text x="600" y="155"
         text-anchor="middle"
-        font-family="Georgia, 'Times New Roman', serif"
-        font-style="italic"
-        font-weight="400"
-        font-size="18"
-        letter-spacing="2"
-        fill="${C.navy}"
-        opacity="0.75">Asociación Uruguaya de Psicomotricidad</text>
+        font-family="Arial, 'Segoe UI', sans-serif"
+        font-weight="600"
+        font-size="15"
+        letter-spacing="3"
+        fill="${C.grayDark}">ASOCIACIÓN URUGUAYA DE PSICOMOTRICIDAD</text>
 </svg>
 `
 

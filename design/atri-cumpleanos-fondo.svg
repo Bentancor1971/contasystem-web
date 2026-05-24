@@ -40,7 +40,7 @@
   <rect x="1004.4" y="741.5" width="31.2" height="7.0" rx="3.5" fill="#3a8d96" opacity="0.8" transform="rotate(-28 1020 745)"/>
   <circle cx="1150" cy="640" r="7" fill="none" stroke="#9ca3af" stroke-width="2" opacity="0.55"/>
 
-  <text x="600" y="660"
+  <text x="600" y="115"
         text-anchor="middle"
         font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
         font-weight="900"
@@ -48,7 +48,7 @@
         letter-spacing="6"
         fill="#47a5ae">ATRI</text>
 
-  <text x="600" y="700"
+  <text x="600" y="155"
         text-anchor="middle"
         font-family="Arial, 'Segoe UI', sans-serif"
         font-weight="600"

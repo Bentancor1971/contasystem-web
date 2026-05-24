@@ -148,7 +148,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
 
   ${confetti}
 
-  <text x="600" y="660"
+  <text x="600" y="115"
         text-anchor="middle"
         font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
         font-weight="900"
@@ -156,7 +156,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
         letter-spacing="6"
         fill="${C.teal}">ATRI</text>
 
-  <text x="600" y="700"
+  <text x="600" y="155"
         text-anchor="middle"
         font-family="Arial, 'Segoe UI', sans-serif"
         font-weight="600"
