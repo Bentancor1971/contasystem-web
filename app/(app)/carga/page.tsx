@@ -11,7 +11,6 @@ import {
   Copy,
   Ban,
   X,
-  Search,
   ArrowDown,
   ArrowUp,
   RefreshCw,
@@ -43,7 +42,6 @@ import type {
   EstadoComprobante,
   HaberOption,
   CuentaRemota,
-  TipoCuenta,
   TipoComprobanteRemoto,
 } from '@/lib/types'
 import {
@@ -57,12 +55,41 @@ import {
 
 const MONEDAS = ['UYU', 'USD'] as const
 type Moneda = (typeof MONEDAS)[number]
-type Tab = 'cargar' | 'libre' | 'ultimos'
+type Tab = 'cargar' | 'general' | 'ultimos'
 
 const PAGE_SIZE = 20
 
 const HABER_PREF_KEY = (userId: string, plantillaId: string) =>
   `haberPref:${userId}:${plantillaId}`
+
+const PLANTILLA_USO_KEY = (userId: string) => `plantillaUso:${userId}`
+const TOP_PLANTILLAS = 5
+
+type PlantillaUsoMap = Record<string, number>
+
+function leerPlantillaUso(userId: string): PlantillaUsoMap {
+  try {
+    const raw = window.localStorage.getItem(PLANTILLA_USO_KEY(userId))
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return {}
+    const out: PlantillaUsoMap = {}
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'number' && v > 0) out[k] = v
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function escribirPlantillaUso(userId: string, mapa: PlantillaUsoMap): void {
+  try {
+    window.localStorage.setItem(PLANTILLA_USO_KEY(userId), JSON.stringify(mapa))
+  } catch {
+    // localStorage bloqueado — ignorar
+  }
+}
 
 function opcionesHaber(p: PlantillaRemota | null): HaberOption[] {
   if (!p || !p.cuenta_haber_id || !p.cuenta_haber_nombre) return []
@@ -136,6 +163,11 @@ export default function CargaPage() {
   const [busy, setBusy] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [anulandoId, setAnulandoId] = useState<string | null>(null)
+  const [plantillaUso, setPlantillaUso] = useState<PlantillaUsoMap>({})
+
+  useEffect(() => {
+    setPlantillaUso(leerPlantillaUso(userId))
+  }, [userId])
 
   // ── Cola offline (cargas que no llegaron a Supabase) ─────────────────────
   const online = useOnlineStatus()
@@ -146,20 +178,19 @@ export default function CargaPage() {
   useEffect(() => { enColaRef.current = enCola }, [enCola])
   useEffect(() => { sincronizandoRef.current = sincronizando }, [sincronizando])
 
-  // Form (libre) — estado independiente, no se cruza con plantilla
-  const [fechaLibre, setFechaLibre] = useState(hoyISO())
-  const [montoLibre, setMontoLibre] = useState('')
-  const [monedaLibre, setMonedaLibre] = useState<Moneda>(
+  // Form (general) — usa cuentas habilitadas para web con selects nativos.
+  // Mismo backend que Libre (upsert_comprobante_libre_web).
+  const [fechaGeneral, setFechaGeneral] = useState(hoyISO())
+  const [montoGeneral, setMontoGeneral] = useState('')
+  const [monedaGeneral, setMonedaGeneral] = useState<Moneda>(
     (empresa.moneda_base_codigo as Moneda) ?? 'UYU',
   )
-  const [descripcionLibre, setDescripcionLibre] = useState('')
-  const [cuentaDebeLibreId, setCuentaDebeLibreId] = useState<string>('')
-  const [cuentaHaberLibreId, setCuentaHaberLibreId] = useState<string>('')
-  const [contactoLibreId, setContactoLibreId] = useState<string>('')
-  const [tipoComprobanteLibreId, setTipoComprobanteLibreId] = useState<string>('')
-  const [pickerLibre, setPickerLibre] = useState<null | 'debe' | 'haber'>(null)
-  const [busyLibre, setBusyLibre] = useState(false)
-  const [editandoLibreId, setEditandoLibreId] = useState<string | null>(null)
+  const [descripcionGeneral, setDescripcionGeneral] = useState('')
+  const [cuentaDebeGeneralId, setCuentaDebeGeneralId] = useState<string>('')
+  const [cuentaHaberGeneralId, setCuentaHaberGeneralId] = useState<string>('')
+  const [tipoComprobanteGeneralId, setTipoComprobanteGeneralId] = useState<string>('')
+  const [busyGeneral, setBusyGeneral] = useState(false)
+  const [editandoGeneralId, setEditandoGeneralId] = useState<string | null>(null)
 
   // ── Carga de datos de la pantalla ────────────────────────────────────────
   useEffect(() => {
@@ -535,6 +566,27 @@ export default function CargaPage() {
     () => Object.fromEntries(plantillas.map((p) => [p.id, p.nombre])),
     [plantillas],
   )
+
+  // Plantillas reordenadas: top por uso (desc) + resto en orden alfabético.
+  // Si nunca se usó nada, top queda vacío y el selector se ve como antes.
+  const plantillasOrdenadas = useMemo(() => {
+    const top: PlantillaRemota[] = []
+    const usadas = new Set<string>()
+    const idsPorUso = Object.entries(plantillaUso)
+      .filter(([, c]) => c > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id)
+    for (const id of idsPorUso) {
+      if (top.length >= TOP_PLANTILLAS) break
+      const p = plantillas.find((x) => x.id === id)
+      if (p) {
+        top.push(p)
+        usadas.add(p.id)
+      }
+    }
+    const resto = plantillas.filter((p) => !usadas.has(p.id))
+    return { top, resto }
+  }, [plantillas, plantillaUso])
   const contactoPorId = useMemo(
     () =>
       Object.fromEntries(contactos.map((c) => [c.id, c.nombre_razon_social])),
@@ -544,9 +596,6 @@ export default function CargaPage() {
     () => Object.fromEntries(cuentas.map((c) => [c.id, c])),
     [cuentas],
   )
-
-  const cuentaDebeLibre = cuentaPorId[cuentaDebeLibreId] ?? null
-  const cuentaHaberLibre = cuentaPorId[cuentaHaberLibreId] ?? null
 
   const stats = useMemo(() => {
     const pendientes = comprobantes.filter((c) => c.estado === 'pendiente').length
@@ -627,16 +676,15 @@ export default function CargaPage() {
     setEditandoId(null)
   }
 
-  function resetFormLibre() {
-    setFechaLibre(hoyISO())
-    setMontoLibre('')
-    setMonedaLibre((empresa.moneda_base_codigo as Moneda) ?? 'UYU')
-    setDescripcionLibre('')
-    setCuentaDebeLibreId('')
-    setCuentaHaberLibreId('')
-    setContactoLibreId('')
-    setTipoComprobanteLibreId('')
-    setEditandoLibreId(null)
+  function resetFormGeneral() {
+    setFechaGeneral(hoyISO())
+    setMontoGeneral('')
+    setMonedaGeneral((empresa.moneda_base_codigo as Moneda) ?? 'UYU')
+    setDescripcionGeneral('')
+    setCuentaDebeGeneralId('')
+    setCuentaHaberGeneralId('')
+    setTipoComprobanteGeneralId('')
+    setEditandoGeneralId(null)
   }
 
   function precargarPlantilla(c: ComprobanteRemoto) {
@@ -666,15 +714,14 @@ export default function CargaPage() {
     }
   }
 
-  function precargarLibre(c: ComprobanteRemoto) {
-    setFechaLibre(c.fecha)
-    setMontoLibre(formatMonto(c.monto_total))
-    setMonedaLibre((c.moneda_codigo as Moneda) ?? 'UYU')
-    setDescripcionLibre(c.descripcion ?? '')
-    setCuentaDebeLibreId(c.cuenta_debe_libre_id ?? '')
-    setCuentaHaberLibreId(c.cuenta_haber_libre_id ?? '')
-    setContactoLibreId(c.contacto_id ?? '')
-    setTipoComprobanteLibreId(c.tipo_comprobante_id ?? '')
+  function precargarGeneral(c: ComprobanteRemoto) {
+    setFechaGeneral(c.fecha)
+    setMontoGeneral(formatMonto(c.monto_total))
+    setMonedaGeneral((c.moneda_codigo as Moneda) ?? 'UYU')
+    setDescripcionGeneral(c.descripcion ?? '')
+    setCuentaDebeGeneralId(c.cuenta_debe_libre_id ?? '')
+    setCuentaHaberGeneralId(c.cuenta_haber_libre_id ?? '')
+    setTipoComprobanteGeneralId(c.tipo_comprobante_id ?? '')
   }
 
   function modificarPendiente(c: ComprobanteRemoto) {
@@ -684,9 +731,9 @@ export default function CargaPage() {
       precargarPlantilla(c)
       setTab('cargar')
     } else {
-      setEditandoLibreId(c.id)
-      precargarLibre(c)
-      setTab('libre')
+      setEditandoGeneralId(c.id)
+      precargarGeneral(c)
+      setTab('general')
     }
   }
 
@@ -697,20 +744,16 @@ export default function CargaPage() {
       setFecha(hoyISO())
       setTab('cargar')
     } else {
-      setEditandoLibreId(null)
-      precargarLibre(c)
-      setFechaLibre(hoyISO())
-      setTab('libre')
+      setEditandoGeneralId(null)
+      precargarGeneral(c)
+      setFechaGeneral(hoyISO())
+      setTab('general')
     }
     toast.success('Datos cargados — revisá y guardá')
   }
 
   function cancelarEdicion() {
     resetForm()
-  }
-
-  function cancelarEdicionLibre() {
-    resetFormLibre()
   }
 
   async function eliminarPendiente(c: ComprobanteRemoto) {
@@ -780,48 +823,45 @@ export default function CargaPage() {
     }
   }
 
-  async function guardarLibre(e: React.FormEvent) {
+  async function guardarGeneral(e: React.FormEvent) {
     e.preventDefault()
-    if (!cuentaDebeLibreId || !cuentaHaberLibreId) {
+    if (!cuentaDebeGeneralId || !cuentaHaberGeneralId) {
       toast.error('Elegí cuenta del Debe y del Haber')
       return
     }
-    if (cuentaDebeLibreId === cuentaHaberLibreId) {
+    if (cuentaDebeGeneralId === cuentaHaberGeneralId) {
       toast.error('Debe y Haber no pueden ser la misma cuenta')
       return
     }
-    const montoNum = parseMonto(montoLibre)
+    const montoNum = parseMonto(montoGeneral)
     if (!isFinite(montoNum) || montoNum <= 0) {
       toast.error('Monto inválido')
       return
     }
-    const cuentaDebe = cuentaPorId[cuentaDebeLibreId]
-    const cuentaHaber = cuentaPorId[cuentaHaberLibreId]
+    const cuentaDebe = cuentaPorId[cuentaDebeGeneralId]
+    const cuentaHaber = cuentaPorId[cuentaHaberGeneralId]
     if (!cuentaDebe || !cuentaHaber) {
       toast.error('Cuenta no encontrada')
       return
     }
 
-    const contactoSel = contactoLibreId
-      ? contactos.find((c) => c.id === contactoLibreId) ?? null
-      : null
-    const tipoCompSel = tipoComprobanteLibreId
-      ? tiposComprobante.find((t) => t.id === tipoComprobanteLibreId) ?? null
+    const tipoCompSel = tipoComprobanteGeneralId
+      ? tiposComprobante.find((t) => t.id === tipoComprobanteGeneralId) ?? null
       : null
 
     const payload = {
-      ...(editandoLibreId ? { id: editandoLibreId } : {}),
+      ...(editandoGeneralId ? { id: editandoGeneralId } : {}),
       empresa_id: empresa.empresa_id,
-      fecha: fechaLibre,
-      moneda_codigo: monedaLibre,
+      fecha: fechaGeneral,
+      moneda_codigo: monedaGeneral,
       monto_total: montoNum,
-      descripcion: descripcionLibre.trim() || null,
+      descripcion: descripcionGeneral.trim() || null,
       cuenta_debe_libre_id: cuentaDebe.id,
       cuenta_debe_libre_nombre: cuentaDebe.nombre,
       cuenta_haber_libre_id: cuentaHaber.id,
       cuenta_haber_libre_nombre: cuentaHaber.nombre,
-      contacto_id: contactoSel?.id ?? null,
-      contacto_nombre: contactoSel?.nombre_razon_social ?? null,
+      contacto_id: null,
+      contacto_nombre: null,
       tipo_comprobante_id: tipoCompSel?.id ?? null,
       tipo_comprobante_nombre: tipoCompSel
         ? `${tipoCompSel.abreviacion} - ${tipoCompSel.nombre}`
@@ -829,13 +869,13 @@ export default function CargaPage() {
     }
 
     const display: ColaItemDisplay = {
-      fecha: fechaLibre,
-      moneda_codigo: monedaLibre,
+      fecha: fechaGeneral,
+      moneda_codigo: monedaGeneral,
       monto_total: montoNum,
-      descripcion: descripcionLibre.trim() || null,
+      descripcion: descripcionGeneral.trim() || null,
       plantilla_id: null,
-      contacto_id: contactoSel?.id ?? null,
-      contacto_nombre: contactoSel?.nombre_razon_social ?? null,
+      contacto_id: null,
+      contacto_nombre: null,
       cuenta_debe_libre_id: cuentaDebe.id,
       cuenta_debe_libre_nombre: cuentaDebe.nombre,
       cuenta_haber_libre_id: cuentaHaber.id,
@@ -849,11 +889,11 @@ export default function CargaPage() {
     }
 
     if (!online) {
-      if (editandoLibreId) {
+      if (editandoGeneralId) {
         toast.error('Sin conexión — no se puede modificar un comprobante ya guardado')
         return
       }
-      setBusyLibre(true)
+      setBusyGeneral(true)
       try {
         const ok = await encolar({
           tipo: 'libre',
@@ -865,15 +905,15 @@ export default function CargaPage() {
           toast.success('Guardado en cola · se subirá al recuperar la conexión', {
             duration: 4500,
           })
-          resetFormLibre()
+          resetFormGeneral()
         }
       } finally {
-        setBusyLibre(false)
+        setBusyGeneral(false)
       }
       return
     }
 
-    setBusyLibre(true)
+    setBusyGeneral(true)
     try {
       const supabase = createClient()
       const { data, error } = await supabase.rpc(
@@ -882,7 +922,7 @@ export default function CargaPage() {
       )
       if (error) throw new Error(error.message)
       const guardado = data as ComprobanteRemoto
-      if (editandoLibreId) {
+      if (editandoGeneralId) {
         toast.success(`Actualizado · ${guardado.numero_borrador ?? 'WEB-…'}`, {
           duration: 4000,
         })
@@ -895,9 +935,9 @@ export default function CargaPage() {
         })
         setComprobantes((prev) => [guardado, ...prev])
       }
-      resetFormLibre()
+      resetFormGeneral()
     } catch (err) {
-      if (!editandoLibreId && esErrorDeRed(err)) {
+      if (!editandoGeneralId && esErrorDeRed(err)) {
         const ok = await encolar({
           tipo: 'libre',
           rpc: 'upsert_comprobante_libre_web',
@@ -908,14 +948,18 @@ export default function CargaPage() {
           toast.success('Sin red · guardado en cola para reintentar', {
             duration: 4500,
           })
-          resetFormLibre()
+          resetFormGeneral()
           return
         }
       }
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
-      setBusyLibre(false)
+      setBusyGeneral(false)
     }
+  }
+
+  function cancelarEdicionGeneral() {
+    resetFormGeneral()
   }
 
   async function guardar(e: React.FormEvent) {
@@ -980,6 +1024,16 @@ export default function CargaPage() {
       }
     }
 
+    // Solo cuenta como uso cuando es una carga nueva (no al editar pendientes).
+    const registrarUsoPlantilla = () => {
+      if (editandoId) return
+      setPlantillaUso((prev) => {
+        const next = { ...prev, [plantillaId]: (prev[plantillaId] ?? 0) + 1 }
+        escribirPlantillaUso(userId, next)
+        return next
+      })
+    }
+
     // Sin conexión: si es edición de un pendiente, no se puede; si es nueva
     // carga, la encolamos para subir cuando vuelva la red.
     if (!online) {
@@ -997,6 +1051,7 @@ export default function CargaPage() {
         })
         if (ok) {
           persistirHaberPref()
+          registrarUsoPlantilla()
           toast.success('Guardado en cola · se subirá al recuperar la conexión', {
             duration: 4500,
           })
@@ -1017,6 +1072,7 @@ export default function CargaPage() {
       if (error) throw new Error(error.message)
       const guardado = data as ComprobanteRemoto
       persistirHaberPref()
+      registrarUsoPlantilla()
       if (editandoId) {
         toast.success(`Actualizado · ${guardado.numero_borrador ?? 'WEB-…'}`, {
           duration: 4000,
@@ -1043,6 +1099,7 @@ export default function CargaPage() {
         })
         if (ok) {
           persistirHaberPref()
+          registrarUsoPlantilla()
           toast.success('Sin red · guardado en cola para reintentar', {
             duration: 4500,
           })
@@ -1079,10 +1136,10 @@ export default function CargaPage() {
             </button>
             <button
               className="tab"
-              aria-selected={tab === 'libre'}
-              onClick={() => setTab('libre')}
+              aria-selected={tab === 'general'}
+              onClick={() => setTab('general')}
             >
-              Libre
+              General
             </button>
             <button
               className="tab"
@@ -1103,35 +1160,28 @@ export default function CargaPage() {
       />
 
       <main className="max-w-3xl mx-auto px-5 md:px-8 py-7 lg:py-10 flex-1 w-full">
-        {tab === 'libre' ? (
-          <FormularioLibre
-            fecha={fechaLibre}
-            setFecha={setFechaLibre}
-            moneda={monedaLibre}
-            setMoneda={setMonedaLibre}
-            monto={montoLibre}
-            setMonto={setMontoLibre}
-            descripcion={descripcionLibre}
-            setDescripcion={setDescripcionLibre}
-            cuentaDebe={cuentaDebeLibre}
-            cuentaHaber={cuentaHaberLibre}
-            onAbrirPicker={(modo) => setPickerLibre(modo)}
-            busy={busyLibre}
-            editando={!!editandoLibreId}
-            onCancelarEdicion={cancelarEdicionLibre}
-            onSubmit={guardarLibre}
-            cuentasDisponibles={cuentas.length}
-            contactos={contactos}
-            contactoId={contactoLibreId}
-            setContactoId={setContactoLibreId}
+        {tab === 'general' ? (
+          <FormularioGeneral
+            fecha={fechaGeneral}
+            setFecha={setFechaGeneral}
+            moneda={monedaGeneral}
+            setMoneda={setMonedaGeneral}
+            monto={montoGeneral}
+            setMonto={setMontoGeneral}
+            descripcion={descripcionGeneral}
+            setDescripcion={setDescripcionGeneral}
+            cuentas={cuentas}
+            cuentaDebeId={cuentaDebeGeneralId}
+            setCuentaDebeId={setCuentaDebeGeneralId}
+            cuentaHaberId={cuentaHaberGeneralId}
+            setCuentaHaberId={setCuentaHaberGeneralId}
+            busy={busyGeneral}
+            onSubmit={guardarGeneral}
             tiposComprobante={tiposComprobante}
-            tipoComprobanteId={tipoComprobanteLibreId}
-            setTipoComprobanteId={setTipoComprobanteLibreId}
-            numeroBorrador={
-              editandoLibreId
-                ? comprobantes.find((c) => c.id === editandoLibreId)?.numero_borrador ?? null
-                : null
-            }
+            tipoComprobanteId={tipoComprobanteGeneralId}
+            setTipoComprobanteId={setTipoComprobanteGeneralId}
+            editando={!!editandoGeneralId}
+            onCancelarEdicion={cancelarEdicionGeneral}
           />
         ) : tab === 'cargar' ? (
           <form onSubmit={guardar} className="card p-6 lg:p-10 rise">
@@ -1222,12 +1272,33 @@ export default function CargaPage() {
                   disabled={busy}
                 >
                   <option value="">— Elegir —</option>
-                  {plantillas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre}
-                      {p.iva_porcentaje > 0 ? ` · IVA ${p.iva_porcentaje}%` : ''}
-                    </option>
-                  ))}
+                  {plantillasOrdenadas.top.length === 0 ? (
+                    plantillas.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}
+                        {p.iva_porcentaje > 0 ? ` · IVA ${p.iva_porcentaje}%` : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <optgroup label="Más usadas">
+                        {plantillasOrdenadas.top.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre}
+                            {p.iva_porcentaje > 0 ? ` · IVA ${p.iva_porcentaje}%` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Todas">
+                        {plantillasOrdenadas.resto.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre}
+                            {p.iva_porcentaje > 0 ? ` · IVA ${p.iva_porcentaje}%` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  )}
                 </select>
                 {plantillas.length === 0 && (
                   <p className="mt-2 text-[11px] font-mono text-ink-3">
@@ -1488,24 +1559,6 @@ export default function CargaPage() {
           onCerrar={() => setAnulandoId(null)}
         />
       )}
-      {pickerLibre && (
-        <CuentaPickerModal
-          modo={pickerLibre}
-          cuentas={cuentas}
-          seleccionadaId={
-            pickerLibre === 'debe' ? cuentaDebeLibreId : cuentaHaberLibreId
-          }
-          excluirId={
-            pickerLibre === 'debe' ? cuentaHaberLibreId : cuentaDebeLibreId
-          }
-          onElegir={(c) => {
-            if (pickerLibre === 'debe') setCuentaDebeLibreId(c.id)
-            else setCuentaHaberLibreId(c.id)
-            setPickerLibre(null)
-          }}
-          onCerrar={() => setPickerLibre(null)}
-        />
-      )}
     </>
   )
 }
@@ -1710,9 +1763,9 @@ function ComprobanteRow({
   onReintentar: (c: ComprobanteRemoto) => void
 }) {
   const tachado = c.estado === 'rechazado' || c.estado === 'anulado'
-  const esLibre = !c.plantilla_id
-  const tituloPrincipal = esLibre
-    ? (c.cuenta_debe_libre_nombre ?? 'Carga libre')
+  const esGeneral = !c.plantilla_id
+  const tituloPrincipal = esGeneral
+    ? (c.cuenta_debe_libre_nombre ?? 'Carga general')
     : (plantillaNombre ?? '—')
   return (
     <div className="grid grid-cols-[1fr_auto] gap-4 px-2 py-3.5 rounded-lg hover:bg-paper-2 transition-colors">
@@ -1722,16 +1775,16 @@ function ComprobanteRow({
             {c.numero_borrador ?? '—'}
           </span>
           <EstadoBadge estado={c.estado} />
-          {esLibre && (
+          {esGeneral && (
             <span className="font-mono text-[10px] uppercase tracking-wider text-ink-3 bg-paper-2 border border-line px-1.5 py-0.5 rounded">
-              Libre
+              General
             </span>
           )}
         </div>
         <div className="font-display-tight text-base font-medium truncate">
           {tituloPrincipal}
         </div>
-        {esLibre && c.cuenta_haber_libre_nombre && (
+        {esGeneral && c.cuenta_haber_libre_nombre && (
           <div className="text-[12px] text-ink-3 truncate">
             Haber: {c.cuenta_haber_libre_nombre}
           </div>
@@ -2123,12 +2176,13 @@ function BannerCola({
   )
 }
 
+
 // ──────────────────────────────────────────────────────────────────────
-// Formulario de carga libre (sin plantilla, Debe + Haber elegidos del
-// plan de cuentas — solo cuentas de Ingreso y Egreso)
+// Formulario General (sin plantilla, Debe + Haber elegidos con select
+// nativo desde las cuentas habilitadas para carga web)
 // ──────────────────────────────────────────────────────────────────────
 
-function FormularioLibre({
+function FormularioGeneral({
   fecha,
   setFecha,
   moneda,
@@ -2137,21 +2191,18 @@ function FormularioLibre({
   setMonto,
   descripcion,
   setDescripcion,
-  cuentaDebe,
-  cuentaHaber,
-  onAbrirPicker,
+  cuentas,
+  cuentaDebeId,
+  setCuentaDebeId,
+  cuentaHaberId,
+  setCuentaHaberId,
   busy,
-  editando,
-  onCancelarEdicion,
   onSubmit,
-  cuentasDisponibles,
-  contactos,
-  contactoId,
-  setContactoId,
   tiposComprobante,
   tipoComprobanteId,
   setTipoComprobanteId,
-  numeroBorrador,
+  editando,
+  onCancelarEdicion,
 }: {
   fecha: string
   setFecha: (s: string) => void
@@ -2161,40 +2212,42 @@ function FormularioLibre({
   setMonto: (s: string) => void
   descripcion: string
   setDescripcion: (s: string) => void
-  cuentaDebe: CuentaRemota | null
-  cuentaHaber: CuentaRemota | null
-  onAbrirPicker: (modo: 'debe' | 'haber') => void
+  cuentas: CuentaRemota[]
+  cuentaDebeId: string
+  setCuentaDebeId: (s: string) => void
+  cuentaHaberId: string
+  setCuentaHaberId: (s: string) => void
   busy: boolean
-  editando: boolean
-  onCancelarEdicion: () => void
   onSubmit: (e: React.FormEvent) => void
-  cuentasDisponibles: number
-  contactos: ContactoRemoto[]
-  contactoId: string
-  setContactoId: (s: string) => void
   tiposComprobante: TipoComprobanteRemoto[]
   tipoComprobanteId: string
   setTipoComprobanteId: (s: string) => void
-  numeroBorrador: string | null
+  editando: boolean
+  onCancelarEdicion: () => void
 }) {
+  const cuentaDebe = cuentas.find((c) => c.id === cuentaDebeId) ?? null
+  const cuentaHaber = cuentas.find((c) => c.id === cuentaHaberId) ?? null
+  const cuentasDebe = cuentas.filter((c) => c.id !== cuentaHaberId)
+  const cuentasHaber = cuentas.filter((c) => c.id !== cuentaDebeId)
+
   return (
     <form onSubmit={onSubmit} className="card p-6 lg:p-10 rise">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <p className="label-mono mb-2">
-            {editando ? 'Editando libre' : 'Carga libre'}
-          </p>
+          <p className="label-mono mb-2">{editando ? 'Editando' : 'Carga general'}</p>
           <h2 className="font-display text-3xl md:text-4xl font-medium leading-tight">
             {editando ? (
               <>Modificá tu <Highlight thin>comprobante</Highlight></>
             ) : (
-              <>Cargá sin <Highlight thin>plantilla</Highlight></>
+              <>Cargá tu <Highlight thin>comprobante</Highlight></>
             )}
           </h2>
-          <p className="font-mono text-[11px] text-ink-3 mt-2 leading-relaxed">
-            Elegí vos las cuentas del Debe y del Haber del plan de cuentas
-            (solo cuentas de Ingreso y Egreso).
-          </p>
+          {!editando && (
+            <p className="font-mono text-[11px] text-ink-3 mt-2 leading-relaxed">
+              Elegí las cuentas del Debe y del Haber entre las habilitadas para
+              carga web.
+            </p>
+          )}
         </div>
         {editando && (
           <button
@@ -2202,6 +2255,7 @@ function FormularioLibre({
             onClick={onCancelarEdicion}
             disabled={busy}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[11px] uppercase tracking-wider text-ink-2"
+            aria-label="Cancelar edición"
           >
             <X size={14} strokeWidth={2.5} />
             Cancelar
@@ -2239,12 +2293,13 @@ function FormularioLibre({
       </div>
 
       <div className="space-y-7">
+        {/* Fecha */}
         <div>
-          <label htmlFor="fecha-libre" className="label-mono block mb-2">
+          <label htmlFor="fecha-general" className="label-mono block mb-2">
             Fecha *
           </label>
           <input
-            id="fecha-libre"
+            id="fecha-general"
             type="date"
             className="field"
             value={fecha}
@@ -2254,55 +2309,13 @@ function FormularioLibre({
           />
         </div>
 
+        {/* Comprobante */}
         <div>
-          <label htmlFor="contacto-libre" className="label-mono block mb-2">
-            Contacto
-          </label>
-          <select
-            id="contacto-libre"
-            className="field"
-            value={contactoId}
-            onChange={(e) => setContactoId(e.target.value)}
-            disabled={busy || contactos.length === 0}
-          >
-            <option value="">— Seleccionar —</option>
-            {contactos.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre_razon_social}
-              </option>
-            ))}
-          </select>
-          {contactos.length === 0 && (
-            <p className="mt-2 text-[11px] font-mono text-ink-3">
-              No hay contactos visibles para esta empresa. El contador los habilita en ContaSystem.
-            </p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="numero-libre" className="label-mono block mb-2">
-            Número
-          </label>
-          <input
-            id="numero-libre"
-            type="text"
-            className="field"
-            value={numeroBorrador ?? ''}
-            placeholder="Auto"
-            disabled
-            readOnly
-          />
-          <p className="mt-2 text-[11px] font-mono text-ink-3">
-            El sistema asigna un número automático al guardar.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="tipo-comp-libre" className="label-mono block mb-2">
+          <label htmlFor="tipo-comp-general" className="label-mono block mb-2">
             Comprobante
           </label>
           <select
-            id="tipo-comp-libre"
+            id="tipo-comp-general"
             className="field"
             value={tipoComprobanteId}
             onChange={(e) => setTipoComprobanteId(e.target.value)}
@@ -2315,41 +2328,19 @@ function FormularioLibre({
               </option>
             ))}
           </select>
-          {tiposComprobante.length === 0 && (
-            <p className="mt-2 text-[11px] font-mono text-ink-3">
-              No hay tipos de comprobante sincronizados. El contador debe correr el push de catálogos.
-            </p>
-          )}
         </div>
 
-        <CuentaSelector
-          label="Debe *"
-          icon={<ArrowDown size={14} strokeWidth={2.5} />}
-          cuenta={cuentaDebe}
-          onAbrir={() => onAbrirPicker('debe')}
-          disabled={busy}
-          cuentasDisponibles={cuentasDisponibles}
-        />
-
-        <CuentaSelector
-          label="Haber *"
-          icon={<ArrowUp size={14} strokeWidth={2.5} />}
-          cuenta={cuentaHaber}
-          onAbrir={() => onAbrirPicker('haber')}
-          disabled={busy}
-          cuentasDisponibles={cuentasDisponibles}
-        />
-
+        {/* Importe */}
         <div>
-          <label htmlFor="monto-libre" className="label-mono block mb-2">
-            Monto *
+          <label htmlFor="monto-general" className="label-mono block mb-2">
+            Importe *
           </label>
           <div className="flex items-baseline gap-2 border-b-[1.5px] border-ink py-1.5">
             <span className="font-mono text-ink-3 text-lg">
               {simboloMoneda(moneda)}
             </span>
             <input
-              id="monto-libre"
+              id="monto-general"
               inputMode="decimal"
               className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
               placeholder="0,00"
@@ -2359,17 +2350,66 @@ function FormularioLibre({
               required
             />
           </div>
-          <p className="mt-2 text-[11px] font-mono text-ink-3">
-            Sin IVA — el monto va al Debe y al Haber tal cual.
-          </p>
         </div>
 
+        {/* Cuenta (Debe) */}
         <div>
-          <label htmlFor="descripcion-libre" className="label-mono block mb-2">
-            Descripción
+          <label htmlFor="cuenta-debe-general" className="label-mono block mb-2 inline-flex items-center gap-1.5">
+            <ArrowDown size={14} strokeWidth={2.5} />
+            Cuenta (Debe) *
+          </label>
+          <select
+            id="cuenta-debe-general"
+            className="field"
+            value={cuentaDebeId}
+            onChange={(e) => setCuentaDebeId(e.target.value)}
+            disabled={busy || cuentas.length === 0}
+            required
+          >
+            <option value="">— Elegir cuenta —</option>
+            {cuentasDebe.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+          {cuentas.length === 0 && (
+            <p className="mt-2 text-[11px] font-mono text-ink-3">
+              No hay cuentas habilitadas para carga web. El contador las marca en ContaSystem.
+            </p>
+          )}
+        </div>
+
+        {/* Paga con (Haber) */}
+        <div>
+          <label htmlFor="cuenta-haber-general" className="label-mono block mb-2 inline-flex items-center gap-1.5">
+            <ArrowUp size={14} strokeWidth={2.5} />
+            Paga con (Haber) *
+          </label>
+          <select
+            id="cuenta-haber-general"
+            className="field"
+            value={cuentaHaberId}
+            onChange={(e) => setCuentaHaberId(e.target.value)}
+            disabled={busy || cuentas.length === 0}
+            required
+          >
+            <option value="">— Elegir cuenta —</option>
+            {cuentasHaber.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Detalle */}
+        <div>
+          <label htmlFor="descripcion-general" className="label-mono block mb-2">
+            Detalle
           </label>
           <textarea
-            id="descripcion-libre"
+            id="descripcion-general"
             rows={3}
             className="w-full bg-paper-2 border border-line rounded-md px-3 py-2.5 text-[15px] resize-none focus:outline-none focus:border-ink-2 transition-colors font-sans"
             value={descripcion}
@@ -2406,205 +2446,3 @@ function FormularioLibre({
   )
 }
 
-function CuentaSelector({
-  label,
-  icon,
-  cuenta,
-  onAbrir,
-  disabled,
-  cuentasDisponibles,
-}: {
-  label: string
-  icon: React.ReactNode
-  cuenta: CuentaRemota | null
-  onAbrir: () => void
-  disabled: boolean
-  cuentasDisponibles: number
-}) {
-  const sinCuentas = cuentasDisponibles === 0
-  return (
-    <div>
-      <span className="label-mono block mb-2 inline-flex items-center gap-1.5">
-        {icon}
-        {label}
-      </span>
-      <button
-        type="button"
-        onClick={onAbrir}
-        disabled={disabled || sinCuentas}
-        className={`w-full text-left px-3 py-3 rounded-md border transition-colors flex items-center gap-3 min-w-0 ${
-          cuenta
-            ? 'border-ink bg-paper-2 hover:bg-paper-3'
-            : 'border-line bg-white hover:border-ink-3'
-        } ${(disabled || sinCuentas) ? 'opacity-60 cursor-not-allowed' : ''}`}
-      >
-        <span className="flex-1 min-w-0">
-          {cuenta ? (
-            <>
-              <span className="block font-mono text-[11px] text-ink-3 uppercase tracking-wider">
-                {cuenta.codigo} · {cuenta.tipo}
-              </span>
-              <span className="block text-[15px] text-ink-1 truncate">
-                {cuenta.nombre}
-              </span>
-            </>
-          ) : (
-            <span className="text-[14px] text-ink-3">— Elegir cuenta —</span>
-          )}
-        </span>
-        <Search size={16} strokeWidth={2.25} className="text-ink-3 shrink-0" />
-      </button>
-      {sinCuentas && (
-        <p className="mt-2 text-[11px] font-mono text-ink-3">
-          Sin cuentas de Ingreso/Egreso todavía. El contador las habilita en ContaSystem.
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Modal: grilla del plan de cuentas (Ingreso/Egreso) con búsqueda
-// ──────────────────────────────────────────────────────────────────────
-
-function CuentaPickerModal({
-  modo,
-  cuentas,
-  seleccionadaId,
-  excluirId,
-  onElegir,
-  onCerrar,
-}: {
-  modo: 'debe' | 'haber'
-  cuentas: CuentaRemota[]
-  seleccionadaId: string
-  excluirId: string
-  onElegir: (c: CuentaRemota) => void
-  onCerrar: () => void
-}) {
-  const [filtro, setFiltro] = useState('')
-  const [tipoFiltro, setTipoFiltro] = useState<TipoCuenta | 'todos'>('todos')
-
-  const filtradas = useMemo(() => {
-    const q = filtro.trim().toLowerCase()
-    return cuentas.filter((c) => {
-      if (c.id === excluirId) return false
-      if (tipoFiltro !== 'todos' && c.tipo !== tipoFiltro) return false
-      if (!q) return true
-      return (
-        c.nombre.toLowerCase().includes(q) ||
-        c.codigo.toLowerCase().includes(q)
-      )
-    })
-  }, [cuentas, filtro, tipoFiltro, excluirId])
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-ink/40 backdrop-blur-sm px-4 py-6 sm:py-12"
-      onClick={onCerrar}
-    >
-      <div
-        className="card w-full max-w-2xl p-0 rise overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 pt-6 pb-4 border-b border-line">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <p className="label-mono mb-1.5">Plan de cuentas</p>
-              <h3 className="font-display text-2xl font-medium leading-tight">
-                Elegí cuenta del {modo === 'debe' ? 'Debe' : 'Haber'}
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={onCerrar}
-              className="p-2 -mr-2 hover:bg-paper-2 rounded transition-colors"
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div className="relative">
-            <Search
-              size={14}
-              strokeWidth={2.25}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none"
-            />
-            <input
-              type="text"
-              autoFocus
-              value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
-              placeholder="Buscar por nombre…"
-              className="w-full bg-paper-2 border border-line rounded-md pl-8 pr-3 py-2 text-[14px] focus:outline-none focus:border-ink-2 transition-colors"
-            />
-          </div>
-          <div className="pill-group mt-3" role="group">
-            {(['todos', 'ingreso', 'egreso'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className="pill"
-                aria-pressed={tipoFiltro === t}
-                onClick={() => setTipoFiltro(t)}
-              >
-                {t === 'todos' ? 'Todas' : t === 'ingreso' ? 'Ingreso' : 'Egreso'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="overflow-y-auto flex-1">
-          {filtradas.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="font-display-tight text-base text-ink-2 mb-1">
-                Sin resultados
-              </p>
-              <p className="text-[12px] text-ink-3">
-                Probá con otro nombre.
-              </p>
-            </div>
-          ) : (
-            <ul role="listbox">
-              {filtradas.map((c) => {
-                const elegida = c.id === seleccionadaId
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      onClick={() => onElegir(c)}
-                      role="option"
-                      aria-selected={elegida}
-                      className={`w-full text-left px-6 py-3 border-b border-line/60 flex items-center gap-3 transition-colors ${
-                        elegida ? 'bg-paper-2' : 'hover:bg-paper-2'
-                      }`}
-                    >
-                      <span className="flex-1 min-w-0 truncate text-[14px] text-ink-1">
-                        {c.nombre}
-                      </span>
-                      <span
-                        className={`font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                          c.tipo === 'ingreso'
-                            ? 'bg-status-yes-bg text-status-yes'
-                            : 'bg-amber/20 text-amber-deep'
-                        }`}
-                      >
-                        {c.tipo}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div className="px-6 py-3 border-t border-line text-center">
-          <p className="font-mono text-[10px] text-ink-3 uppercase tracking-wider">
-            {filtradas.length} de {cuentas.length} cuentas
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
