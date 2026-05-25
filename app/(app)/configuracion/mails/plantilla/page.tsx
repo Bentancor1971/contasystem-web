@@ -24,6 +24,7 @@ import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
 import { canSeeConfig } from '@/lib/roles'
 import {
+  DEFAULT_BIRTHDAY_TEMPLATE,
   renderBirthdayEmail,
   type BirthdayTemplate,
 } from '@/lib/birthday-email-template'
@@ -472,13 +473,14 @@ export default function PlantillaMailPage() {
                   </div>
                 </section>
 
-                {/* Imagen de fondo */}
+                {/* Imagen cabecera */}
                 <section className="card p-5 lg:p-6">
                   <h2 className="font-display-tight text-lg font-medium mb-1">
-                    Imagen de fondo
+                    Imagen de cabecera
                   </h2>
                   <p className="text-sm text-ink-2 mb-3">
-                    La identidad de la empresa. El texto va encima.
+                    La identidad de la empresa. Se muestra arriba del saludo,
+                    a ancho completo de la tarjeta.
                   </p>
 
                   {form.imagenUrl ? (
@@ -619,64 +621,76 @@ export default function PlantillaMailPage() {
                   </div>
                 </section>
 
-                {/* Estilo del texto */}
+                {/* Estilo del saludo */}
                 <section className="card p-5 lg:p-6 space-y-4">
                   <h2 className="font-display-tight text-lg font-medium">
-                    Estilo sobre la imagen
+                    Estilo del saludo
                   </h2>
+                  <p className="text-sm text-ink-2 -mt-1">
+                    Colores de la tarjeta de texto que va debajo de la imagen.
+                  </p>
 
                   <div className="flex items-center justify-between gap-4">
                     <label htmlFor="texto-color" className="label-mono">
                       Color del texto
                     </label>
-                    <input
-                      id="texto-color"
-                      type="color"
-                      className="w-12 h-9 rounded border border-line bg-white cursor-pointer"
-                      value={form.textoColor}
-                      onChange={(e) => patch({ textoColor: e.target.value })}
-                    />
+                    <div className="flex items-center gap-2">
+                      {form.textoColor.toLowerCase() !==
+                        DEFAULT_BIRTHDAY_TEMPLATE.textoColor.toLowerCase() && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patch({
+                              textoColor: DEFAULT_BIRTHDAY_TEMPLATE.textoColor,
+                            })
+                          }
+                          className="font-mono text-[11px] text-amber-deep hover:underline"
+                        >
+                          restaurar
+                        </button>
+                      )}
+                      <input
+                        id="texto-color"
+                        type="color"
+                        className="w-12 h-9 rounded border border-line bg-white cursor-pointer"
+                        value={form.textoColor}
+                        onChange={(e) => patch({ textoColor: e.target.value })}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
                     <label htmlFor="panel-color" className="label-mono">
-                      Color del panel
+                      Color de fondo
                     </label>
-                    <input
-                      id="panel-color"
-                      type="color"
-                      className="w-12 h-9 rounded border border-line bg-white cursor-pointer"
-                      value={form.panelColor}
-                      onChange={(e) => patch({ panelColor: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-baseline justify-between mb-2">
-                      <label htmlFor="panel-op" className="label-mono">
-                        Opacidad del panel
-                      </label>
-                      <span className="font-mono text-xs text-ink-3">
-                        {form.panelOpacidad}%
-                      </span>
+                    <div className="flex items-center gap-2">
+                      {form.panelColor.toLowerCase() !==
+                        DEFAULT_BIRTHDAY_TEMPLATE.panelColor.toLowerCase() && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patch({
+                              panelColor: DEFAULT_BIRTHDAY_TEMPLATE.panelColor,
+                            })
+                          }
+                          className="font-mono text-[11px] text-amber-deep hover:underline"
+                        >
+                          restaurar
+                        </button>
+                      )}
+                      <input
+                        id="panel-color"
+                        type="color"
+                        className="w-12 h-9 rounded border border-line bg-white cursor-pointer"
+                        value={form.panelColor}
+                        onChange={(e) => patch({ panelColor: e.target.value })}
+                      />
                     </div>
-                    <input
-                      id="panel-op"
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      className="w-full accent-ink"
-                      value={form.panelOpacidad}
-                      onChange={(e) =>
-                        patch({ panelOpacidad: Number(e.target.value) })
-                      }
-                    />
-                    <p className="font-mono text-[11px] text-ink-3 mt-1">
-                      El panel oscurece/aclara la imagen detrás del texto para
-                      que se lea bien. 0% = sin panel.
-                    </p>
                   </div>
+                  <p className="font-mono text-[11px] text-ink-3 -mt-2">
+                    Asegurate de que haya buen contraste entre ambos colores
+                    para que el saludo se lea claramente.
+                  </p>
                 </section>
               </div>
 

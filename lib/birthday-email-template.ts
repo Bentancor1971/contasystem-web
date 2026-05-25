@@ -1,9 +1,10 @@
 /**
  * Plantilla del mail de saludo de cumpleaños.
  *
- * El diseño es: una imagen de fondo (la identidad de la empresa) con el
- * texto del saludo ENCIMA, usando la técnica "bulletproof background"
- * (background-image para clientes modernos + VML para Outlook).
+ * Layout apilado: la imagen de identidad de la empresa va arriba como
+ * <img> responsive (width:100%, height:auto) y debajo, una tarjeta
+ * sólida con el saludo. Evita superposiciones y se ve correcto en
+ * cualquier ancho (desktop / mobile).
  *
  * El texto admite dos variables:
  *   {nombre}        → nombre de pila del cumpleañero
@@ -76,26 +77,11 @@ function aplicarVariables(
     .replace(/\{denominacion\}/gi, vars.denominacion)
 }
 
-/** hex (#rgb o #rrggbb) + opacidad 0–100 → string rgba(). */
-function hexToRgba(hex: string, opacidad: number): string {
-  const h = (hex || '').replace('#', '').trim()
-  const full =
-    h.length === 3
-      ? h.split('').map((c) => c + c).join('')
-      : h.padEnd(6, '0').slice(0, 6)
-  const r = parseInt(full.slice(0, 2), 16) || 0
-  const g = parseInt(full.slice(2, 4), 16) || 0
-  const b = parseInt(full.slice(4, 6), 16) || 0
-  const a = Math.min(100, Math.max(0, opacidad)) / 100
-  return `rgba(${r},${g},${b},${a})`
-}
-
 /** Devuelve un hex válido o el fallback. */
 function hexSeguro(hex: string, fallback: string): string {
   return /^#[0-9a-fA-F]{3,8}$/.test((hex || '').trim()) ? hex.trim() : fallback
 }
 
-const HERO_HEIGHT = 420
 const CARD_WIDTH = 600
 
 // ────────────────────────────────────────────────────────────────────
@@ -125,74 +111,58 @@ export function renderBirthdayEmail({
   const text = aplicarVariables(plantilla.cuerpo, vars).trim()
 
   // Cuerpo HTML: escapar primero (las llaves {} no se escapan, así que
-  // las variables sobreviven), sustituir con valores escapados, nl2br.
-  const cuerpoHtml = aplicarVariables(escapeHtml(plantilla.cuerpo), {
+  // las variables sobreviven), sustituir con valores escapados, y
+  // convertir a párrafos con margen acotado (los \n\n del editor no
+  // generan dos <br> seguidos — se aplastaría con mucho aire).
+  const cuerpoEscapado = aplicarVariables(escapeHtml(plantilla.cuerpo), {
     nombre: escapeHtml(vars.nombre),
     denominacion: escapeHtml(vars.denominacion),
-  }).replace(/\r?\n/g, '<br>')
+  })
+  const parrafos = cuerpoEscapado.split(/\r?\n\s*\r?\n+/)
+  const cuerpoHtml = parrafos
+    .map((p, i) => {
+      const inner = p.replace(/\r?\n/g, '<br>')
+      const last = i === parrafos.length - 1
+      return `<p style="margin:0 0 ${last ? '0' : '10px'} 0;">${inner}</p>`
+    })
+    .join('')
 
   const textoColor = hexSeguro(plantilla.textoColor, '#ffffff')
   const panelColor = hexSeguro(plantilla.panelColor, '#1a1814')
   const img = plantilla.imagenUrl
 
-  // Bloque de texto (panel semitransparente + cuerpo).
-  const panelBg = hexToRgba(panelColor, plantilla.panelOpacidad)
-  const textoBloque = `
-    <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;max-width:440px;">
+  // Fila opcional con la imagen, responsive (mobile-friendly).
+  const imagenRow = img
+    ? `
       <tr>
-        <td class="panel-pad" style="background-color:${panelBg};border-radius:12px;padding:30px 34px;text-align:center;">
-          <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:17px;line-height:1.65;">
+        <td style="padding:0;line-height:0;font-size:0;">
+          <img src="${escapeHtml(img)}" alt="" width="${CARD_WIDTH}" border="0"
+               style="display:block;width:100%;max-width:${CARD_WIDTH}px;height:auto;border:0;outline:none;text-decoration:none;" />
+        </td>
+      </tr>`
+    : ''
+
+  // Fila con el saludo en una tarjeta sólida con el color de la empresa.
+  // panelOpacidad ya no aplica (era para overlay sobre imagen), se usa
+  // el color sólido para mantener contraste con textoColor.
+  const textoRow = `
+      <tr>
+        <td class="text-pad" align="center" style="background-color:${panelColor};padding:24px 32px;text-align:center;">
+          <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:16px;line-height:1.5;">
             ${cuerpoHtml}
           </div>
         </td>
-      </tr>
-    </table>`
-
-  // Sección "hero": con imagen → bulletproof background; sin imagen →
-  // color sólido (panelColor) para que el texto siga siendo legible.
-  let hero: string
-  if (img) {
-    const imgSafe = escapeHtml(img)
-    hero = `
-      <td background="${imgSafe}" bgcolor="${panelColor}" valign="middle"
-          style="background-image:url('${imgSafe}');background-size:cover;background-position:center;background-color:${panelColor};min-height:${HERO_HEIGHT}px;">
-        <!--[if gte mso 9]>
-        <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${CARD_WIDTH}px;height:${HERO_HEIGHT}px;">
-        <v:fill type="frame" src="${imgSafe}" color="${panelColor}" />
-        <v:textbox inset="0,0,0,0">
-        <![endif]-->
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td align="center" class="hero-pad" style="padding:44px 32px;">${textoBloque}</td></tr>
-        </table>
-        <!--[if gte mso 9]>
-        </v:textbox>
-        </v:rect>
-        <![endif]-->
-      </td>`
-  } else {
-    hero = `
-      <td bgcolor="${panelColor}" valign="middle"
-          style="background-color:${panelColor};">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td align="center" class="hero-pad" style="padding:56px 32px;">
-            <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:17px;line-height:1.65;text-align:center;">
-              ${cuerpoHtml}
-            </div>
-          </td></tr>
-        </table>
-      </td>`
-  }
+      </tr>`
 
   const html = `<!DOCTYPE html>
-<html lang="es" xmlns:v="urn:schemas-microsoft-com:vml">
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(subject)}</title>
   <style>
     @media only screen and (max-width: 480px) {
-      .hero-pad { padding: 24px 12px !important; }
-      .panel-pad { padding: 22px 18px !important; }
+      .text-pad { padding: 20px 18px !important; }
     }
   </style>
 </head>
@@ -201,7 +171,7 @@ export function renderBirthdayEmail({
     <tr>
       <td align="center">
         <table role="presentation" width="${CARD_WIDTH}" cellpadding="0" cellspacing="0" style="width:${CARD_WIDTH}px;max-width:100%;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e3dd;">
-          <tr>${hero}</tr>
+          ${imagenRow}${textoRow}
         </table>
       </td>
     </tr>

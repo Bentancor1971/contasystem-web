@@ -1,19 +1,19 @@
 /**
- * Genera el fondo de la tarjeta de cumpleaños para AUP.
+ * Genera el banner de cumpleaños para AUP.
  * Salida:
  *   <repo>/design/aup-cumpleanos-fondo.svg
- *   <repo>/design/aup-cumpleanos-fondo.png   (1200x800, para subir)
+ *   <repo>/design/aup-cumpleanos-fondo.png   (1200x500, para subir)
  *
- * Diseño y paleta espejados del fondo de ATRI: crema/papel con
- * acentos teal y naranja. Solo cambia el wordmark ("AUP") y el
- * tagline. La marca queda en la parte superior.
+ * Diseño y paleta espejados del banner de ATRI: crema/papel con
+ * acentos teal y naranja, wordmark centrado. Solo cambia el
+ * texto ("AUP" + tagline).
  */
 import fs from 'node:fs'
 import path from 'node:path'
 
 const OUT_DIR = 'c:/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-web-carga/design'
 const W = 1200
-const H = 800
+const H = 380
 
 const C = {
   bgCream:    '#fbfaf5',
@@ -93,47 +93,41 @@ function spark(x, y, s, c, o) {
   return `<path d="${d}" fill="${c}" opacity="${o}"/>`
 }
 
+// Banner bajo: solo confeti laterales, sin franja inferior para no
+// generar espacio muerto entre el banner y la tarjeta del saludo.
 const confetti = [
   // top-left
-  stick(120, 90, 14, 30, C.teal, 0.85),
-  dot(70, 60, 5, C.orange, 0.9),
-  spark(245, 150, 17, C.tealDeep, 0.85),
-  ring(60, 175, 8, C.gray, 0.6),
-  dot(290, 55, 4, C.orange, 0.75),
+  stick(120, 70, 14, 30, C.teal, 0.85),
+  dot(70, 50, 5, C.orange, 0.9),
+  spark(245, 110, 17, C.tealDeep, 0.85),
+  ring(60, 160, 8, C.gray, 0.6),
+  dot(310, 55, 4, C.orange, 0.75),
   stick(180, 175, 12, -20, C.orange, 0.7),
-  dot(340, 110, 3.5, C.teal, 0.8),
+  dot(360, 130, 3.5, C.teal, 0.8),
+
+  // mid-left
+  dot(45, 250, 4, C.tealDeep, 0.65),
+  spark(80, 320, 11, C.orange, 0.55),
+  dot(160, 345, 4, C.teal, 0.7),
 
   // top-right
-  spark(965, 75, 21, C.orange, 0.9),
-  dot(1080, 135, 5, C.teal, 0.85),
+  spark(960, 70, 21, C.orange, 0.9),
+  dot(1080, 130, 5, C.teal, 0.85),
   stick(1010, 175, 14, -38, C.tealDeep, 0.8),
-  ring(1150, 60, 7, C.gray, 0.55),
-  dot(885, 165, 4, C.orange, 0.75),
-  stick(1110, 100, 11, 22, C.teal, 0.7),
+  ring(1150, 50, 7, C.gray, 0.55),
+  dot(885, 150, 4, C.orange, 0.75),
+  stick(1110, 95, 11, 22, C.teal, 0.7),
 
-  // mid sides
-  dot(45, 360, 3, C.gray, 0.6),
-  spark(1140, 420, 12, C.teal, 0.6),
-  dot(1160, 320, 4, C.orange, 0.5),
-  dot(35, 510, 3.5, C.tealDeep, 0.5),
-
-  // bottom-left
-  stick(95, 660, 14, 40, C.orange, 0.8),
-  dot(140, 745, 5, C.teal, 0.85),
-  ring(60, 700, 7, C.gray, 0.55),
-  spark(60, 620, 13, C.tealDeep, 0.7),
-
-  // bottom-right
-  spark(1085, 665, 16, C.orange, 0.85),
-  dot(1145, 745, 5, C.teal, 0.85),
-  stick(1020, 745, 12, -28, C.tealDeep, 0.8),
-  ring(1150, 640, 7, C.gray, 0.55),
+  // mid-right
+  dot(1155, 260, 4, C.orange, 0.6),
+  spark(1115, 330, 11, C.tealDeep, 0.55),
+  dot(1040, 345, 4, C.teal, 0.7),
 ].join('\n  ')
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
   <defs>
-    <radialGradient id="glow" cx="50%" cy="42%" r="70%">
+    <radialGradient id="glow" cx="50%" cy="50%" r="70%">
       <stop offset="0%"  stop-color="${C.bgGlow}"/>
       <stop offset="48%" stop-color="${C.bgCream}"/>
       <stop offset="100%" stop-color="${C.bgEdge}"/>
@@ -143,25 +137,25 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   <rect width="${W}" height="${H}" fill="${C.bgCream}"/>
   <rect width="${W}" height="${H}" fill="url(#glow)"/>
 
-  ${aperture(40, 30, 235, { opacity: 0.55, mono: C.watermark })}
-  ${aperture(1180, 790, 320, { opacity: 0.55, mono: C.watermark })}
+  ${aperture(40, 30, 200, { opacity: 0.5, mono: C.watermark })}
+  ${aperture(1180, 370, 220, { opacity: 0.5, mono: C.watermark })}
 
   ${confetti}
 
-  <text x="600" y="115"
+  <text x="600" y="200"
         text-anchor="middle"
         font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
         font-weight="900"
-        font-size="86"
-        letter-spacing="6"
+        font-size="100"
+        letter-spacing="8"
         fill="${C.teal}">AUP</text>
 
-  <text x="600" y="155"
+  <text x="600" y="245"
         text-anchor="middle"
         font-family="Arial, 'Segoe UI', sans-serif"
         font-weight="600"
-        font-size="15"
-        letter-spacing="3"
+        font-size="16"
+        letter-spacing="3.5"
         fill="${C.grayDark}">ASOCIACIÓN URUGUAYA DE PSICOMOTRICIDAD</text>
 </svg>
 `
