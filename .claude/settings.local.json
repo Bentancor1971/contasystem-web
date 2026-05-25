@@ -50,7 +50,8 @@
       "Bash(NODE_OPTIONS=\"--use-system-ca\" node fetch-css.mjs)",
       "Bash(node design/_gen-atri-bg.mjs)",
       "Bash(node design/_gen-aup-bg.mjs)",
-      "Bash(npx --no-install tsc --noEmit)"
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(npx --prefix '/c/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop' tsc -p '/c/Users/benta/Documents/Proyecto Contable Socios V1/contasystem-desktop' --noEmit)"
     ],
     "additionalDirectories": [
       "\\tmp"

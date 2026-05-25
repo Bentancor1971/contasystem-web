@@ -562,6 +562,20 @@ export default function CargaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plantillaSeleccionada])
 
+  // Auto-sync de moneda: al elegir un Haber con moneda conocida (USD/UYU/etc),
+  // alinear el selector de moneda para que coincida. Evita el caso de cargar un
+  // gasto con tarjeta USD pero dejar la moneda en UYU (silenciosamente rompía
+  // la conciliación de tarjetas y dejaba el monto descalibrado).
+  useEffect(() => {
+    if (!haberId) return
+    const haberSel = haberOpciones.find((o) => o.id === haberId)
+    const monedaHaber = haberSel?.moneda
+    if (monedaHaber && (MONEDAS as readonly string[]).includes(monedaHaber) && monedaHaber !== moneda) {
+      setMoneda(monedaHaber as Moneda)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [haberId, haberOpciones])
+
   const plantillaPorId = useMemo(
     () => Object.fromEntries(plantillas.map((p) => [p.id, p.nombre])),
     [plantillas],
@@ -596,6 +610,18 @@ export default function CargaPage() {
     () => Object.fromEntries(cuentas.map((c) => [c.id, c])),
     [cuentas],
   )
+
+  // Auto-sync de moneda en el form "Carga libre": al elegir cuenta del Haber con
+  // moneda conocida, alinear el selector. Mismo motivo que en plantillas: evita
+  // grabar el comprobante con moneda distinta a la de la cuenta de pago.
+  useEffect(() => {
+    if (!cuentaHaberGeneralId) return
+    const monedaHaber = cuentaPorId[cuentaHaberGeneralId]?.moneda_codigo
+    if (monedaHaber && (MONEDAS as readonly string[]).includes(monedaHaber) && monedaHaber !== monedaGeneral) {
+      setMonedaGeneral(monedaHaber as Moneda)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuentaHaberGeneralId, cuentaPorId])
 
   const stats = useMemo(() => {
     const pendientes = comprobantes.filter((c) => c.estado === 'pendiente').length
