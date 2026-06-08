@@ -140,6 +140,10 @@ export default function CargaPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [tab, setTab] = useState<Tab>('cargar')
+  // Filtro de autoría en "Últimos": por defecto solo los comprobantes que
+  // cargó este usuario; "todos" muestra los de toda la empresa. Filtra del lado
+  // del servidor para que paginación y contadores reflejen el subconjunto.
+  const [filtroAutor, setFiltroAutor] = useState<'mios' | 'todos'>('mios')
   const [refreshing, setRefreshing] = useState(false)
   const refreshingRef = useRef(false)
   const lastRefetchRef = useRef(0)
@@ -198,6 +202,15 @@ export default function CargaPage() {
       const supabase = createClient()
       const empresaId = empresa.empresa_id
 
+      let cmpQuery = supabase
+        .from('comprobantes_remoto')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE)
+      // En el primer load el filtro siempre arranca en 'mios' (default).
+      if (filtroAutor === 'mios') cmpQuery = cmpQuery.eq('created_by', userId)
+
       const [plRes, ctRes, cuRes, tcRes, cmpRes] = await Promise.all([
         supabase
           .from('plantillas_remoto')
@@ -226,12 +239,7 @@ export default function CargaPage() {
           .eq('empresa_id', empresaId)
           .eq('activo', 1)
           .order('abreviacion'),
-        supabase
-          .from('comprobantes_remoto')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE),
+        cmpQuery,
       ])
 
       if (plRes.data) setPlantillas(plRes.data as PlantillaRemota[])
@@ -246,6 +254,9 @@ export default function CargaPage() {
       setLoading(false)
     }
     void load()
+    // filtroAutor/userId se leen con su valor inicial ('mios'); el cambio de
+    // filtro se maneja en su propio effect, no recargando toda la pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresa])
 
   async function cargarMas() {
@@ -254,12 +265,14 @@ export default function CargaPage() {
     try {
       const supabase = createClient()
       const desde = comprobantes.length
-      const { data, error } = await supabase
+      let q = supabase
         .from('comprobantes_remoto')
         .select('*')
         .eq('empresa_id', empresa.empresa_id)
         .order('created_at', { ascending: false })
         .range(desde, desde + PAGE_SIZE - 1)
+      if (filtroAutor === 'mios') q = q.eq('created_by', userId)
+      const { data, error } = await q
       if (error) throw new Error(error.message)
       const rows = (data ?? []) as ComprobanteRemoto[]
       setComprobantes((prev) => [...prev, ...rows])
@@ -275,7 +288,7 @@ export default function CargaPage() {
   // importó un comprobante desde el desktop). Mantiene el tamaño de página
   // actual del usuario.
   const refetchComprobantes = useCallback(
-    async (opts: { silencioso?: boolean; forzar?: boolean } = {}) => {
+    async (opts: { silencioso?: boolean; forzar?: boolean; reset?: boolean } = {}) => {
       if (refreshingRef.current) return
       const ahora = Date.now()
       if (!opts.forzar && ahora - lastRefetchRef.current < REFETCH_THROTTLE_MS) {
@@ -285,16 +298,23 @@ export default function CargaPage() {
       if (!opts.silencioso) setRefreshing(true)
       try {
         const supabase = createClient()
-        const limit = Math.max(comprobantes.length, PAGE_SIZE)
-        const { data, error } = await supabase
+        // reset (ej: cambio de filtro) vuelve a la primera página; si no, se
+        // mantiene la ventana ya cargada por el usuario.
+        const limit = opts.reset
+          ? PAGE_SIZE
+          : Math.max(comprobantes.length, PAGE_SIZE)
+        let q = supabase
           .from('comprobantes_remoto')
           .select('*')
           .eq('empresa_id', empresa.empresa_id)
           .order('created_at', { ascending: false })
           .limit(limit)
+        if (filtroAutor === 'mios') q = q.eq('created_by', userId)
+        const { data, error } = await q
         if (error) throw new Error(error.message)
         const rows = (data ?? []) as ComprobanteRemoto[]
         setComprobantes(rows)
+        if (opts.reset) setHasMore(rows.length === PAGE_SIZE)
         lastRefetchRef.current = Date.now()
       } catch (err) {
         if (!opts.silencioso) {
@@ -307,7 +327,7 @@ export default function CargaPage() {
         setRefreshing(false)
       }
     },
-    [comprobantes.length, empresa.empresa_id],
+    [comprobantes.length, empresa.empresa_id, filtroAutor, userId],
   )
 
   // ── Convertir items de la cola a la forma de ComprobanteRemoto para
@@ -494,6 +514,18 @@ export default function CargaPage() {
     void refetchComprobantes({ silencioso: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, loading])
+
+  // Re-buscar (primera página) al cambiar el filtro míos/todos. Se saltea el
+  // primer render porque el load inicial ya trae el subconjunto 'mios'.
+  const filtroInicialRef = useRef(true)
+  useEffect(() => {
+    if (filtroInicialRef.current) {
+      filtroInicialRef.current = false
+      return
+    }
+    void refetchComprobantes({ forzar: true, reset: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroAutor])
 
   // Refetch al recuperar foco / volver a la pestaña del navegador
   useEffect(() => {
@@ -1573,6 +1605,8 @@ export default function CargaPage() {
             onActualizar={() => refetchComprobantes({ forzar: true })}
             refreshing={refreshing}
             sincronizando={sincronizando}
+            filtroAutor={filtroAutor}
+            onCambiarFiltro={setFiltroAutor}
           />
         )}
       </main>
@@ -1610,6 +1644,8 @@ function ListaUltimos({
   onActualizar,
   refreshing,
   sincronizando,
+  filtroAutor,
+  onCambiarFiltro,
 }: {
   comprobantes: ComprobanteRemoto[]
   stats: {
@@ -1634,6 +1670,8 @@ function ListaUltimos({
   onActualizar: () => void
   refreshing: boolean
   sincronizando: boolean
+  filtroAutor: 'mios' | 'todos'
+  onCambiarFiltro: (f: 'mios' | 'todos') => void
 }) {
   return (
     <div className="card p-6 lg:p-10">
@@ -1697,6 +1735,30 @@ function ListaUltimos({
           )}
         </div>
       )}
+
+      <div className="flex items-center gap-2.5 mb-4">
+        <span className="label-mono">Ver</span>
+        <div className="pill-group" role="group" aria-label="Filtrar por autor">
+          <button
+            type="button"
+            className="pill"
+            aria-pressed={filtroAutor === 'mios'}
+            onClick={() => onCambiarFiltro('mios')}
+            disabled={refreshing}
+          >
+            Míos
+          </button>
+          <button
+            type="button"
+            className="pill"
+            aria-pressed={filtroAutor === 'todos'}
+            onClick={() => onCambiarFiltro('todos')}
+            disabled={refreshing}
+          >
+            Todos
+          </button>
+        </div>
+      </div>
 
       <div className="perforated mb-3" />
 
