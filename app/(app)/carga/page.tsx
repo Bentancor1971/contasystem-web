@@ -46,11 +46,13 @@ import type {
 } from '@/lib/types'
 import {
   formatMonto,
-  formatMontoLive,
-  parseMonto,
   formatFecha,
   hoyISO,
   simboloMoneda,
+  onMontoInput,
+  normalizarMonto,
+  evaluarMonto,
+  esExpresionMonto,
 } from '@/lib/format'
 
 const MONEDAS = ['UYU', 'USD'] as const
@@ -891,8 +893,8 @@ export default function CargaPage() {
       toast.error('Debe y Haber no pueden ser la misma cuenta')
       return
     }
-    const montoNum = parseMonto(montoGeneral)
-    if (!isFinite(montoNum) || montoNum <= 0) {
+    const montoNum = evaluarMonto(montoGeneral)
+    if (!isFinite(montoNum) || montoNum === 0) {
       toast.error('Monto inválido')
       return
     }
@@ -1026,8 +1028,8 @@ export default function CargaPage() {
       toast.error('Elegí una plantilla')
       return
     }
-    const montoNum = parseMonto(monto)
-    if (!isFinite(montoNum) || montoNum <= 0) {
+    const montoNum = evaluarMonto(monto)
+    if (!isFinite(montoNum) || montoNum === 0) {
       toast.error('Monto inválido')
       return
     }
@@ -1532,15 +1534,17 @@ export default function CargaPage() {
                   </span>
                   <input
                     id="monto"
-                    inputMode="decimal"
+                    inputMode="text"
                     className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
                     placeholder="0,00"
                     value={monto}
-                    onChange={(e) => setMonto(formatMontoLive(e.target.value))}
+                    onChange={(e) => setMonto(onMontoInput(e.target.value))}
+                    onBlur={(e) => setMonto(normalizarMonto(e.target.value))}
                     disabled={busy}
                     required
                   />
                 </div>
+                <MontoPreview monto={monto} moneda={moneda} />
               </div>
 
               {/* Descripción */}
@@ -1620,6 +1624,38 @@ export default function CargaPage() {
         />
       )}
     </>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Vista previa del importe: muestra el resultado cuando se escribe una
+// operación (suma, resta, etc.) o cuando el valor es negativo, y avisa si
+// la expresión es inválida.
+// ──────────────────────────────────────────────────────────────────────
+
+function MontoPreview({ monto, moneda }: { monto: string; moneda: string }) {
+  const texto = monto.trim()
+  if (!texto) return null
+  const n = evaluarMonto(monto)
+  const esExpr = esExpresionMonto(monto)
+
+  if (!isFinite(n)) {
+    // Solo marcar error cuando claramente hay una operación a medio escribir.
+    if (!esExpr) return null
+    return (
+      <p className="mt-1.5 font-mono text-[12px] text-status-no">
+        Expresión inválida
+      </p>
+    )
+  }
+
+  // Mostrar el resultado cuando hay operación o cuando el número es negativo.
+  if (!esExpr && n >= 0) return null
+
+  return (
+    <p className="mt-1.5 font-mono text-[12px] text-ink-3">
+      = {simboloMoneda(moneda)} {formatMonto(n)}
+    </p>
   )
 }
 
@@ -2429,15 +2465,17 @@ function FormularioGeneral({
             </span>
             <input
               id="monto-general"
-              inputMode="decimal"
+              inputMode="text"
               className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
               placeholder="0,00"
               value={monto}
-              onChange={(e) => setMonto(formatMontoLive(e.target.value))}
+              onChange={(e) => setMonto(onMontoInput(e.target.value))}
+              onBlur={(e) => setMonto(normalizarMonto(e.target.value))}
               disabled={busy}
               required
             />
           </div>
+          <MontoPreview monto={monto} moneda={moneda} />
         </div>
 
         {/* Cuenta (Debe) */}
