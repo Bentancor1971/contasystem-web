@@ -1528,23 +1528,13 @@ export default function CargaPage() {
                 <label htmlFor="monto" className="label-mono block mb-2">
                   Total con IVA *
                 </label>
-                <div className="flex items-baseline gap-2 border-b-[1.5px] border-ink py-1.5">
-                  <span className="font-mono text-ink-3 text-lg">
-                    {simboloMoneda(moneda)}
-                  </span>
-                  <input
-                    id="monto"
-                    inputMode="text"
-                    className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
-                    placeholder="0,00"
-                    value={monto}
-                    onChange={(e) => setMonto(onMontoInput(e.target.value))}
-                    onBlur={(e) => setMonto(normalizarMonto(e.target.value))}
-                    disabled={busy}
-                    required
-                  />
-                </div>
-                <MontoPreview monto={monto} moneda={moneda} />
+                <MontoField
+                  id="monto"
+                  value={monto}
+                  onChange={setMonto}
+                  moneda={moneda}
+                  busy={busy}
+                />
               </div>
 
               {/* Descripción */}
@@ -1656,6 +1646,114 @@ function MontoPreview({ monto, moneda }: { monto: string; moneda: string }) {
     <p className="mt-1.5 font-mono text-[12px] text-ink-3">
       = {simboloMoneda(moneda)} {formatMonto(n)}
     </p>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Campo de importe con teclado numérico + botones de operación. Los
+// botones insertan el operador en la posición del cursor sin que el campo
+// pierda el foco (onMouseDown preventDefault), así sirven en celular sin
+// depender del teclado alfanumérico.
+// ──────────────────────────────────────────────────────────────────────
+
+const MONTO_OPS: { label: string; insertar: string; aria: string }[] = [
+  { label: '+', insertar: '+', aria: 'sumar' },
+  { label: '−', insertar: '-', aria: 'restar' },
+  { label: '×', insertar: '*', aria: 'multiplicar' },
+  { label: '÷', insertar: '/', aria: 'dividir' },
+  { label: '(', insertar: '(', aria: 'abrir paréntesis' },
+  { label: ')', insertar: ')', aria: 'cerrar paréntesis' },
+]
+
+function MontoField({
+  id,
+  value,
+  onChange,
+  moneda,
+  busy,
+}: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  moneda: string
+  busy: boolean
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function insertar(texto: string) {
+    const el = inputRef.current
+    if (!el) {
+      onChange(onMontoInput(value + texto))
+      return
+    }
+    const start = el.selectionStart ?? value.length
+    const end = el.selectionEnd ?? value.length
+    const nuevo = value.slice(0, start) + texto + value.slice(end)
+    onChange(onMontoInput(nuevo))
+    // Reubicar el cursor tras el carácter insertado (en modo expresión el
+    // largo no cambia porque no se reformatea).
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + texto.length
+      try {
+        el.setSelectionRange(pos, pos)
+      } catch {
+        /* algunos navegadores no permiten setSelectionRange acá */
+      }
+    })
+  }
+
+  function toggleSigno() {
+    const t = value.trimStart()
+    const nuevo = t.startsWith('-') ? t.slice(1) : `-${t}`
+    onChange(onMontoInput(nuevo))
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  return (
+    <>
+      <div className="flex items-baseline gap-2 border-b-[1.5px] border-ink py-1.5">
+        <span className="font-mono text-ink-3 text-lg">{simboloMoneda(moneda)}</span>
+        <input
+          id={id}
+          ref={inputRef}
+          inputMode="decimal"
+          className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
+          placeholder="0,00"
+          value={value}
+          onChange={(e) => onChange(onMontoInput(e.target.value))}
+          onBlur={(e) => onChange(normalizarMonto(e.target.value))}
+          disabled={busy}
+          required
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-label="cambiar signo"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={toggleSigno}
+          disabled={busy}
+          className="h-9 w-9 inline-flex items-center justify-center rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[15px] text-ink-1 disabled:opacity-50"
+        >
+          ±
+        </button>
+        {MONTO_OPS.map((op) => (
+          <button
+            key={op.insertar}
+            type="button"
+            aria-label={op.aria}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insertar(op.insertar)}
+            disabled={busy}
+            className="h-9 w-9 inline-flex items-center justify-center rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[15px] text-ink-1 disabled:opacity-50"
+          >
+            {op.label}
+          </button>
+        ))}
+      </div>
+      <MontoPreview monto={value} moneda={moneda} />
+    </>
   )
 }
 
@@ -2459,23 +2557,13 @@ function FormularioGeneral({
           <label htmlFor="monto-general" className="label-mono block mb-2">
             Importe *
           </label>
-          <div className="flex items-baseline gap-2 border-b-[1.5px] border-ink py-1.5">
-            <span className="font-mono text-ink-3 text-lg">
-              {simboloMoneda(moneda)}
-            </span>
-            <input
-              id="monto-general"
-              inputMode="text"
-              className="font-mono text-[26px] font-medium bg-transparent border-0 outline-none w-full leading-none p-0"
-              placeholder="0,00"
-              value={monto}
-              onChange={(e) => setMonto(onMontoInput(e.target.value))}
-              onBlur={(e) => setMonto(normalizarMonto(e.target.value))}
-              disabled={busy}
-              required
-            />
-          </div>
-          <MontoPreview monto={monto} moneda={moneda} />
+          <MontoField
+            id="monto-general"
+            value={monto}
+            onChange={setMonto}
+            moneda={moneda}
+            busy={busy}
+          />
         </div>
 
         {/* Cuenta (Debe) */}
