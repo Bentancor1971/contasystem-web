@@ -5,7 +5,17 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/auth/callback']
+// `/e/` y `/api/eventos/` son las rutas PÚBLICAS de inscripción a eventos
+// (se comparten como enlace externo, sin login). Ojo: usar `/e/` con barra
+// final para no capturar `/empresa`.
+const PUBLIC_PATHS = [
+  '/login',
+  '/auth/callback',
+  '/e/', // inscripción pública a eventos
+  '/api/eventos/',
+  '/c/', // validación pública de certificados (QR)
+  '/api/certificados/',
+]
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request })
