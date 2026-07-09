@@ -112,6 +112,13 @@ export async function loadEventoPublico(
     texto_antes: ev.texto_antes,
     texto_despues: ev.texto_despues,
     categorias,
+    transporte: {
+      disponible: !!ev.transporte_disponible,
+      con_costo: !!ev.transporte_con_costo,
+      importe_socio: Number(ev.transporte_importe_socio ?? 0),
+      importe_no_socio: Number(ev.transporte_importe_no_socio ?? 0),
+      descripcion: ev.transporte_descripcion,
+    },
   }
 }
 

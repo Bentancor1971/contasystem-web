@@ -29,6 +29,20 @@ export interface EventoRemoto {
   texto_antes: string | null
   texto_despues: string | null
   email_contacto: string | null
+  transporte_disponible: boolean
+  transporte_con_costo: boolean
+  transporte_importe_socio: number
+  transporte_importe_no_socio: number
+  transporte_descripcion: string | null
+}
+
+/** Config de transporte tal como la ve el formulario público. */
+export interface TransportePublico {
+  disponible: boolean
+  con_costo: boolean
+  importe_socio: number
+  importe_no_socio: number
+  descripcion: string | null
 }
 
 /** Categoría agrupada para el formulario público (una fila por categoría, con ambos precios). */
@@ -54,6 +68,7 @@ export interface EventoPublico {
   texto_antes: string | null
   texto_despues: string | null
   categorias: CategoriaEvento[]
+  transporte: TransportePublico
 }
 
 /** Validación pública de un certificado (leído por /c/[token]). */

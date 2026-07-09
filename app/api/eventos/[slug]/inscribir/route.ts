@@ -27,6 +27,7 @@ interface Body {
   mail?: unknown
   telefono?: unknown
   categoria_id?: unknown
+  lleva_transporte?: unknown
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
@@ -100,6 +101,20 @@ export async function POST(
       categoriaNombre = precio.categoria_nombre
     }
 
+    // Transporte (opcional): si el evento lo ofrece y la persona lo pidió.
+    // El costo (si aplica) es diferenciado socio/no_socio.
+    let llevaTransporte = false
+    let transporteImporte = 0
+    if (evento.transporte_disponible && body.lleva_transporte === true) {
+      llevaTransporte = true
+      if (evento.transporte_con_costo) {
+        transporteImporte =
+          part.tipo_participante === 'socio'
+            ? Number(evento.transporte_importe_socio)
+            : Number(evento.transporte_importe_no_socio)
+      }
+    }
+
     // Dedupe explícito + mensaje claro
     const documentoHash = hashDocumento(documento)
     const { data: ya } = await admin
@@ -135,9 +150,11 @@ export async function POST(
         importe,
         moneda_codigo: evento.moneda_codigo,
         cuotas_pendientes: part.cuotas_pendientes,
+        lleva_transporte: llevaTransporte,
+        transporte_importe: transporteImporte,
         estado: 'pendiente',
       })
-      .select('numero, importe, moneda_codigo, categoria_nombre, tipo_participante')
+      .select('numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe')
       .single()
 
     if (insErr) {
@@ -163,6 +180,9 @@ export async function POST(
         tipo_participante: inserted.tipo_participante as string,
         es_socio: part.encontrado,
         cuotas_pendientes: part.cuotas_pendientes,
+        lleva_transporte: !!inserted.lleva_transporte,
+        transporte_importe: Number(inserted.transporte_importe),
+        total: Number(inserted.importe) + Number(inserted.transporte_importe),
       },
     })
   } catch (err) {

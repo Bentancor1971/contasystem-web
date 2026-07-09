@@ -26,6 +26,9 @@ interface Resultado {
   tipo_participante: string
   es_socio: boolean
   cuotas_pendientes: number | null
+  lleva_transporte: boolean
+  transporte_importe: number
+  total: number
 }
 
 export function EventoForm({ evento }: { evento: EventoPublico }) {
@@ -38,6 +41,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   const [mail, setMail] = useState('')
   const [telefono, setTelefono] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
+  const [llevaTransporte, setLlevaTransporte] = useState(false)
 
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<Resultado | null>(null)
@@ -48,6 +52,18 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   // Precio visible por categoría según el tipo de participante resuelto.
   const precioDe = (c: EventoPublico['categorias'][number]): number | null =>
     tipo === 'socio' ? c.precio_socio : c.precio_no_socio
+
+  // Transporte: costo según tipo de participante (0 si sin costo o no lo pide).
+  const transp = evento.transporte
+  const transporteImporte =
+    transp.disponible && llevaTransporte && transp.con_costo
+      ? tipo === 'socio'
+        ? transp.importe_socio
+        : transp.importe_no_socio
+      : 0
+  const categoriaSel = evento.categorias.find((c) => c.categoria_id === categoriaId)
+  const categoriaImporte = categoriaSel ? precioDe(categoriaSel) ?? 0 : 0
+  const total = categoriaImporte + transporteImporte
 
   if (!evento.abierto) {
     return (
@@ -82,8 +98,22 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             </div>
           )}
           <div className="flex justify-between">
-            <dt className="text-ink-3">Importe</dt>
-            <dd className="font-semibold">{formatImporte(resultado.importe, resultado.moneda_codigo)}</dd>
+            <dt className="text-ink-3">Inscripción</dt>
+            <dd>{formatImporte(resultado.importe, resultado.moneda_codigo)}</dd>
+          </div>
+          {resultado.lleva_transporte && (
+            <div className="flex justify-between">
+              <dt className="text-ink-3">Transporte</dt>
+              <dd>
+                {resultado.transporte_importe > 0
+                  ? formatImporte(resultado.transporte_importe, resultado.moneda_codigo)
+                  : 'Sin costo'}
+              </dd>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-line pt-2 mt-1">
+            <dt className="text-ink-3 font-semibold">Total</dt>
+            <dd className="font-semibold">{formatImporte(resultado.total, resultado.moneda_codigo)}</dd>
           </div>
         </dl>
         {evento.texto_despues && (
@@ -154,6 +184,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           mail: mail.trim(),
           telefono: telefono.trim(),
           categoria_id: categoriaId,
+          lleva_transporte: llevaTransporte,
         }),
       })
       const data = await res.json()
@@ -273,6 +304,42 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 })}
               </div>
             </fieldset>
+          )}
+
+          {transp.disponible && (
+            <div className="border-t border-line pt-5">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-amber-deep w-4 h-4 mt-1"
+                  checked={llevaTransporte}
+                  onChange={(e) => setLlevaTransporte(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">Necesito transporte</span>
+                  {transp.descripcion && (
+                    <span className="block text-sm text-ink-2 mt-0.5">{transp.descripcion}</span>
+                  )}
+                  <span className="block text-sm font-mono text-ink-2 mt-0.5">
+                    {transp.con_costo
+                      ? formatImporte(
+                          tipo === 'socio' ? transp.importe_socio : transp.importe_no_socio,
+                          evento.moneda_codigo,
+                        )
+                      : 'Sin costo'}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
+          {(conCosto || transporteImporte > 0) && (
+            <div className="flex justify-between items-baseline border-t border-line pt-4">
+              <span className="label-mono">Total</span>
+              <span className="font-mono text-xl font-semibold">
+                {formatImporte(total, evento.moneda_codigo)}
+              </span>
+            </div>
           )}
 
           <button type="submit" className="btn-primary w-full" disabled={enviando}>
