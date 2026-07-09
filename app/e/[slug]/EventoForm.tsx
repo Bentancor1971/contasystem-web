@@ -17,10 +17,11 @@ import type {
   ResolucionParticipante,
   TipoParticipante,
 } from '@/lib/eventos-types'
+import { simboloMoneda } from '@/lib/format'
 
 function formatImporte(n: number, moneda: string): string {
   const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${moneda} ${nf.format(n)}`
+  return `${simboloMoneda(moneda)} ${nf.format(n)}`
 }
 
 /** Valor de `categoriaId` cuando el participante elige la opción de categoría libre. */
@@ -260,8 +261,24 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         return
       }
       setResuelto(data)
-      setCategoriaId('')
       setCategoriaOtros('')
+      // Pre-seleccionar la categoría que el socio tiene definida en la BD, si
+      // está disponible en el evento (y con costo, con tarifa para su tipo).
+      let preseleccion = ''
+      if (data.categoria_id) {
+        if (conCosto) {
+          const c = evento.categorias.find((x) => x.categoria_id === data.categoria_id)
+          const precio = c
+            ? data.tipo_participante === 'socio'
+              ? c.precio_socio
+              : c.precio_no_socio
+            : null
+          if (c && precio != null) preseleccion = data.categoria_id
+        } else if (evento.categorias_socio.some((x) => x.id === data.categoria_id)) {
+          preseleccion = data.categoria_id
+        }
+      }
+      setCategoriaId(preseleccion)
       setLlevaAlimentacion(false)
       setAlimentacionTipo('')
       setAlimentacionOtros('')
@@ -383,7 +400,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 {resuelto.cuotas_pendientes === 1 ? '' : 's'} — se aplica tarifa <strong>No socio</strong>.
               </p>
             ) : (
-              <p className="text-sm text-status-ok font-mono">✓ Socio al día — tarifa preferencial</p>
+              <p className="text-sm text-status-ok font-mono">✓ Socio al día — Evento con costo bonificado</p>
             )
           ) : (
             <p className="text-sm text-ink-2 font-mono">Registrándote como No socio.</p>

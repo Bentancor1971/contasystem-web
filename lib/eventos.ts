@@ -231,6 +231,8 @@ export async function resolverParticipante(
     mail: '',
     cuotas_pendientes: null,
     tipo_participante: 'no_socio',
+    categoria_id: null,
+    categoria_nombre: null,
   }
   if (doc.length < 6) return vacio
 
@@ -246,13 +248,23 @@ export async function resolverParticipante(
   if (error) throw new Error(`Error buscando socio: ${error.message}`)
   if (!socio) return vacio
 
-  // Cuotas pendientes (0 si no hay fila). Key: empresa + documento_hash del socio.
-  const { data: cuotasRow } = await admin
-    .from('socios_cuotas_remoto')
-    .select('cuotas_pendientes')
-    .eq('empresa_id', evento.empresa_id)
-    .eq('documento_hash', (socio.documento_hash as string) ?? '')
-    .maybeSingle()
+  const docHash = (socio.documento_hash as string) ?? ''
+
+  // Cuotas pendientes + categoría del socio (ambas keyed por empresa + documento_hash).
+  const [{ data: cuotasRow }, { data: catRow }] = await Promise.all([
+    admin
+      .from('socios_cuotas_remoto')
+      .select('cuotas_pendientes')
+      .eq('empresa_id', evento.empresa_id)
+      .eq('documento_hash', docHash)
+      .maybeSingle(),
+    admin
+      .from('socios_categoria_remoto')
+      .select('categoria_id, categoria_nombre')
+      .eq('empresa_id', evento.empresa_id)
+      .eq('documento_hash', docHash)
+      .maybeSingle(),
+  ])
 
   const cuotas = Number(cuotasRow?.cuotas_pendientes ?? 0)
   const tipo: TipoParticipante =
@@ -266,6 +278,8 @@ export async function resolverParticipante(
     mail: (socio.mail as string | null) ?? '',
     cuotas_pendientes: cuotas,
     tipo_participante: tipo,
+    categoria_id: (catRow?.categoria_id as string | null) ?? null,
+    categoria_nombre: (catRow?.categoria_nombre as string | null) ?? null,
   }
 }
 

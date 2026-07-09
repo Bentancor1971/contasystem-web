@@ -128,4 +128,7 @@ export interface ResolucionParticipante {
   mail: string
   cuotas_pendientes: number | null
   tipo_participante: TipoParticipante
+  /** Categoría del socio definida en la BD (para pre-seleccionar y sugerir tarifa). */
+  categoria_id: string | null
+  categoria_nombre: string | null
 }
