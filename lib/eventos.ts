@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   CategoriaEvento,
+  CategoriaSocioPublica,
   EventoPublico,
   EventoRemoto,
   ResolucionParticipante,
@@ -66,6 +67,62 @@ export async function loadCategoriasEvento(
   return [...porCat.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
+/** Catálogo de categorías de socio activas de la empresa (sin precio). */
+export async function loadCategoriasSocio(
+  admin: SupabaseClient,
+  empresaId: string,
+): Promise<CategoriaSocioPublica[]> {
+  const { data, error } = await admin
+    .from('categorias_socio_remoto')
+    .select('id, nombre')
+    .eq('empresa_id', empresaId)
+    .eq('activa', 1)
+    .order('nombre')
+  if (error) throw new Error(`Error consultando categorías de socio: ${error.message}`)
+  return ((data ?? []) as { id: string; nombre: string }[]).map((r) => ({
+    id: r.id,
+    nombre: r.nombre,
+  }))
+}
+
+/** Nombre de una categoría de socio del catálogo (o null si no existe en la empresa). */
+export async function nombreCategoriaSocio(
+  admin: SupabaseClient,
+  empresaId: string,
+  categoriaId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('categorias_socio_remoto')
+    .select('nombre')
+    .eq('empresa_id', empresaId)
+    .eq('id', categoriaId)
+    .maybeSingle()
+  if (error) throw new Error(`Error consultando categoría: ${error.message}`)
+  return data ? (data.nombre as string) : null
+}
+
+/**
+ * Precio más alto definido en el evento para un tipo de participante.
+ * Sirve de tarifa de referencia cuando la persona elige "Otros" (categoría libre).
+ * Devuelve null si el evento no tiene ninguna categoría con precio para ese tipo.
+ */
+export async function precioMaximoCategoria(
+  admin: SupabaseClient,
+  eventoId: string,
+  tipo: TipoParticipante,
+): Promise<number | null> {
+  const { data, error } = await admin
+    .from('evento_categorias_remoto')
+    .select('importe')
+    .eq('evento_id', eventoId)
+    .eq('tipo_participante', tipo)
+    .order('importe', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`Error consultando precio máximo: ${error.message}`)
+  return data ? Number(data.importe) : null
+}
+
 /** Cuántas inscripciones ocupan cupo en el evento. */
 export async function contarInscriptos(
   admin: SupabaseClient,
@@ -88,9 +145,15 @@ export async function loadEventoPublico(
   const ev = await loadEventoRemotoBySlug(admin, slug)
   if (!ev) return null
 
-  const [categorias, inscriptos] = await Promise.all([
+  const [categorias, inscriptos, categoriasSocio] = await Promise.all([
     loadCategoriasEvento(admin, ev.id),
     ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
+    // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
+    // grilla en eventos sin costo; en los con costo la grilla son las categorías
+    // con precio (evento_categorias_remoto).
+    ev.tipo === 'sin_costo'
+      ? loadCategoriasSocio(admin, ev.empresa_id)
+      : Promise.resolve([] as CategoriaSocioPublica[]),
   ])
 
   const cupoCompleto = ev.cupo_maximo != null && inscriptos >= ev.cupo_maximo
@@ -111,7 +174,9 @@ export async function loadEventoPublico(
     motivo_cerrado: motivo,
     texto_antes: ev.texto_antes,
     texto_despues: ev.texto_despues,
+    datos_deposito: ev.datos_deposito,
     categorias,
+    categorias_socio: categoriasSocio,
     transporte: {
       disponible: !!ev.transporte_disponible,
       con_costo: !!ev.transporte_con_costo,
@@ -119,7 +184,27 @@ export async function loadEventoPublico(
       importe_no_socio: Number(ev.transporte_importe_no_socio ?? 0),
       descripcion: ev.transporte_descripcion,
     },
+    alimentacion: {
+      disponible: !!ev.alimentacion_disponible,
+      con_costo: !!ev.alimentacion_con_costo,
+      importe_socio: Number(ev.alimentacion_importe_socio ?? 0),
+      importe_no_socio: Number(ev.alimentacion_importe_no_socio ?? 0),
+      descripcion: ev.alimentacion_descripcion,
+      opciones: parseOpcionesAlimentacion(ev.alimentacion_opciones),
+    },
   }
+}
+
+/** Parsea el JSON de opciones de alimentación. Tolera null / texto inválido. */
+export function parseOpcionesAlimentacion(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const arr = JSON.parse(raw)
+    if (Array.isArray(arr)) return arr.map((x) => String(x).trim()).filter(Boolean)
+  } catch {
+    return raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)
+  }
+  return []
 }
 
 /**

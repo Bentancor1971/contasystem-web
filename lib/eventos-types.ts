@@ -6,6 +6,9 @@
 
 export type TipoParticipante = 'socio' | 'no_socio'
 
+/** Modalidad de inscripción elegida en el formulario público. */
+export type ModalidadInscripcion = 'reserva' | 'pago_transferencia'
+
 export type EstadoInscripcionRemota =
   | 'pendiente'
   | 'importado'
@@ -34,6 +37,15 @@ export interface EventoRemoto {
   transporte_importe_socio: number
   transporte_importe_no_socio: number
   transporte_descripcion: string | null
+  alimentacion_disponible: boolean
+  alimentacion_con_costo: boolean
+  alimentacion_importe_socio: number
+  alimentacion_importe_no_socio: number
+  alimentacion_descripcion: string | null
+  /** Lista de tipos de alimentación (JSON array de strings). */
+  alimentacion_opciones: string | null
+  /** Datos de la cuenta para pago por transferencia (texto libre, opcional). */
+  datos_deposito: string | null
 }
 
 /** Config de transporte tal como la ve el formulario público. */
@@ -45,12 +57,30 @@ export interface TransportePublico {
   descripcion: string | null
 }
 
+/** Config de alimentación tal como la ve el formulario público. Espejo de
+ * transporte + la lista de tipos (opciones) para que la persona elija. */
+export interface AlimentacionPublica {
+  disponible: boolean
+  con_costo: boolean
+  importe_socio: number
+  importe_no_socio: number
+  descripcion: string | null
+  /** Tipos ofrecidos (Estándar, Vegetariano, …). Vacío = solo checkbox. */
+  opciones: string[]
+}
+
 /** Categoría agrupada para el formulario público (una fila por categoría, con ambos precios). */
 export interface CategoriaEvento {
   categoria_id: string
   nombre: string
   precio_socio: number | null
   precio_no_socio: number | null
+}
+
+/** Categoría de socio del catálogo (sin precio) — clasificación para eventos sin costo. */
+export interface CategoriaSocioPublica {
+  id: string
+  nombre: string
 }
 
 /** Payload que el server manda al formulario público. */
@@ -68,7 +98,12 @@ export interface EventoPublico {
   texto_antes: string | null
   texto_despues: string | null
   categorias: CategoriaEvento[]
+  /** Catálogo de categorías de socio (sin precio) — se ofrece como grilla en eventos sin costo. */
+  categorias_socio: CategoriaSocioPublica[]
   transporte: TransportePublico
+  alimentacion: AlimentacionPublica
+  /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */
+  datos_deposito: string | null
 }
 
 /** Validación pública de un certificado (leído por /c/[token]). */

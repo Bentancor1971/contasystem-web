@@ -181,6 +181,25 @@ export function rowToGmailAccount(row: TemplateRow): GmailAccount | null {
 }
 
 /**
+ * Casilla Gmail de UNA empresa (independiente de si tiene cumpleaños activos).
+ * La reutiliza el acuse de inscripción a eventos. Devuelve null si la empresa
+ * no tiene la casilla completa (usuario + App Password + nombre remitente) o
+ * si la tabla no existe.
+ */
+export async function loadGmailAccountForEmpresa(
+  supabase: SupabaseClient,
+  empresaId: string,
+): Promise<GmailAccount | null> {
+  const { data, error } = await supabase
+    .from(TEMPLATE_TABLE)
+    .select('gmail_user, gmail_app_password, from_name')
+    .eq('empresa_id', empresaId)
+    .maybeSingle()
+  if (error || !data) return null
+  return rowToGmailAccount(data as TemplateRow)
+}
+
+/**
  * Hora de envío configurada (0-23, hora de Montevideo). Si la tabla no
  * existe o el valor es inválido, devuelve DEFAULT_HORA_ENVIO.
  */
