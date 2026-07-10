@@ -19,6 +19,9 @@ import {
   resolverParticipante,
 } from '@/lib/eventos'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
+import { loadEventoWebConfig } from '@/lib/evento-web-config'
+import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
+import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
 import { sendInscripcionEmail } from '@/lib/mailer'
 import type { CambioDato } from '@/lib/recibo-evento-email'
@@ -36,6 +39,8 @@ interface Body {
   /** Categoría escrita a mano por el participante cuando elige "Otros". */
   categoria_otros?: unknown
   lleva_transporte?: unknown
+  /** Referencia de transferencia, si la persona ya transfirió al inscribirse. */
+  referencia_transferencia?: unknown
   lleva_alimentacion?: unknown
   /** Tipo de alimentación elegido (de las opciones o "Otros" a mano). */
   alimentacion_tipo?: unknown
@@ -60,13 +65,11 @@ export async function POST(
 
     const documento = str(body.documento)
     const nombre = str(body.nombre)
-    const apellido = str(body.apellido)
-    const mail = str(body.mail)
-    const telefono = str(body.telefono)
+    let apellido = str(body.apellido)
+    let mail = str(body.mail)
+    let telefono = str(body.telefono)
     const categoriaId = str(body.categoria_id)
     const categoriaOtros = str(body.categoria_otros)
-    // "Otros" = categoría libre escrita por el participante (sin categoria_id).
-    const esOtros = !categoriaId && categoriaOtros.length > 0
     // Modalidad: reserva de cupo (default) o pago declarado por transferencia.
     // Sólo tiene sentido "pago_transferencia" si el evento tiene datos de depósito.
     const modalidad =
@@ -83,12 +86,45 @@ export async function POST(
     }
 
     const admin = createAdminClient()
+
+    // Tope por IP: el 409 "ya está inscripta" es un oráculo de asistencia.
+    if (!(await permitido(admin, req, LIMITES.inscribir))) {
+      return NextResponse.json(RESPUESTA_429, { status: 429 })
+    }
+
     const evento = await loadEventoRemotoBySlug(admin, slug)
     if (!evento) {
       return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
     }
     if (evento.estado !== 'abierto') {
       return NextResponse.json({ error: 'Las inscripciones están cerradas' }, { status: 409 })
+    }
+
+    // Config web del evento. NO se confía en el cliente: los campos ocultos se
+    // descartan y los obligatorios se exigen acá.
+    const cfg = await loadEventoWebConfig(admin, evento.id)
+    if (!cfg.mostrar_apellido) apellido = ''
+    if (!cfg.mostrar_email) mail = ''
+    if (!cfg.mostrar_telefono) telefono = ''
+    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido) {
+      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
+    }
+    if (cfg.mostrar_email && cfg.email_obligatorio && !mail) {
+      return NextResponse.json({ error: 'El email es obligatorio' }, { status: 400 })
+    }
+    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono) {
+      return NextResponse.json({ error: 'El teléfono es obligatorio' }, { status: 400 })
+    }
+
+    // En eventos con costo la categoría define el precio: siempre se exige.
+    const categoriaVisible = evento.tipo === 'con_costo' || cfg.mostrar_categoria
+    // "Otros" = categoría libre escrita por el participante (sin categoria_id).
+    const esOtros = !categoriaId && categoriaOtros.length > 0 && cfg.permitir_categoria_otros
+    if (categoriaOtros && !cfg.permitir_categoria_otros) {
+      return NextResponse.json(
+        { error: 'Este evento no admite categorías libres' },
+        { status: 400 },
+      )
     }
 
     // Cupo global
@@ -102,6 +138,15 @@ export async function POST(
     // Resolver participante (socio/no_socio según cuotas)
     const part = await resolverParticipante(admin, evento, documento)
 
+    // El formulario ya no pre-rellena los datos del socio (el lookup público no
+    // los entrega, ver ResolucionPublica). Por eso un campo vacío significa "no
+    // lo escribió", NO "borralo": lo completamos desde la ficha para no
+    // proponerle al contador un cambio que le vacíe datos al socio.
+    if (part.encontrado) {
+      if (!apellido) apellido = part.apellido
+      if (!mail) mail = part.mail
+    }
+
     // Categoría (obligatoria): predefinida del catálogo o libre ("Otros").
     //   - con costo: la categoría fija el importe. "Otros" toma la tarifa más
     //     alta del evento como referencia (categoría no prevista).
@@ -110,11 +155,14 @@ export async function POST(
     let categoriaNombre: string | null = null
     let categoriaIdFinal: string | null = categoriaId || null
 
-    if (!categoriaId && !esOtros) {
+    if (categoriaVisible && !categoriaId && !esOtros) {
       return NextResponse.json({ error: 'Elegí una categoría' }, { status: 400 })
     }
 
-    if (evento.tipo === 'con_costo') {
+    if (!categoriaVisible) {
+      // Categoría oculta por config (sólo posible en eventos sin costo).
+      categoriaIdFinal = null
+    } else if (evento.tipo === 'con_costo') {
       if (esOtros) {
         const max = await precioMaximoCategoria(admin, evento.id, part.tipo_participante)
         if (max == null) {
@@ -156,7 +204,7 @@ export async function POST(
     // El costo (si aplica) es diferenciado socio/no_socio.
     let llevaTransporte = false
     let transporteImporte = 0
-    if (evento.transporte_disponible && body.lleva_transporte === true) {
+    if (evento.transporte_disponible && cfg.mostrar_transporte && body.lleva_transporte === true) {
       llevaTransporte = true
       if (evento.transporte_con_costo) {
         transporteImporte =
@@ -171,7 +219,7 @@ export async function POST(
     let llevaAlimentacion = false
     let alimentacionImporte = 0
     let alimentacionTipo: string | null = null
-    if (evento.alimentacion_disponible && body.lleva_alimentacion === true) {
+    if (evento.alimentacion_disponible && cfg.mostrar_alimentacion && body.lleva_alimentacion === true) {
       llevaAlimentacion = true
       const opciones = parseOpcionesAlimentacion(evento.alimentacion_opciones)
       const tipoElegido = str(body.alimentacion_tipo)
@@ -191,7 +239,10 @@ export async function POST(
     // de depósito y hay algo para pagar; si no, es una reserva de cupo.
     const totalAPagar = importe + transporteImporte + alimentacionImporte
     const modalidadFinal =
-      modalidad === 'pago_transferencia' && !!evento.datos_deposito && totalAPagar > 0
+      modalidad === 'pago_transferencia' &&
+      cfg.permitir_pago_transferencia &&
+      !!evento.datos_deposito &&
+      totalAPagar > 0
         ? 'pago_transferencia'
         : 'reserva'
 
@@ -236,6 +287,11 @@ export async function POST(
         alimentacion_importe: alimentacionImporte,
         alimentacion_tipo: alimentacionTipo,
         modalidad: modalidadFinal,
+        // Sólo tiene sentido si efectivamente declaró pago por transferencia.
+        referencia_transferencia:
+          modalidadFinal === 'pago_transferencia'
+            ? str(body.referencia_transferencia).slice(0, 80) || null
+            : null,
         estado: 'pendiente',
       })
       .select('numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad')
@@ -276,9 +332,35 @@ export async function POST(
             dif('Apellido', part.apellido, apellido)
             dif('Email', part.mail, mail)
           }
+          // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
+          // Las variables se escapan y el HTML se sanea antes de enviarlo.
+          const totalMail =
+            Number(inserted.importe) +
+            Number(inserted.transporte_importe) +
+            Number(inserted.alimentacion_importe)
+          // El asunto es texto plano; el cuerpo es HTML (variables escapadas).
+          const varsTexto: Record<string, string> = {
+            nombre: `${nombre} ${apellido}`.trim(),
+            evento: evento.nombre,
+            numero: (inserted.numero as string | null) ?? '',
+            total: `${evento.moneda_codigo} ${totalMail.toFixed(2)}`,
+          }
+          const varsHtml = Object.fromEntries(
+            Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
+          )
+          const override = {
+            asunto: cfg.mail_acuse_asunto
+              ? aplicarVariables(cfg.mail_acuse_asunto, varsTexto)
+              : null,
+            html: cfg.mail_acuse_html
+              ? sanitizeHtml(aplicarVariables(cfg.mail_acuse_html, varsHtml))
+              : null,
+          }
+
           const envio = await sendInscripcionEmail({
             cuenta,
             to: destino,
+            override,
             data: {
               empresa: { nombre: cuenta.fromName },
               eventoNombre: evento.nombre,
@@ -320,8 +402,8 @@ export async function POST(
         importe: Number(inserted.importe),
         moneda_codigo: inserted.moneda_codigo as string,
         tipo_participante: inserted.tipo_participante as string,
-        es_socio: part.encontrado,
-        cuotas_pendientes: part.cuotas_pendientes,
+        // No se devuelven `es_socio` ni `cuotas_pendientes`: la UI no los usa y
+        // serían un oráculo de padrón/deuda en un endpoint sin autenticación.
         lleva_transporte: !!inserted.lleva_transporte,
         transporte_importe: Number(inserted.transporte_importe),
         lleva_alimentacion: !!inserted.lleva_alimentacion,

@@ -8,6 +8,8 @@ import type { Metadata } from 'next'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadCertificado } from '@/lib/certificados'
+import { loadEventoWebConfig } from '@/lib/evento-web-config'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -38,6 +40,12 @@ export default async function CertificadoPage({
   const valido = cert.estado === 'valido'
   const fechaEvento = formatFechaLarga(cert.evento_fecha)
   const emitido = formatFechaLarga(cert.emitido_at)
+
+  // HTML propio del evento (configurado en /configuracion/eventos). Se agrega
+  // debajo de la tarjeta; no reemplaza los datos de validación.
+  const htmlExtra = cert.evento_id
+    ? sanitizeHtml((await loadEventoWebConfig(admin, cert.evento_id)).certificado_html)
+    : ''
 
   return (
     <main className="min-h-screen bg-paper flex items-center justify-center px-6 py-12">
@@ -98,6 +106,10 @@ export default async function CertificadoPage({
             )}
           </dl>
         </div>
+
+        {htmlExtra && (
+          <div className="card p-6 mt-4 evento-html" dangerouslySetInnerHTML={{ __html: htmlExtra }} />
+        )}
 
         <p className="text-center font-mono text-[11px] text-ink-3 mt-6">
           CONTASYSTEM · VALIDACIÓN DE CERTIFICADO

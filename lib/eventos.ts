@@ -17,6 +17,7 @@ import type {
   TipoParticipante,
 } from '@/lib/eventos-types'
 import { normalizeDocumento } from '@/lib/documento'
+import { loadEventoWebConfig } from '@/lib/evento-web-config'
 
 /** Estados de inscripción que ocupan cupo. */
 const ESTADOS_OCUPAN = ['pendiente', 'importado']
@@ -145,7 +146,7 @@ export async function loadEventoPublico(
   const ev = await loadEventoRemotoBySlug(admin, slug)
   if (!ev) return null
 
-  const [categorias, inscriptos, categoriasSocio] = await Promise.all([
+  const [categorias, inscriptos, categoriasSocio, config] = await Promise.all([
     loadCategoriasEvento(admin, ev.id),
     ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
     // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
@@ -154,6 +155,7 @@ export async function loadEventoPublico(
     ev.tipo === 'sin_costo'
       ? loadCategoriasSocio(admin, ev.empresa_id)
       : Promise.resolve([] as CategoriaSocioPublica[]),
+    loadEventoWebConfig(admin, ev.id),
   ])
 
   const cupoCompleto = ev.cupo_maximo != null && inscriptos >= ev.cupo_maximo
@@ -177,6 +179,7 @@ export async function loadEventoPublico(
     datos_deposito: ev.datos_deposito,
     categorias,
     categorias_socio: categoriasSocio,
+    config,
     transporte: {
       disponible: !!ev.transporte_disponible,
       con_costo: !!ev.transporte_con_costo,

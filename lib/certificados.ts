@@ -14,7 +14,7 @@ export async function loadCertificado(
 ): Promise<CertificadoPublico | null> {
   const { data, error } = await admin
     .from('certificados_remoto')
-    .select('token, estado, evento_nombre, evento_fecha, evento_lugar, nombre_completo, categoria_nombre, numero, emitido_at')
+    .select('token, estado, evento_id, evento_nombre, evento_fecha, evento_lugar, nombre_completo, categoria_nombre, numero, emitido_at')
     .eq('token', token)
     .maybeSingle()
 

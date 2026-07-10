@@ -14,7 +14,7 @@ import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock
 import type {
   EventoPublico,
   ModalidadInscripcion,
-  ResolucionParticipante,
+  ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
 import { simboloMoneda } from '@/lib/format'
@@ -35,8 +35,6 @@ interface Resultado {
   importe: number
   moneda_codigo: string
   tipo_participante: string
-  es_socio: boolean
-  cuotas_pendientes: number | null
   lleva_transporte: boolean
   transporte_importe: number
   lleva_alimentacion: boolean
@@ -50,7 +48,7 @@ interface Resultado {
 export function EventoForm({ evento }: { evento: EventoPublico }) {
   const [documento, setDocumento] = useState('')
   const [verificando, setVerificando] = useState(false)
-  const [resuelto, setResuelto] = useState<ResolucionParticipante | null>(null)
+  const [resuelto, setResuelto] = useState<ResolucionPublica | null>(null)
 
   const [nombre, setNombre] = useState('')
   const [apellido, setApellido] = useState('')
@@ -62,12 +60,20 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   const [llevaAlimentacion, setLlevaAlimentacion] = useState(false)
   const [alimentacionTipo, setAlimentacionTipo] = useState('')
   const [alimentacionOtros, setAlimentacionOtros] = useState('')
+  const [referenciaTransferencia, setReferenciaTransferencia] = useState('')
 
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<Resultado | null>(null)
 
   const tipo: TipoParticipante = resuelto?.tipo_participante ?? 'no_socio'
   const conCosto = evento.tipo === 'con_costo'
+
+  // Config web del evento. Los flags `mostrar_*` sólo OCULTAN: nunca habilitan
+  // algo que el desktop no configuró (transporte/alimentación disponibles).
+  const cfg = evento.config
+  // En eventos con costo la categoría define el precio: no se puede ocultar.
+  const categoriaVisible = conCosto || cfg.mostrar_categoria
+  const permitirOtros = cfg.permitir_categoria_otros
 
   // Vuelve el formulario al estado inicial (útil en modo kiosco, para el siguiente inscripto).
   function cerrarFormulario() {
@@ -84,6 +90,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
     setLlevaAlimentacion(false)
     setAlimentacionTipo('')
     setAlimentacionOtros('')
+    setReferenciaTransferencia('')
     setEnviando(false)
     setResultado(null)
   }
@@ -92,18 +99,20 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   const precioDe = (c: EventoPublico['categorias'][number]): number | null =>
     tipo === 'socio' ? c.precio_socio : c.precio_no_socio
 
-  // Transporte: costo según tipo de participante (0 si sin costo o no lo pide).
+  // Transporte: costo según tipo de participante (0 si sin costo, oculto o no lo pide).
   const transp = evento.transporte
+  const transporteVisible = transp.disponible && cfg.mostrar_transporte
   const transporteImporte =
-    transp.disponible && llevaTransporte && transp.con_costo
+    transporteVisible && llevaTransporte && transp.con_costo
       ? tipo === 'socio'
         ? transp.importe_socio
         : transp.importe_no_socio
       : 0
   // Alimentación: espejo de transporte. El tipo es una preferencia (no cambia precio).
   const alim = evento.alimentacion
+  const alimentacionVisible = alim.disponible && cfg.mostrar_alimentacion
   const alimentacionImporte =
-    alim.disponible && llevaAlimentacion && alim.con_costo
+    alimentacionVisible && llevaAlimentacion && alim.con_costo
       ? tipo === 'socio'
         ? alim.importe_socio
         : alim.importe_no_socio
@@ -133,10 +142,12 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         ? precioDe(categoriaSel) ?? 0
         : 0
   const total = categoriaImporte + transporteImporte + alimentacionImporte
-  // Puede ofrecer "pago por transferencia" si el evento publica datos de depósito
-  // y la inscripción tiene algún costo (si no, sólo reserva de cupo).
+  // Puede ofrecer "pago por transferencia" si la config lo permite, el evento
+  // publica datos de depósito y la inscripción tiene algún costo (si no, sólo reserva).
   const puedeTransferir =
-    !!evento.datos_deposito && (conCosto || transporteImporte > 0 || alimentacionImporte > 0)
+    cfg.permitir_pago_transferencia &&
+    !!evento.datos_deposito &&
+    (conCosto || transporteImporte > 0 || alimentacionImporte > 0)
 
   if (!evento.abierto) {
     return (
@@ -255,7 +266,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documento: doc }),
       })
-      const data = (await res.json()) as ResolucionParticipante & { error?: string }
+      const data = (await res.json()) as ResolucionPublica & { error?: string }
       if (!res.ok) {
         toast.error(data.error ?? 'No se pudo verificar')
         return
@@ -282,17 +293,13 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       setLlevaAlimentacion(false)
       setAlimentacionTipo('')
       setAlimentacionOtros('')
-      if (data.encontrado) {
-        setNombre(data.nombre ?? '')
-        setApellido(data.apellido ?? '')
-        setMail(data.mail ?? '')
-        if (data.tipo_participante === 'no_socio') {
-          toast('Socio con cuotas pendientes — se aplica tarifa No socio', { icon: '⚠️' })
-        } else {
-          toast.success('Te encontramos en el registro')
-        }
+      // No se pre-rellenan nombre/apellido/mail: el lookup público no los
+      // entrega. Si la persona ya está en el registro y deja un campo vacío,
+      // el server completa desde su ficha.
+      if (data.tipo_participante === 'socio') {
+        toast.success('Se aplica la tarifa Socio')
       } else {
-        toast('No estás en el registro — completá tus datos', { icon: '📝' })
+        toast('Se aplica la tarifa No socio', { icon: 'ℹ️' })
       }
     } catch {
       toast.error('Error de conexión')
@@ -306,7 +313,19 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       toast.error('El nombre es obligatorio')
       return
     }
-    if (!categoriaId) {
+    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido.trim()) {
+      toast.error('El apellido es obligatorio')
+      return
+    }
+    if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim()) {
+      toast.error('El email es obligatorio')
+      return
+    }
+    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono.trim()) {
+      toast.error('El teléfono es obligatorio')
+      return
+    }
+    if (categoriaVisible && !categoriaId) {
       toast.error('Elegí una categoría')
       return
     }
@@ -320,7 +339,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         ? alimentacionOtros.trim()
         : alimentacionTipo
       : ''
-    if (alim.disponible && llevaAlimentacion && alim.opciones.length > 0 && !alimTipoFinal) {
+    if (alimentacionVisible && llevaAlimentacion && alim.opciones.length > 0 && !alimTipoFinal) {
       toast.error('Elegí el tipo de alimentación')
       return
     }
@@ -340,6 +359,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           lleva_transporte: llevaTransporte,
           lleva_alimentacion: llevaAlimentacion,
           alimentacion_tipo: alimTipoFinal,
+          referencia_transferencia: referenciaTransferencia.trim(),
           modalidad,
         }),
       })
@@ -391,19 +411,14 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             if (!puedeTransferir) enviar('reserva')
           }}
         >
-          {resuelto.encontrado ? (
-            resuelto.tipo_participante === 'no_socio' ? (
-              <p className="flex items-start gap-2 text-sm text-status-warn font-mono">
-                <Info size={15} className="mt-0.5 shrink-0" />
-                Sos socio pero figurás con {resuelto.cuotas_pendientes} cuota
-                {resuelto.cuotas_pendientes === 1 ? '' : 's'} pendiente
-                {resuelto.cuotas_pendientes === 1 ? '' : 's'} — se aplica tarifa <strong>No socio</strong>.
-              </p>
-            ) : (
-              <p className="text-sm text-status-ok font-mono">✓ Socio al día — Evento con costo bonificado</p>
-            )
+          {resuelto.tipo_participante === 'socio' ? (
+            <p className="text-sm text-status-ok font-mono">✓ Socio al día — Evento con costo bonificado</p>
           ) : (
-            <p className="text-sm text-ink-2 font-mono">Registrándote como No socio.</p>
+            <p className="flex items-start gap-2 text-sm text-ink-2 font-mono">
+              <Info size={15} className="mt-0.5 shrink-0" />
+              Se aplica la tarifa <strong>No socio</strong>. Si sos socio y tenés cuotas
+              pendientes, consultá con la organización.
+            </p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -411,20 +426,33 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
               <label htmlFor="nombre" className="label-mono block mb-1">Nombre</label>
               <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
             </div>
-            <div>
-              <label htmlFor="apellido" className="label-mono block mb-1">Apellido</label>
-              <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} />
-            </div>
-            <div>
-              <label htmlFor="mail" className="label-mono block mb-1">Email</label>
-              <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="tu@correo.com" />
-            </div>
-            <div>
-              <label htmlFor="telefono" className="label-mono block mb-1">Teléfono</label>
-              <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="099 123 456" />
-            </div>
+            {cfg.mostrar_apellido && (
+              <div>
+                <label htmlFor="apellido" className="label-mono block mb-1">
+                  Apellido{cfg.apellido_obligatorio ? ' *' : ''}
+                </label>
+                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} required={cfg.apellido_obligatorio} />
+              </div>
+            )}
+            {cfg.mostrar_email && (
+              <div>
+                <label htmlFor="mail" className="label-mono block mb-1">
+                  Email{cfg.email_obligatorio ? ' *' : ''}
+                </label>
+                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="tu@correo.com" required={cfg.email_obligatorio} />
+              </div>
+            )}
+            {cfg.mostrar_telefono && (
+              <div>
+                <label htmlFor="telefono" className="label-mono block mb-1">
+                  Teléfono{cfg.telefono_obligatorio ? ' *' : ''}
+                </label>
+                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="099 123 456" required={cfg.telefono_obligatorio} />
+              </div>
+            )}
           </div>
 
+          {categoriaVisible && (
           <fieldset>
             <legend className="label-mono mb-3">
               Categoría{conCosto ? ` · tarifa ${tipo === 'socio' ? 'Socio' : 'No socio'}` : ''}
@@ -468,33 +496,35 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
               })}
 
               {/* Otros — categoría libre escrita por el participante */}
-              <label
-                className={[
-                  'flex items-center justify-between gap-4 p-4 rounded-xl border cursor-pointer transition',
-                  esOtros
-                    ? 'border-ink bg-paper-2 shadow-[2px_2px_0_var(--color-ink)]'
-                    : 'border-line hover:border-ink',
-                ].join(' ')}
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="categoria"
-                    className="accent-amber-deep"
-                    value={OTROS}
-                    checked={esOtros}
-                    onChange={() => setCategoriaId(OTROS)}
-                  />
-                  <span className="font-medium">Otros</span>
-                </div>
-                {conCosto && precioMaxOtros != null && (
-                  <span className="font-mono font-semibold">
-                    {formatImporte(precioMaxOtros, evento.moneda_codigo)}
-                  </span>
-                )}
-              </label>
+              {permitirOtros && (
+                <label
+                  className={[
+                    'flex items-center justify-between gap-4 p-4 rounded-xl border cursor-pointer transition',
+                    esOtros
+                      ? 'border-ink bg-paper-2 shadow-[2px_2px_0_var(--color-ink)]'
+                      : 'border-line hover:border-ink',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="categoria"
+                      className="accent-amber-deep"
+                      value={OTROS}
+                      checked={esOtros}
+                      onChange={() => setCategoriaId(OTROS)}
+                    />
+                    <span className="font-medium">Otros</span>
+                  </div>
+                  {conCosto && precioMaxOtros != null && (
+                    <span className="font-mono font-semibold">
+                      {formatImporte(precioMaxOtros, evento.moneda_codigo)}
+                    </span>
+                  )}
+                </label>
+              )}
 
-              {esOtros && (
+              {permitirOtros && esOtros && (
                 <div className="pl-4">
                   <input
                     className="field"
@@ -514,8 +544,9 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
               )}
             </div>
           </fieldset>
+          )}
 
-          {transp.disponible && (
+          {transporteVisible && (
             <div className="border-t border-line pt-5">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
@@ -542,7 +573,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             </div>
           )}
 
-          {alim.disponible && (
+          {alimentacionVisible && (
             <div className="border-t border-line pt-5 space-y-3">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
@@ -597,7 +628,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             </div>
           )}
 
-          {(conCosto || transporteImporte > 0 || alimentacionImporte > 0) && (
+          {cfg.mostrar_total && (conCosto || transporteImporte > 0 || alimentacionImporte > 0) && (
             <div className="flex justify-between items-baseline border-t border-line pt-4">
               <span className="label-mono">Total</span>
               <span className="font-mono text-xl font-semibold">
@@ -609,6 +640,24 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           {puedeTransferir ? (
             <div className="space-y-3 border-t border-line pt-5">
               <p className="label-mono">¿Cómo querés registrarte?</p>
+
+              {/* Opcional: sólo si ya transfirió antes de completar el formulario.
+                  Si todavía no transfirió, la carga después desde "registrar pago". */}
+              <div>
+                <label htmlFor="referencia" className="label-mono block mb-1">
+                  Referencia de transferencia (opcional)
+                </label>
+                <input
+                  id="referencia"
+                  className="field"
+                  placeholder="Si ya transferiste, poné el n° de comprobante"
+                  value={referenciaTransferencia}
+                  onChange={(e) => setReferenciaTransferencia(e.target.value)}
+                  maxLength={80}
+                  disabled={enviando}
+                />
+              </div>
+
               <button
                 type="button"
                 className="btn-primary w-full"

@@ -83,6 +83,52 @@ export interface CategoriaSocioPublica {
   nombre: string
 }
 
+/**
+ * Config web por evento (tabla evento_web_config, escrita sólo por la web).
+ * Los flags `mostrar_*` sólo pueden OCULTAR: nunca habilitan algo que el
+ * desktop no configuró (ej. transporte_disponible).
+ */
+export interface EventoWebConfig {
+  mostrar_apellido: boolean
+  apellido_obligatorio: boolean
+  mostrar_email: boolean
+  email_obligatorio: boolean
+  mostrar_telefono: boolean
+  telefono_obligatorio: boolean
+  mostrar_categoria: boolean
+  permitir_categoria_otros: boolean
+  mostrar_transporte: boolean
+  mostrar_alimentacion: boolean
+  mostrar_total: boolean
+  permitir_pago_transferencia: boolean
+  pagina_html_encabezado: string | null
+  pagina_html_pie: string | null
+  mail_acuse_asunto: string | null
+  mail_acuse_html: string | null
+  certificado_html: string | null
+}
+
+/** Config por defecto: todo visible, nada obligatorio salvo el nombre, sin HTML propio. */
+export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
+  mostrar_apellido: true,
+  apellido_obligatorio: false,
+  mostrar_email: true,
+  email_obligatorio: false,
+  mostrar_telefono: true,
+  telefono_obligatorio: false,
+  mostrar_categoria: true,
+  permitir_categoria_otros: true,
+  mostrar_transporte: true,
+  mostrar_alimentacion: true,
+  mostrar_total: true,
+  permitir_pago_transferencia: true,
+  pagina_html_encabezado: null,
+  pagina_html_pie: null,
+  mail_acuse_asunto: null,
+  mail_acuse_html: null,
+  certificado_html: null,
+}
+
 /** Payload que el server manda al formulario público. */
 export interface EventoPublico {
   slug: string
@@ -102,6 +148,8 @@ export interface EventoPublico {
   categorias_socio: CategoriaSocioPublica[]
   transporte: TransportePublico
   alimentacion: AlimentacionPublica
+  /** Config web del evento (visibilidad + HTML propio). Nunca null: cae a defaults. */
+  config: EventoWebConfig
   /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */
   datos_deposito: string | null
 }
@@ -110,6 +158,8 @@ export interface EventoPublico {
 export interface CertificadoPublico {
   token: string
   estado: 'valido' | 'revocado'
+  /** Permite resolver la config web del evento (evento_web_config). Puede faltar. */
+  evento_id: string | null
   evento_nombre: string
   evento_fecha: string | null
   evento_lugar: string | null
@@ -119,7 +169,24 @@ export interface CertificadoPublico {
   emitido_at: string | null
 }
 
-/** Resultado de resolver la cédula: quién es y qué precio le toca. */
+/**
+ * Lo ÚNICO que el endpoint público /lookup devuelve al navegador.
+ *
+ * Deliberadamente NO incluye nombre, apellido, mail, socio_id ni el número de
+ * cuotas pendientes: el endpoint no tiene autenticación, así que cualquiera
+ * podría enumerar cédulas y cosechar esos datos.
+ *
+ * `tipo_participante` es inevitable (el precio depende de él), pero colapsa dos
+ * casos —"no es socio" y "socio con cuotas pendientes"— en un mismo `no_socio`,
+ * de modo que no revela el estado de deuda de nadie.
+ */
+export interface ResolucionPublica {
+  tipo_participante: TipoParticipante
+  /** Categoría del socio, para pre-seleccionar la tarifa. null si no se resolvió. */
+  categoria_id: string | null
+}
+
+/** Resultado interno de resolver la cédula. NUNCA se serializa al cliente. */
 export interface ResolucionParticipante {
   encontrado: boolean
   socio_id: string | null

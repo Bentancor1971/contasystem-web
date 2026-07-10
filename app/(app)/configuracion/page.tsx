@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { ChevronRight, Users, Lock, ShieldCheck, Cake, UserSquare } from 'lucide-react'
+import { ChevronRight, Users, Lock, ShieldCheck, Cake, UserSquare, CalendarCog } from 'lucide-react'
 import { useApp } from '@/lib/app-context'
 import {
   canManageRoles,
@@ -56,6 +56,12 @@ export default function ConfiguracionPage() {
       label: 'Saludos de cumpleaños',
       description: 'Estado del envío automático de mails de cumpleaños',
       icon: Cake,
+    },
+    {
+      href: '/configuracion/eventos',
+      label: 'Eventos en la web',
+      description: 'Qué se muestra en el formulario público y el HTML de cada evento',
+      icon: CalendarCog,
     },
     {
       href: '/configuracion/personas',

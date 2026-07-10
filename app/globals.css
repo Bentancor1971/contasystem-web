@@ -218,6 +218,14 @@ html, body {
   cursor: not-allowed;
 }
 
+/* HTML libre configurado por evento (encabezado/pie de /e/[slug]). */
+.evento-html { color: var(--color-ink-2); line-height: 1.6; }
+.evento-html p { margin: 0 0 .75em; }
+.evento-html p:last-child { margin-bottom: 0; }
+.evento-html a { color: var(--color-ink); text-decoration: underline; }
+.evento-html img { max-width: 100%; height: auto; }
+.evento-html ul, .evento-html ol { margin: 0 0 .75em 1.25em; list-style: revert; }
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;

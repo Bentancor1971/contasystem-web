@@ -10,7 +10,9 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadEventoPublico } from '@/lib/eventos'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 import { EventoForm } from './EventoForm'
+import { RegistrarPago } from './RegistrarPago'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -55,10 +57,20 @@ export default async function EventoPublicoPage({
   if (!evento) notFound()
 
   const fecha = formatFechaLarga(evento.fecha)
+  const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado)
+  const htmlPie = sanitizeHtml(evento.config.pagina_html_pie)
 
   return (
     <main className="min-h-screen bg-paper">
       <div className="mx-auto w-full max-w-xl px-6 py-12 sm:py-16">
+        {/* HTML propio configurado en /configuracion/eventos (encabezado). Saneado. */}
+        {htmlEncabezado && (
+          <div
+            className="rise mb-8 evento-html"
+            dangerouslySetInnerHTML={{ __html: htmlEncabezado }}
+          />
+        )}
+
         <header className="rise mb-10">
           <span className="label-mono">Inscripción</span>
           <h1 className="font-display text-4xl sm:text-5xl font-medium leading-[1.0] mt-3 mb-4">
@@ -82,6 +94,19 @@ export default async function EventoPublicoPage({
         </header>
 
         <EventoForm evento={evento} />
+
+        {/* Declarar el pago de una reserva ya hecha. Sólo si el evento publica
+            datos de depósito y la config permite la transferencia. */}
+        {evento.abierto &&
+          evento.datos_deposito &&
+          evento.config.permitir_pago_transferencia && (
+            <RegistrarPago slug={evento.slug} />
+          )}
+
+        {/* HTML propio configurado en /configuracion/eventos (pie). Saneado. */}
+        {htmlPie && (
+          <div className="mt-10 evento-html" dangerouslySetInnerHTML={{ __html: htmlPie }} />
+        )}
 
         <footer className="font-mono text-[11px] text-ink-3 mt-16 flex justify-between">
           <span>CONTASYSTEM · EVENTOS</span>
