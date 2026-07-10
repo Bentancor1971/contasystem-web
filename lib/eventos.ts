@@ -139,6 +139,22 @@ export async function contarInscriptos(
   return count ?? 0
 }
 
+/**
+ * Traduce la ocupación a una banda cualitativa para el semáforo del form.
+ * Devuelve null si el evento no tiene cupo (no se muestra semáforo). NUNCA
+ * expone el conteo ni el % exacto — sólo la banda (ver EventoPublico.ocupacion_nivel).
+ */
+function nivelOcupacion(
+  inscriptos: number,
+  cupoMaximo: number | null,
+): 'baja' | 'media' | 'alta' | null {
+  if (cupoMaximo == null || cupoMaximo <= 0) return null
+  const pct = inscriptos / cupoMaximo
+  if (pct < 0.7) return 'baja'
+  if (pct < 0.9) return 'media'
+  return 'alta'
+}
+
 /** Arma el payload público. Devuelve null si el slug no existe. */
 export async function loadEventoPublico(
   admin: SupabaseClient,
@@ -175,6 +191,7 @@ export async function loadEventoPublico(
     umbral_cuotas_no_socio: ev.umbral_cuotas_no_socio,
     abierto: motivo == null,
     motivo_cerrado: motivo,
+    ocupacion_nivel: nivelOcupacion(inscriptos, ev.cupo_maximo),
     texto_antes: ev.texto_antes,
     texto_despues: ev.texto_despues,
     datos_deposito: ev.datos_deposito,

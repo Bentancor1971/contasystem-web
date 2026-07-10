@@ -35,6 +35,17 @@ export async function generateMetadata({
   return { title: 'Inscripción a evento' }
 }
 
+/**
+ * Barra de cupo: banda cualitativa + color. El relleno es por banda (uno de 3
+ * anchos), NO el % exacto: la barra da la señal de urgencia sin filtrar el
+ * conteo real. Ver EventoPublico.ocupacion_nivel para el racional de privacidad.
+ */
+const BARRA_CUPO = {
+  baja:  { texto: 'Cupos disponibles', fill: '34%', texto_cls: 'text-status-ok',   barra_cls: 'bg-status-ok' },
+  media: { texto: 'Últimos cupos',     fill: '70%', texto_cls: 'text-status-warn', barra_cls: 'bg-status-warn' },
+  alta:  { texto: 'Casi completo',     fill: '92%', texto_cls: 'text-status-no',   barra_cls: 'bg-status-no' },
+} as const
+
 function formatFechaLarga(iso: string | null): string | null {
   if (!iso) return null
   const [y, m, d] = iso.split('-').map(Number)
@@ -80,6 +91,26 @@ export default async function EventoPublicoPage({
             {fecha && <div>📅 {fecha}</div>}
             {evento.lugar && <div>📍 {evento.lugar}</div>}
           </div>
+          {/* Barra de cupo — sólo con evento abierto y cupo definido. */}
+          {evento.abierto && evento.ocupacion_nivel && (
+            <div className="mt-5 max-w-[16rem]">
+              <span
+                className={`block mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] font-medium ${BARRA_CUPO[evento.ocupacion_nivel].texto_cls}`}
+              >
+                {BARRA_CUPO[evento.ocupacion_nivel].texto}
+              </span>
+              <div
+                className="h-2 rounded-full bg-paper-3 overflow-hidden"
+                role="progressbar"
+                aria-label="Ocupación del cupo"
+              >
+                <div
+                  className={`h-full rounded-full transition-all ${BARRA_CUPO[evento.ocupacion_nivel].barra_cls}`}
+                  style={{ width: BARRA_CUPO[evento.ocupacion_nivel].fill }}
+                />
+              </div>
+            </div>
+          )}
           {evento.descripcion && (
             <p className="text-ink-2 mt-5 text-base leading-relaxed whitespace-pre-line">
               {evento.descripcion}

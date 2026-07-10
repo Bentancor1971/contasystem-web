@@ -158,6 +158,16 @@ export interface EventoPublico {
   umbral_cuotas_no_socio: number
   abierto: boolean
   motivo_cerrado: string | null
+  /**
+   * Nivel de ocupación del cupo para el semáforo del form. `null` cuando el
+   * evento no tiene cupo definido (no se muestra nada). Deliberadamente NO
+   * expone el conteo real ni el % exacto: sólo una banda cualitativa, para no
+   * convertir la página pública en un oráculo de asistencia.
+   *   baja  (< 70%)  → verde,  "Cupos disponibles"
+   *   media (70–90%) → ámbar,  "Últimos cupos"
+   *   alta  (≥ 90%)  → rojo,   "Casi completo"
+   */
+  ocupacion_nivel: 'baja' | 'media' | 'alta' | null
   texto_antes: string | null
   texto_despues: string | null
   categorias: CategoriaEvento[]
