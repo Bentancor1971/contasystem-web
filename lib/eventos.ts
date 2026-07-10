@@ -14,6 +14,7 @@ import type {
   EventoPublico,
   EventoRemoto,
   ResolucionParticipante,
+  ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
 import { normalizeDocumento } from '@/lib/documento'
@@ -283,6 +284,45 @@ export async function resolverParticipante(
     tipo_participante: tipo,
     categoria_id: (catRow?.categoria_id as string | null) ?? null,
     categoria_nombre: (catRow?.categoria_nombre as string | null) ?? null,
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Enmascarado para la proyección pública del lookup.
+// El dato en claro NUNCA baja al cliente; sólo estas versiones parciales.
+// ────────────────────────────────────────────────────────────────
+
+/** "PRUEBA" → "PR•••". Muestra las 2 primeras letras (1 si es muy corto). */
+function maskTexto(v: string): string | null {
+  const s = v.trim()
+  if (!s) return null
+  const visibles = s.length <= 2 ? 1 : 2
+  return `${s.slice(0, visibles)}•••`
+}
+
+/** "bentancor@gmail.com" → "b•••@gmail.com". Deja visible el dominio. */
+function maskMail(v: string): string | null {
+  const s = v.trim()
+  const at = s.indexOf('@')
+  if (at <= 0) return null // sin @ o sin local: no arriesgamos, no mostramos nada
+  const local = s.slice(0, at)
+  const dominio = s.slice(at) // incluye la "@"
+  return `${local.slice(0, 1)}•••${dominio}`
+}
+
+/**
+ * Proyección pública del lookup: lo único que se serializa al navegador.
+ * Recorta la resolución interna a tipo + categoría + datos ENMASCARADOS.
+ * Ver `ResolucionPublica` para el detalle de por qué cada campo está o no.
+ */
+export function proyectarResolucionPublica(r: ResolucionParticipante): ResolucionPublica {
+  const esSocioResuelto = r.encontrado && r.tipo_participante === 'socio'
+  return {
+    tipo_participante: r.tipo_participante,
+    categoria_id: r.categoria_id,
+    nombre_mask: esSocioResuelto ? maskTexto(r.nombre) : null,
+    apellido_mask: esSocioResuelto ? maskTexto(r.apellido) : null,
+    mail_mask: esSocioResuelto ? maskMail(r.mail) : null,
   }
 }
 

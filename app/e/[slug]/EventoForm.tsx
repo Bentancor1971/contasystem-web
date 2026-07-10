@@ -293,9 +293,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       setLlevaAlimentacion(false)
       setAlimentacionTipo('')
       setAlimentacionOtros('')
-      // No se pre-rellenan nombre/apellido/mail: el lookup público no los
-      // entrega. Si la persona ya está en el registro y deja un campo vacío,
-      // el server completa desde su ficha.
+      // No se pre-rellenan nombre/apellido/mail en claro: el lookup sólo entrega
+      // versiones enmascaradas (`*_mask`), que se muestran como placeholder para
+      // que el socio se reconozca. Si deja un campo vacío, el server lo completa
+      // desde su ficha al inscribir.
       if (data.tipo_participante === 'socio') {
         toast.success('Se aplica la tarifa Socio')
       } else {
@@ -424,14 +425,14 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label htmlFor="nombre" className="label-mono block mb-1">Nombre</label>
-              <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+              <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={resuelto?.nombre_mask ?? undefined} required />
             </div>
             {cfg.mostrar_apellido && (
               <div>
                 <label htmlFor="apellido" className="label-mono block mb-1">
                   Apellido{cfg.apellido_obligatorio ? ' *' : ''}
                 </label>
-                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} required={cfg.apellido_obligatorio} />
+                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder={resuelto?.apellido_mask ?? undefined} required={cfg.apellido_obligatorio} />
               </div>
             )}
             {cfg.mostrar_email && (
@@ -439,7 +440,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 <label htmlFor="mail" className="label-mono block mb-1">
                   Email{cfg.email_obligatorio ? ' *' : ''}
                 </label>
-                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="tu@correo.com" required={cfg.email_obligatorio} />
+                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder={resuelto?.mail_mask ?? 'tu@correo.com'} required={cfg.email_obligatorio} />
               </div>
             )}
             {cfg.mostrar_telefono && (

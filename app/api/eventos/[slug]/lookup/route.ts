@@ -8,9 +8,8 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { loadEventoRemotoBySlug, resolverParticipante } from '@/lib/eventos'
+import { loadEventoRemotoBySlug, resolverParticipante, proyectarResolucionPublica } from '@/lib/eventos'
 import { normalizeDocumento } from '@/lib/documento'
-import type { ResolucionPublica } from '@/lib/eventos-types'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
@@ -53,14 +52,10 @@ export async function POST(
 
     const r = await resolverParticipante(admin, evento, documentoRaw)
 
-    // Proyección pública: sólo lo que el formulario necesita para el precio.
-    // No se filtran nombre/apellido/mail/socio_id ni el conteo de cuotas: este
-    // endpoint no tiene autenticación (ver ResolucionPublica).
-    const publico: ResolucionPublica = {
-      tipo_participante: r.tipo_participante,
-      categoria_id: r.categoria_id,
-    }
-    return NextResponse.json(publico)
+    // Proyección pública: tipo + categoría + datos ENMASCARADOS. El dato en
+    // claro (nombre/mail/socio_id/cuotas) nunca se serializa — este endpoint no
+    // tiene autenticación (ver ResolucionPublica y proyectarResolucionPublica).
+    return NextResponse.json(proyectarResolucionPublica(r))
   } catch (err) {
     console.error('[POST /api/eventos/[slug]/lookup] error:', err)
     const msg = err instanceof Error ? err.message : 'Error interno'

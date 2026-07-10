@@ -172,9 +172,15 @@ export interface CertificadoPublico {
 /**
  * Lo ÚNICO que el endpoint público /lookup devuelve al navegador.
  *
- * Deliberadamente NO incluye nombre, apellido, mail, socio_id ni el número de
- * cuotas pendientes: el endpoint no tiene autenticación, así que cualquiera
- * podría enumerar cédulas y cosechar esos datos.
+ * NO incluye nombre/apellido/mail EN CLARO, socio_id ni el número de cuotas
+ * pendientes: el endpoint no tiene autenticación, así que cualquiera podría
+ * enumerar cédulas y cosechar esos datos.
+ *
+ * SÍ incluye versiones ENMASCARADAS (`*_mask`) para que el socio se reconozca al
+ * verificar su cédula. Es un compromiso: filtra iniciales + dominio de mail a un
+ * endpoint público. El dato en claro nunca baja; el front las usa sólo como
+ * placeholder y, si el socio deja el campo vacío, el server lo completa desde la
+ * ficha al inscribir.
  *
  * `tipo_participante` es inevitable (el precio depende de él), pero colapsa dos
  * casos —"no es socio" y "socio con cuotas pendientes"— en un mismo `no_socio`,
@@ -184,6 +190,12 @@ export interface ResolucionPublica {
   tipo_participante: TipoParticipante
   /** Categoría del socio, para pre-seleccionar la tarifa. null si no se resolvió. */
   categoria_id: string | null
+  /** Nombre enmascarado (ej. "PR•••"). null si no se resolvió el socio. */
+  nombre_mask: string | null
+  /** Apellido enmascarado. null si no se resolvió o no tiene. */
+  apellido_mask: string | null
+  /** Mail enmascarado (ej. "b•••@gmail.com"). null si no se resolvió o no tiene. */
+  mail_mask: string | null
 }
 
 /** Resultado interno de resolver la cédula. NUNCA se serializa al cliente. */
