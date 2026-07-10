@@ -11,9 +11,17 @@ export type ModalidadInscripcion = 'reserva' | 'pago_transferencia'
 
 export type EstadoInscripcionRemota =
   | 'pendiente'
+  | 'pagado'
   | 'importado'
   | 'rechazado'
   | 'anulado'
+
+/**
+ * Modalidad elegida ANTES de pedir la cédula. Determina estado + mail:
+ *   • preinscripcion → estado 'pendiente', modalidad 'reserva'
+ *   • pago_realizado → estado 'pagado', modalidad 'pago_transferencia' + referencia
+ */
+export type ModalidadElegida = 'preinscripcion' | 'pago_realizado'
 
 export interface EventoRemoto {
   id: string
@@ -46,6 +54,9 @@ export interface EventoRemoto {
   alimentacion_opciones: string | null
   /** Datos de la cuenta para pago por transferencia (texto libre, opcional). */
   datos_deposito: string | null
+  /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
+  permitir_pago_realizado: boolean
+  permitir_preinscripcion: boolean
 }
 
 /** Config de transporte tal como la ve el formulario público. */
@@ -152,6 +163,9 @@ export interface EventoPublico {
   config: EventoWebConfig
   /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */
   datos_deposito: string | null
+  /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
+  permitir_pago_realizado: boolean
+  permitir_preinscripcion: boolean
 }
 
 /** Validación pública de un certificado (leído por /c/[token]). */

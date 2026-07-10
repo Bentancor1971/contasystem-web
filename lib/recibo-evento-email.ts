@@ -64,6 +64,8 @@ export interface ReciboEventoEmailData {
   modalidad: ModalidadInscripcion
   datosDeposito: string | null
   numero: string | null
+  /** Referencia de transferencia que la persona declaró (modalidad "pago realizado"). */
+  referenciaDeclarada?: string | null
   cambios: CambioDato[]
 }
 
@@ -152,8 +154,8 @@ export function renderReciboEventoEmail(
             <td style="padding:28px 32px 8px;">
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
               <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${esTransferencia
-                ? 'Tu inscripción quedó registrada. Realizá la transferencia con los datos de abajo para confirmar tu lugar.'
-                : 'Tu reserva de cupo quedó registrada. Coordiná el pago con la organización para confirmar la inscripción.'}</p>
+                ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia para confirmar tu lugar.'
+                : 'Tu preinscripción quedó registrada. Coordiná el pago con la organización para confirmar la inscripción.'}</p>
             </td>
           </tr>
 
@@ -180,7 +182,7 @@ export function renderReciboEventoEmail(
                 ${d.categoriaNombre ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Categoría</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.categoriaNombre)} · ${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'}</td></tr>` : ''}
                 ${d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${formatImporte(d.transporteImporte, d.monedaCodigo)}</td></tr>` : ''}
                 ${d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, d.monedaCodigo)}` : ''}</td></tr>` : ''}
-                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esTransferencia ? 'Pago por transferencia' : 'Reserva de cupo'}</td></tr>
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}</td></tr>
               </table>
             </td>
           </tr>
@@ -189,12 +191,12 @@ export function renderReciboEventoEmail(
           <tr>
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
-                <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Datos para la transferencia</td></tr>
+                <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Pago declarado</td></tr>
                 <tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>
-                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Importe a transferir</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, d.monedaCodigo)}</td></tr>
-                ${d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Importe</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, d.monedaCodigo)}</td></tr>
+                ${d.referenciaDeclarada ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia declarada</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.referenciaDeclarada)}</td></tr>` : ''}
               </table>
-              <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Indicá la referencia en la transferencia para identificar tu pago.</p>
+              <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Vamos a verificar tu transferencia para confirmar la inscripción.</p>
             </td>
           </tr>` : ''}
 
@@ -211,23 +213,26 @@ export function renderReciboEventoEmail(
           <tr><td style="height:16px;"></td></tr>`
 
   const subject = esTransferencia
-    ? `Confirmación de inscripción — ${d.eventoNombre}`
-    : `Reserva de cupo — ${d.eventoNombre}`
+    ? `Inscripción con pago declarado — ${d.eventoNombre}`
+    : `Preinscripción — ${d.eventoNombre}`
 
   const html = baseLayout(d.empresa, contenido, b)
 
   const lineas: string[] = [
-    `${esTransferencia ? 'Confirmación de inscripción' : 'Reserva de cupo'} — ${d.eventoNombre}`,
+    `${esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
     '',
     `Hola ${d.socioNombre},`,
+    esTransferencia
+      ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia para confirmar tu lugar.'
+      : 'Tu preinscripción quedó registrada. Coordiná el pago con la organización para confirmar la inscripción.',
     fecha ? `Fecha: ${fecha}` : '',
     d.categoriaNombre ? `Categoría: ${d.categoriaNombre} (${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'})` : '',
-    `Modalidad: ${esTransferencia ? 'Pago por transferencia' : 'Reserva de cupo'}`,
+    `Modalidad: ${esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}`,
     `Total: ${formatImporte(d.total, d.monedaCodigo)}`,
   ].filter(Boolean)
   if (esTransferencia && d.datosDeposito) {
-    lineas.push('', 'Datos para la transferencia:', d.datosDeposito, `Importe: ${formatImporte(d.total, d.monedaCodigo)}`)
-    if (d.numero) lineas.push(`Referencia: ${d.numero}`)
+    lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, d.monedaCodigo)}`)
+    if (d.referenciaDeclarada) lineas.push(`Referencia declarada: ${d.referenciaDeclarada}`)
   }
   if (d.cambios.length > 0) {
     lineas.push('', 'Actualizamos tus datos:')

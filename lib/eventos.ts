@@ -178,6 +178,9 @@ export async function loadEventoPublico(
     texto_antes: ev.texto_antes,
     texto_despues: ev.texto_despues,
     datos_deposito: ev.datos_deposito,
+    // Default TRUE si la columna viene null (eventos previos a la migración 29).
+    permitir_pago_realizado: ev.permitir_pago_realizado !== false,
+    permitir_preinscripcion: ev.permitir_preinscripcion !== false,
     categorias,
     categorias_socio: categoriasSocio,
     config,

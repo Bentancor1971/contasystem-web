@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock } from 'lucide-react'
 import type {
   EventoPublico,
+  ModalidadElegida,
   ModalidadInscripcion,
   ResolucionPublica,
   TipoParticipante,
@@ -46,6 +47,18 @@ interface Resultado {
 }
 
 export function EventoForm({ evento }: { evento: EventoPublico }) {
+  // Modalidades ofrecidas antes de pedir la cédula. "Pago realizado" sólo tiene
+  // sentido si hay dónde transferir (datos de depósito cargados).
+  const pagoRealizadoDisponible = evento.permitir_pago_realizado && !!evento.datos_deposito
+  const preinscripcionDisponible = evento.permitir_preinscripcion
+  const modalidadesDisponibles: ModalidadElegida[] = [
+    ...(pagoRealizadoDisponible ? (['pago_realizado'] as const) : []),
+    ...(preinscripcionDisponible ? (['preinscripcion'] as const) : []),
+  ]
+  // Si sólo hay una, se auto-elige y se saltea la pantalla de elección.
+  const modalidadUnica = modalidadesDisponibles.length === 1 ? modalidadesDisponibles[0] : null
+
+  const [modalidadElegida, setModalidadElegida] = useState<ModalidadElegida | null>(modalidadUnica)
   const [documento, setDocumento] = useState('')
   const [verificando, setVerificando] = useState(false)
   const [resuelto, setResuelto] = useState<ResolucionPublica | null>(null)
@@ -93,6 +106,8 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
     setReferenciaTransferencia('')
     setEnviando(false)
     setResultado(null)
+    // Vuelve a la pantalla de elección (o a la única modalidad disponible).
+    setModalidadElegida(modalidadUnica)
   }
 
   // Precio visible por categoría según el tipo de participante resuelto.
@@ -142,12 +157,6 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         ? precioDe(categoriaSel) ?? 0
         : 0
   const total = categoriaImporte + transporteImporte + alimentacionImporte
-  // Puede ofrecer "pago por transferencia" si la config lo permite, el evento
-  // publica datos de depósito y la inscripción tiene algún costo (si no, sólo reserva).
-  const puedeTransferir =
-    cfg.permitir_pago_transferencia &&
-    !!evento.datos_deposito &&
-    (conCosto || transporteImporte > 0 || alimentacionImporte > 0)
 
   if (!evento.abierto) {
     return (
@@ -344,6 +353,11 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       toast.error('Elegí el tipo de alimentación')
       return
     }
+    // "Pago realizado": la referencia de la transferencia es obligatoria.
+    if (modalidad === 'pago_transferencia' && !referenciaTransferencia.trim()) {
+      toast.error('Ingresá la referencia de la transferencia')
+      return
+    }
     setEnviando(true)
     try {
       const res = await fetch(`/api/eventos/${evento.slug}/inscribir`, {
@@ -377,8 +391,73 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
     }
   }
 
+  // Ninguna modalidad habilitada: no se puede inscribir por la web.
+  if (modalidadesDisponibles.length === 0) {
+    return (
+      <div className="card p-8 text-center rise">
+        <p className="font-display text-2xl font-medium mb-2">Inscripción no disponible</p>
+        <p className="text-ink-2">La inscripción online de este evento no está habilitada. Consultá con la organización.</p>
+      </div>
+    )
+  }
+
+  // Pantalla de elección de modalidad (sólo si hay dos y no se eligió aún).
+  if (!modalidadElegida) {
+    return (
+      <div className="rise space-y-5">
+        <p className="label-mono">¿Cómo querés inscribirte?</p>
+        <button
+          type="button"
+          className="w-full text-left rounded-xl border border-line hover:border-ink transition p-5 flex items-start gap-4"
+          onClick={() => setModalidadElegida('pago_realizado')}
+        >
+          <Landmark size={22} className="mt-0.5 shrink-0" />
+          <span>
+            <span className="block font-medium text-lg">Ya realicé el pago</span>
+            <span className="block text-sm text-ink-2 mt-0.5">
+              Transferiste y querés registrar el pago. Te vamos a pedir la referencia del comprobante.
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="w-full text-left rounded-xl border border-line hover:border-ink transition p-5 flex items-start gap-4"
+          onClick={() => setModalidadElegida('preinscripcion')}
+        >
+          <CalendarClock size={22} className="mt-0.5 shrink-0" />
+          <span>
+            <span className="block font-medium text-lg">Preinscripción (pago después)</span>
+            <span className="block text-sm text-ink-2 mt-0.5">
+              Reservás tu cupo ahora y coordinás el pago con la organización más adelante.
+            </span>
+          </span>
+        </button>
+      </div>
+    )
+  }
+
+  const esPagoRealizado = modalidadElegida === 'pago_realizado'
+
   return (
     <div className="rise space-y-8">
+      {/* Modalidad elegida (con opción de cambiar si hay más de una) */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-paper-2 px-4 py-2.5">
+        <span className="flex items-center gap-2 text-sm font-mono">
+          {esPagoRealizado ? <Landmark size={15} /> : <CalendarClock size={15} />}
+          {esPagoRealizado ? 'Ya realicé el pago' : 'Preinscripción (pago después)'}
+        </span>
+        {modalidadesDisponibles.length > 1 && (
+          <button
+            type="button"
+            className="btn-ghost text-sm"
+            onClick={() => { setModalidadElegida(null); setResuelto(null) }}
+            disabled={enviando}
+          >
+            Cambiar
+          </button>
+        )}
+      </div>
+
       {/* Paso 1 — Cédula */}
       <div>
         <label htmlFor="documento" className="label-mono block mb-1">Cédula</label>
@@ -408,8 +487,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           className="space-y-7"
           onSubmit={(e) => {
             e.preventDefault()
-            // Enter: si no hay opción de transferencia, confirma como reserva.
-            if (!puedeTransferir) enviar('reserva')
+            enviar(esPagoRealizado ? 'pago_transferencia' : 'reserva')
           }}
         >
           {resuelto.tipo_participante === 'socio' ? (
@@ -638,20 +716,26 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             </div>
           )}
 
-          {puedeTransferir ? (
+          {esPagoRealizado ? (
             <div className="space-y-3 border-t border-line pt-5">
-              <p className="label-mono">¿Cómo querés registrarte?</p>
-
-              {/* Opcional: sólo si ya transfirió antes de completar el formulario.
-                  Si todavía no transfirió, la carga después desde "registrar pago". */}
+              {evento.datos_deposito && (
+                <div className="rounded-xl border border-ink bg-paper-2 p-5">
+                  <p className="flex items-center gap-2 label-mono mb-3">
+                    <Landmark size={15} /> Datos para la transferencia
+                  </p>
+                  <p className="font-mono text-sm text-ink-1 whitespace-pre-line">
+                    {evento.datos_deposito}
+                  </p>
+                </div>
+              )}
               <div>
                 <label htmlFor="referencia" className="label-mono block mb-1">
-                  Referencia de transferencia (opcional)
+                  Referencia de la transferencia *
                 </label>
                 <input
                   id="referencia"
                   className="field"
-                  placeholder="Si ya transferiste, poné el n° de comprobante"
+                  placeholder="N° de comprobante de la transferencia que hiciste"
                   value={referenciaTransferencia}
                   onChange={(e) => setReferenciaTransferencia(e.target.value)}
                   maxLength={80}
@@ -666,19 +750,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 disabled={enviando}
               >
                 {enviando ? <Loader2 className="animate-spin" size={16} /> : <Landmark size={16} />}
-                Inscribirme y pagar por transferencia
-              </button>
-              <button
-                type="button"
-                className="btn-secondary w-full"
-                onClick={() => enviar('reserva')}
-                disabled={enviando}
-              >
-                <CalendarClock size={16} />
-                Reservar cupo (pago después)
+                {enviando ? 'Registrando…' : 'Confirmar inscripción y pago'}
               </button>
               <p className="text-[12px] text-ink-3 text-center">
-                Con “pagar por transferencia” te mostramos la cuenta y el importe para depositar.
+                La organización va a verificar la transferencia para confirmar tu inscripción.
               </p>
             </div>
           ) : (
@@ -689,7 +764,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
               disabled={enviando}
             >
               {enviando ? <Loader2 className="animate-spin" size={16} /> : <Ticket size={16} />}
-              {enviando ? 'Registrando…' : 'Confirmar inscripción'}
+              {enviando ? 'Registrando…' : 'Confirmar preinscripción'}
             </button>
           )}
 

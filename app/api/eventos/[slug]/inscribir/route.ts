@@ -235,16 +235,32 @@ export async function POST(
       }
     }
 
-    // Modalidad efectiva: "pago_transferencia" sólo si el evento publica datos
-    // de depósito y hay algo para pagar; si no, es una reserva de cupo.
+    // Modalidad efectiva: "pago_transferencia" (= "pago realizado") sólo si el
+    // evento habilita esa modalidad, publica datos de depósito y hay algo para
+    // pagar; si no, es una preinscripción (reserva de cupo).
     const totalAPagar = importe + transporteImporte + alimentacionImporte
     const modalidadFinal =
       modalidad === 'pago_transferencia' &&
-      cfg.permitir_pago_transferencia &&
+      evento.permitir_pago_realizado &&
       !!evento.datos_deposito &&
       totalAPagar > 0
         ? 'pago_transferencia'
         : 'reserva'
+
+    // "Pago realizado" exige la referencia de la transferencia declarada.
+    const referencia =
+      modalidadFinal === 'pago_transferencia'
+        ? str(body.referencia_transferencia).slice(0, 80)
+        : ''
+    if (modalidadFinal === 'pago_transferencia' && !referencia) {
+      return NextResponse.json(
+        { error: 'Ingresá la referencia de la transferencia' },
+        { status: 400 },
+      )
+    }
+    // 'pagado' = declaró pago al inscribirse (pendiente de que el operador lo
+    // confirme). 'pendiente' = preinscripción. Ver docs/supabase/29.
+    const estadoInicial = modalidadFinal === 'pago_transferencia' ? 'pagado' : 'pendiente'
 
     // Dedupe explícito + mensaje claro
     const documentoHash = hashDocumento(documento)
@@ -288,11 +304,8 @@ export async function POST(
         alimentacion_tipo: alimentacionTipo,
         modalidad: modalidadFinal,
         // Sólo tiene sentido si efectivamente declaró pago por transferencia.
-        referencia_transferencia:
-          modalidadFinal === 'pago_transferencia'
-            ? str(body.referencia_transferencia).slice(0, 80) || null
-            : null,
-        estado: 'pendiente',
+        referencia_transferencia: referencia || null,
+        estado: estadoInicial,
       })
       .select('numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad')
       .single()
@@ -382,6 +395,7 @@ export async function POST(
               datosDeposito:
                 modalidadFinal === 'pago_transferencia' ? evento.datos_deposito : null,
               numero: (inserted.numero as string | null) ?? null,
+              referenciaDeclarada: referencia || null,
               cambios,
             },
           })
