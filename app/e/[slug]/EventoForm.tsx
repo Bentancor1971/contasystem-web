@@ -81,6 +81,15 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   const tipo: TipoParticipante = resuelto?.tipo_participante ?? 'no_socio'
   const conCosto = evento.tipo === 'con_costo'
 
+  // Un socio al día ya tiene sus datos en la ficha: se muestran enmascarados y
+  // no hace falta re-escribirlos (el server los completa al inscribir con los
+  // datos reales). Cada `*EnFicha` es true sólo si ese dato existe en la ficha.
+  const esSocioAlDia = resuelto?.tipo_participante === 'socio'
+  const nombreEnFicha = esSocioAlDia && !!resuelto?.nombre_mask
+  const apellidoEnFicha = esSocioAlDia && !!resuelto?.apellido_mask
+  const mailEnFicha = esSocioAlDia && !!resuelto?.mail_mask
+  const telefonoEnFicha = esSocioAlDia && !!resuelto?.telefono_mask
+
   // Config web del evento. Los flags `mostrar_*` sólo OCULTAN: nunca habilitan
   // algo que el desktop no configuró (transporte/alimentación disponibles).
   const cfg = evento.config
@@ -319,19 +328,21 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   }
 
   async function enviar(modalidad: ModalidadInscripcion) {
-    if (!nombre.trim()) {
+    // Para un socio verificado, un campo vacío se completa desde su ficha: sólo
+    // se exige lo que no está en la ficha.
+    if (!nombre.trim() && !nombreEnFicha) {
       toast.error('El nombre es obligatorio')
       return
     }
-    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido.trim()) {
+    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido.trim() && !apellidoEnFicha) {
       toast.error('El apellido es obligatorio')
       return
     }
-    if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim()) {
+    if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim() && !mailEnFicha) {
       toast.error('El email es obligatorio')
       return
     }
-    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono.trim()) {
+    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono.trim() && !telefonoEnFicha) {
       toast.error('El teléfono es obligatorio')
       return
     }
@@ -500,33 +511,45 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             </p>
           )}
 
+          {esSocioAlDia && (
+            <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-line rounded-lg bg-paper-2 px-4 py-3">
+              <Info size={15} className="mt-0.5 shrink-0" />
+              <span>
+                Tus datos ya están registrados (los mostramos parcialmente para que los
+                reconozcas). Dejá los campos en blanco y usamos los de tu ficha; el mail de
+                confirmación llega con tus datos reales. Si alguno cambió, escribinos por
+                correo y lo actualizamos.
+              </span>
+            </p>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label htmlFor="nombre" className="label-mono block mb-1">Nombre</label>
-              <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={resuelto?.nombre_mask ?? undefined} required />
+              <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={resuelto?.nombre_mask ?? undefined} required={!nombreEnFicha} />
             </div>
             {cfg.mostrar_apellido && (
               <div>
                 <label htmlFor="apellido" className="label-mono block mb-1">
-                  Apellido{cfg.apellido_obligatorio ? ' *' : ''}
+                  Apellido{cfg.apellido_obligatorio && !apellidoEnFicha ? ' *' : ''}
                 </label>
-                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder={resuelto?.apellido_mask ?? undefined} required={cfg.apellido_obligatorio} />
+                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder={resuelto?.apellido_mask ?? undefined} required={cfg.apellido_obligatorio && !apellidoEnFicha} />
               </div>
             )}
             {cfg.mostrar_email && (
               <div>
                 <label htmlFor="mail" className="label-mono block mb-1">
-                  Email{cfg.email_obligatorio ? ' *' : ''}
+                  Email{cfg.email_obligatorio && !mailEnFicha ? ' *' : ''}
                 </label>
-                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder={resuelto?.mail_mask ?? 'tu@correo.com'} required={cfg.email_obligatorio} />
+                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder={resuelto?.mail_mask ?? 'tu@correo.com'} required={cfg.email_obligatorio && !mailEnFicha} />
               </div>
             )}
             {cfg.mostrar_telefono && (
               <div>
                 <label htmlFor="telefono" className="label-mono block mb-1">
-                  Teléfono{cfg.telefono_obligatorio ? ' *' : ''}
+                  Teléfono{cfg.telefono_obligatorio && !telefonoEnFicha ? ' *' : ''}
                 </label>
-                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="099 123 456" required={cfg.telefono_obligatorio} />
+                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder={resuelto?.telefono_mask ?? '099 123 456'} required={cfg.telefono_obligatorio && !telefonoEnFicha} />
               </div>
             )}
           </div>

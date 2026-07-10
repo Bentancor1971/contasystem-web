@@ -216,6 +216,8 @@ export interface ResolucionPublica {
   apellido_mask: string | null
   /** Mail enmascarado (ej. "b•••@gmail.com"). null si no se resolvió o no tiene. */
   mail_mask: string | null
+  /** Teléfono enmascarado (ej. "•••456"). null si no se resolvió o no tiene. */
+  telefono_mask: string | null
 }
 
 /** Resultado interno de resolver la cédula. NUNCA se serializa al cliente. */
@@ -225,6 +227,7 @@ export interface ResolucionParticipante {
   nombre: string
   apellido: string
   mail: string
+  telefono: string
   cuotas_pendientes: number | null
   tipo_participante: TipoParticipante
   /** Categoría del socio definida en la BD (para pre-seleccionar y sugerir tarifa). */

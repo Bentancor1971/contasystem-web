@@ -236,6 +236,7 @@ export async function resolverParticipante(
     nombre: '',
     apellido: '',
     mail: '',
+    telefono: '',
     cuotas_pendientes: null,
     tipo_participante: 'no_socio',
     categoria_id: null,
@@ -245,7 +246,7 @@ export async function resolverParticipante(
 
   const { data: socio, error } = await admin
     .from('socios_datos')
-    .select('id, nombre, apellido, mail, documento_hash')
+    .select('id, nombre, apellido, mail, telefono, celular, documento_hash')
     .eq('empresa_id', evento.empresa_id)
     .eq('documento', doc)
     .is('deleted_at', null)
@@ -283,6 +284,9 @@ export async function resolverParticipante(
     nombre: (socio.nombre as string | null) ?? '',
     apellido: (socio.apellido as string | null) ?? '',
     mail: (socio.mail as string | null) ?? '',
+    // Preferimos el celular; si no hay, el teléfono fijo.
+    telefono:
+      ((socio.celular as string | null) || (socio.telefono as string | null)) ?? '',
     cuotas_pendientes: cuotas,
     tipo_participante: tipo,
     categoria_id: (catRow?.categoria_id as string | null) ?? null,
@@ -313,6 +317,13 @@ function maskMail(v: string): string | null {
   return `${local.slice(0, 1)}•••${dominio}`
 }
 
+/** "099123456" → "•••456". Deja visibles los últimos 3 dígitos. */
+function maskTelefono(v: string): string | null {
+  const digitos = v.replace(/\D/g, '')
+  if (digitos.length < 4) return null // muy corto: no mostramos nada
+  return `•••${digitos.slice(-3)}`
+}
+
 /**
  * Proyección pública del lookup: lo único que se serializa al navegador.
  * Recorta la resolución interna a tipo + categoría + datos ENMASCARADOS.
@@ -326,6 +337,7 @@ export function proyectarResolucionPublica(r: ResolucionParticipante): Resolucio
     nombre_mask: esSocioResuelto ? maskTexto(r.nombre) : null,
     apellido_mask: esSocioResuelto ? maskTexto(r.apellido) : null,
     mail_mask: esSocioResuelto ? maskMail(r.mail) : null,
+    telefono_mask: esSocioResuelto ? maskTelefono(r.telefono) : null,
   }
 }
 

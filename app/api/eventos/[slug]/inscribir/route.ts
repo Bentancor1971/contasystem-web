@@ -64,7 +64,7 @@ export async function POST(
     }
 
     const documento = str(body.documento)
-    const nombre = str(body.nombre)
+    let nombre = str(body.nombre)
     let apellido = str(body.apellido)
     let mail = str(body.mail)
     let telefono = str(body.telefono)
@@ -78,9 +78,8 @@ export async function POST(
     if (normalizeDocumento(documento).length < 6) {
       return NextResponse.json({ error: 'Ingresá una cédula válida' }, { status: 400 })
     }
-    if (!nombre) {
-      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
-    }
+    // El nombre se exige más abajo, DESPUÉS de resolver la cédula: si es un socio
+    // en la base, se completa desde su ficha y no hace falta que lo re-escriba.
     if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
       return NextResponse.json({ error: 'El email no es válido' }, { status: 400 })
     }
@@ -141,10 +140,19 @@ export async function POST(
     // El formulario ya no pre-rellena los datos del socio (el lookup público no
     // los entrega, ver ResolucionPublica). Por eso un campo vacío significa "no
     // lo escribió", NO "borralo": lo completamos desde la ficha para no
-    // proponerle al contador un cambio que le vacíe datos al socio.
+    // proponerle al contador un cambio que le vacíe datos al socio. El nombre
+    // también: un socio verificado no necesita re-escribirlo.
     if (part.encontrado) {
+      if (!nombre) nombre = part.nombre
       if (!apellido) apellido = part.apellido
       if (!mail) mail = part.mail
+      if (!telefono) telefono = part.telefono
+    }
+
+    // Recién ahora exigimos el nombre: para un socio ya viene de la ficha; para
+    // alguien que no está en la base, sigue siendo obligatorio escribirlo.
+    if (!nombre) {
+      return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
 
     // Categoría (obligatoria): predefinida del catálogo o libre ("Otros").
