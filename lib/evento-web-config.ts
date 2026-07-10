@@ -30,6 +30,8 @@ export const EVENTO_CONFIG_COLUMNS = [
   'pagina_html_pie',
   'mail_acuse_asunto',
   'mail_acuse_html',
+  'mail_acuse_pago_asunto',
+  'mail_acuse_pago_html',
   'certificado_html',
 ] as const
 
@@ -62,6 +64,8 @@ export function rowToConfig(row: Record<string, unknown> | null): EventoWebConfi
     pagina_html_pie: text(row.pagina_html_pie),
     mail_acuse_asunto: text(row.mail_acuse_asunto),
     mail_acuse_html: text(row.mail_acuse_html),
+    mail_acuse_pago_asunto: text(row.mail_acuse_pago_asunto),
+    mail_acuse_pago_html: text(row.mail_acuse_pago_html),
     certificado_html: text(row.certificado_html),
   }
 }

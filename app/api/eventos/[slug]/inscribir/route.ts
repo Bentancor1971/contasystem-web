@@ -361,13 +361,15 @@ export async function POST(
           const varsHtml = Object.fromEntries(
             Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
           )
+          // Plantilla según la modalidad: pago declarado usa la propia (con el
+          // aviso de verificación de transferencia); preinscripción usa la suya.
+          // Si el campo del caso está vacío, cae al recibo branded por defecto.
+          const esPago = modalidadFinal === 'pago_transferencia'
+          const asuntoTpl = esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
+          const htmlTpl = esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
           const override = {
-            asunto: cfg.mail_acuse_asunto
-              ? aplicarVariables(cfg.mail_acuse_asunto, varsTexto)
-              : null,
-            html: cfg.mail_acuse_html
-              ? sanitizeHtml(aplicarVariables(cfg.mail_acuse_html, varsHtml))
-              : null,
+            asunto: asuntoTpl ? aplicarVariables(asuntoTpl, varsTexto) : null,
+            html: htmlTpl ? sanitizeHtml(aplicarVariables(htmlTpl, varsHtml)) : null,
           }
 
           const envio = await sendInscripcionEmail({

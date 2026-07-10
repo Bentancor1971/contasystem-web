@@ -45,14 +45,24 @@ CREATE TABLE IF NOT EXISTS public.evento_web_config (
   pagina_html_encabezado TEXT,
   pagina_html_pie        TEXT,
   -- Mail de acuse de inscripción. Variables: {nombre} {evento} {numero} {total}
-  mail_acuse_asunto TEXT,
-  mail_acuse_html   TEXT,
+  --   *_acuse_*      → PREINSCRIPCIÓN (modalidad 'reserva', pago pendiente)
+  --   *_acuse_pago_* → PAGO DECLARADO (modalidad 'pago_transferencia', a verificar)
+  -- Si el campo del caso está vacío, sale el recibo con diseño por defecto.
+  mail_acuse_asunto      TEXT,
+  mail_acuse_html        TEXT,
+  mail_acuse_pago_asunto TEXT,
+  mail_acuse_pago_html   TEXT,
   -- Página pública de validación de certificado /c/[token]
   certificado_html  TEXT,
 
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_por UUID
 );
+
+-- Migración idempotente: acuse diferenciado por modalidad (para tablas ya creadas).
+ALTER TABLE public.evento_web_config
+  ADD COLUMN IF NOT EXISTS mail_acuse_pago_asunto TEXT,
+  ADD COLUMN IF NOT EXISTS mail_acuse_pago_html   TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_evento_web_config_empresa
   ON public.evento_web_config(empresa_id);

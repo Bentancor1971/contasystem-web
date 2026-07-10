@@ -114,8 +114,12 @@ export interface EventoWebConfig {
   permitir_pago_transferencia: boolean
   pagina_html_encabezado: string | null
   pagina_html_pie: string | null
+  /** Acuse para PREINSCRIPCIÓN (modalidad 'reserva', pago pendiente). */
   mail_acuse_asunto: string | null
   mail_acuse_html: string | null
+  /** Acuse para PAGO DECLARADO (modalidad 'pago_transferencia', a verificar). */
+  mail_acuse_pago_asunto: string | null
+  mail_acuse_pago_html: string | null
   certificado_html: string | null
 }
 
@@ -137,6 +141,8 @@ export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
   pagina_html_pie: null,
   mail_acuse_asunto: null,
   mail_acuse_html: null,
+  mail_acuse_pago_asunto: null,
+  mail_acuse_pago_html: null,
   certificado_html: null,
 }
 

@@ -137,6 +137,8 @@ const HTML_FIELDS = [
   'pagina_html_pie',
   'mail_acuse_asunto',
   'mail_acuse_html',
+  'mail_acuse_pago_asunto',
+  'mail_acuse_pago_html',
   'certificado_html',
 ] as const
 

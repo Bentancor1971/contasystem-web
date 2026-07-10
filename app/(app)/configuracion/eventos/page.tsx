@@ -396,13 +396,18 @@ export default function ConfiguracionEventosPage() {
             </div>
           </Seccion>
 
-          <Seccion titulo="Mail de acuse de inscripción">
+          <Seccion titulo="Mail de acuse — Preinscripción (reserva)">
+            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+              <Info size={14} className="mt-0.5 shrink-0" />
+              Se envía cuando la persona reserva el cupo para pagar después. Si lo dejás
+              vacío, sale el recibo con diseño por defecto.
+            </p>
             <div className="space-y-5">
               <div>
                 <label className="label-mono block mb-2">Asunto</label>
                 <input
                   className="field"
-                  placeholder="Inscripción confirmada — {evento}"
+                  placeholder="Preinscripción registrada — {evento}"
                   value={cfg.mail_acuse_asunto ?? ''}
                   onChange={(e) => setHtml('mail_acuse_asunto', e.target.value)}
                   maxLength={200}
@@ -415,6 +420,39 @@ export default function ConfiguracionEventosPage() {
                   onChange={(v) => setHtml('mail_acuse_html', v)}
                   rows={8}
                   placeholder="<p>Hola {nombre}…</p>"
+                />
+                <p className="mt-2 text-[11px] font-mono text-ink-3">
+                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{total}'}
+                </p>
+              </div>
+            </div>
+          </Seccion>
+
+          <Seccion titulo="Mail de acuse — Pago declarado (transferencia)">
+            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+              <Info size={14} className="mt-0.5 shrink-0" />
+              Se envía cuando la persona declara que ya transfirió (queda a verificar).
+              Ideal para avisar que la transferencia se va a confirmar. Si lo dejás vacío,
+              sale el recibo con diseño por defecto.
+            </p>
+            <div className="space-y-5">
+              <div>
+                <label className="label-mono block mb-2">Asunto</label>
+                <input
+                  className="field"
+                  placeholder="Inscripción con pago declarado — {evento}"
+                  value={cfg.mail_acuse_pago_asunto ?? ''}
+                  onChange={(e) => setHtml('mail_acuse_pago_asunto', e.target.value)}
+                  maxLength={200}
+                />
+              </div>
+              <div>
+                <label className="label-mono block mb-2">Cuerpo (HTML)</label>
+                <HtmlArea
+                  value={cfg.mail_acuse_pago_html}
+                  onChange={(v) => setHtml('mail_acuse_pago_html', v)}
+                  rows={8}
+                  placeholder="<p>Hola {nombre}… vamos a verificar tu transferencia.</p>"
                 />
                 <p className="mt-2 text-[11px] font-mono text-ink-3">
                   Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{total}'}
