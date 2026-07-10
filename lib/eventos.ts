@@ -139,6 +139,21 @@ export async function contarInscriptos(
   return count ?? 0
 }
 
+/** Cuántas inscripciones que ocupan cupo llevan transporte (para su cupo propio). */
+export async function contarConTransporte(
+  admin: SupabaseClient,
+  eventoId: string,
+): Promise<number> {
+  const { count, error } = await admin
+    .from('inscripciones_evento_remoto')
+    .select('id', { count: 'exact', head: true })
+    .eq('evento_id', eventoId)
+    .eq('lleva_transporte', true)
+    .in('estado', ESTADOS_OCUPAN)
+  if (error) throw new Error(`Error contando transporte: ${error.message}`)
+  return count ?? 0
+}
+
 /**
  * Traduce la ocupación a una banda cualitativa para el semáforo del form.
  * Devuelve null si el evento no tiene cupo (no se muestra semáforo). NUNCA
@@ -163,7 +178,9 @@ export async function loadEventoPublico(
   const ev = await loadEventoRemotoBySlug(admin, slug)
   if (!ev) return null
 
-  const [categorias, inscriptos, categoriasSocio, config] = await Promise.all([
+  // El cupo de transporte tiene su propio conteo (sólo si hay tope definido).
+  const transporteConCupo = ev.transporte_disponible && ev.transporte_cupo_maximo != null
+  const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos] = await Promise.all([
     loadCategoriasEvento(admin, ev.id),
     ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
     // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
@@ -173,9 +190,12 @@ export async function loadEventoPublico(
       ? loadCategoriasSocio(admin, ev.empresa_id)
       : Promise.resolve([] as CategoriaSocioPublica[]),
     loadEventoWebConfig(admin, ev.id),
+    transporteConCupo ? contarConTransporte(admin, ev.id) : Promise.resolve(0),
   ])
 
   const cupoCompleto = ev.cupo_maximo != null && inscriptos >= ev.cupo_maximo
+  const transporteCompleto =
+    transporteConCupo && transporteInscriptos >= (ev.transporte_cupo_maximo as number)
   let motivo: string | null = null
   if (ev.estado !== 'abierto') motivo = 'Las inscripciones están cerradas'
   else if (cupoCompleto) motivo = 'Se completó el cupo del evento'
@@ -207,6 +227,10 @@ export async function loadEventoPublico(
       importe_socio: Number(ev.transporte_importe_socio ?? 0),
       importe_no_socio: Number(ev.transporte_importe_no_socio ?? 0),
       descripcion: ev.transporte_descripcion,
+      ocupacion_nivel: transporteConCupo
+        ? nivelOcupacion(transporteInscriptos, ev.transporte_cupo_maximo)
+        : null,
+      completo: transporteCompleto,
     },
     alimentacion: {
       disponible: !!ev.alimentacion_disponible,

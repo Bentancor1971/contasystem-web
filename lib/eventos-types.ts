@@ -45,6 +45,8 @@ export interface EventoRemoto {
   transporte_importe_socio: number
   transporte_importe_no_socio: number
   transporte_descripcion: string | null
+  /** Tope de plazas del transporte (NULL = sin tope, independiente del cupo del evento). */
+  transporte_cupo_maximo: number | null
   alimentacion_disponible: boolean
   alimentacion_con_costo: boolean
   alimentacion_importe_socio: number
@@ -66,6 +68,14 @@ export interface TransportePublico {
   importe_socio: number
   importe_no_socio: number
   descripcion: string | null
+  /**
+   * Nivel de ocupación del cupo de transporte para la barra. `null` cuando el
+   * transporte no tiene tope definido (no se muestra barra). Mismo racional de
+   * privacidad que EventoPublico.ocupacion_nivel: sólo banda, nunca el conteo.
+   */
+  ocupacion_nivel: 'baja' | 'media' | 'alta' | null
+  /** True si el cupo de transporte está lleno: la web bloquea la opción. */
+  completo: boolean
 }
 
 /** Config de alimentación tal como la ve el formulario público. Espejo de

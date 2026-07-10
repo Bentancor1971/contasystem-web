@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  contarConTransporte,
   contarInscriptos,
   loadEventoRemotoBySlug,
   nombreCategoriaSocio,
@@ -219,6 +220,17 @@ export async function POST(
     let llevaTransporte = false
     let transporteImporte = 0
     if (evento.transporte_disponible && cfg.mostrar_transporte && body.lleva_transporte === true) {
+      // Cupo de transporte: si tiene tope y ya se llenó, se rechaza (la persona
+      // puede reintentar sin transporte). Mismo criterio que el cupo del evento.
+      if (evento.transporte_cupo_maximo != null) {
+        const conTransporte = await contarConTransporte(admin, evento.id)
+        if (conTransporte >= evento.transporte_cupo_maximo) {
+          return NextResponse.json(
+            { error: 'Se completó el cupo de transporte' },
+            { status: 409 },
+          )
+        }
+      }
       llevaTransporte = true
       if (evento.transporte_con_costo) {
         transporteImporte =

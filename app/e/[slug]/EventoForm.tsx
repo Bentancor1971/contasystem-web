@@ -25,6 +25,16 @@ function formatImporte(n: number, moneda: string): string {
   return `${simboloMoneda(moneda)} ${nf.format(n)}`
 }
 
+/**
+ * Barra de cupo de transporte: banda cualitativa + color, relleno por banda (no
+ * el % exacto). Mismo criterio que la barra de cupo del evento en page.tsx.
+ */
+const BARRA_TRANSPORTE = {
+  baja:  { texto: 'Lugares disponibles', fill: '34%', texto_cls: 'text-status-ok',   barra_cls: 'bg-status-ok' },
+  media: { texto: 'Últimos lugares',     fill: '70%', texto_cls: 'text-status-warn', barra_cls: 'bg-status-warn' },
+  alta:  { texto: 'Casi completo',       fill: '92%', texto_cls: 'text-status-no',   barra_cls: 'bg-status-no' },
+} as const
+
 /** Valor de `categoriaId` cuando el participante elige la opción de categoría libre. */
 const OTROS = '__otros__'
 /** Valor del select de tipo de alimentación cuando elige "Otros". */
@@ -126,8 +136,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   // Transporte: costo según tipo de participante (0 si sin costo, oculto o no lo pide).
   const transp = evento.transporte
   const transporteVisible = transp.disponible && cfg.mostrar_transporte
+  // Si el cupo de transporte está lleno, la opción se bloquea: nunca cuenta.
+  const llevaTransporteEfectivo = transporteVisible && llevaTransporte && !transp.completo
   const transporteImporte =
-    transporteVisible && llevaTransporte && transp.con_costo
+    llevaTransporteEfectivo && transp.con_costo
       ? tipo === 'socio'
         ? transp.importe_socio
         : transp.importe_no_socio
@@ -383,7 +395,7 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           telefono: telefono.trim(),
           categoria_id: esOtros ? '' : categoriaId,
           categoria_otros: esOtros ? categoriaOtros.trim() : '',
-          lleva_transporte: llevaTransporte,
+          lleva_transporte: llevaTransporteEfectivo,
           lleva_alimentacion: llevaAlimentacion,
           alimentacion_tipo: alimTipoFinal,
           referencia_transferencia: referenciaTransferencia.trim(),
@@ -651,15 +663,50 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
 
           {transporteVisible && (
             <div className="border-t border-line pt-5">
-              <label className="flex items-start gap-3 cursor-pointer">
+              {/* Barra de cupo de transporte (sólo si el transporte tiene tope). */}
+              {transp.completo ? (
+                <div className="mb-4 max-w-[16rem]">
+                  <span className="block mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] font-medium text-status-no">
+                    Transporte completo
+                  </span>
+                  <div className="h-2 rounded-full bg-paper-3 overflow-hidden">
+                    <div className="h-full rounded-full bg-status-no" style={{ width: '100%' }} />
+                  </div>
+                </div>
+              ) : (
+                transp.ocupacion_nivel && (
+                  <div className="mb-4 max-w-[16rem]">
+                    <span
+                      className={`block mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] font-medium ${BARRA_TRANSPORTE[transp.ocupacion_nivel].texto_cls}`}
+                    >
+                      {BARRA_TRANSPORTE[transp.ocupacion_nivel].texto}
+                    </span>
+                    <div className="h-2 rounded-full bg-paper-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${BARRA_TRANSPORTE[transp.ocupacion_nivel].barra_cls}`}
+                        style={{ width: BARRA_TRANSPORTE[transp.ocupacion_nivel].fill }}
+                      />
+                    </div>
+                  </div>
+                )
+              )}
+              <label
+                className={`flex items-start gap-3 ${transp.completo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+              >
                 <input
                   type="checkbox"
                   className="accent-amber-deep w-4 h-4 mt-1"
-                  checked={llevaTransporte}
+                  checked={llevaTransporte && !transp.completo}
+                  disabled={transp.completo}
                   onChange={(e) => setLlevaTransporte(e.target.checked)}
                 />
                 <span>
                   <span className="font-medium">Necesito transporte</span>
+                  {transp.completo && (
+                    <span className="block text-sm text-status-no mt-0.5">
+                      Se agotaron los lugares de transporte. Podés inscribirte al evento sin transporte.
+                    </span>
+                  )}
                   {transp.descripcion && (
                     <span className="block text-sm text-ink-2 mt-0.5">{transp.descripcion}</span>
                   )}
