@@ -342,7 +342,8 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       toast.error('El email es obligatorio')
       return
     }
-    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono.trim() && !telefonoEnFicha) {
+    // Teléfono obligatorio para todos (salvo que ya esté en la ficha del socio).
+    if (cfg.mostrar_telefono && !telefono.trim() && !telefonoEnFicha) {
       toast.error('El teléfono es obligatorio')
       return
     }
@@ -547,9 +548,9 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             {cfg.mostrar_telefono && (
               <div>
                 <label htmlFor="telefono" className="label-mono block mb-1">
-                  Teléfono{cfg.telefono_obligatorio && !telefonoEnFicha ? ' *' : ''}
+                  Teléfono{!telefonoEnFicha ? ' *' : ''}
                 </label>
-                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder={resuelto?.telefono_mask ?? '099 123 456'} required={cfg.telefono_obligatorio && !telefonoEnFicha} />
+                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder={resuelto?.telefono_mask ?? '099 123 456'} required={!telefonoEnFicha} />
               </div>
             )}
           </div>

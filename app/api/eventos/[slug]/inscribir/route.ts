@@ -154,6 +154,12 @@ export async function POST(
     if (!nombre) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
     }
+    // Teléfono: obligatorio para todos cuando el campo se muestra. Si es un socio
+    // con teléfono en la ficha ya se completó arriba; si no lo tenemos, hay que
+    // pedirlo sí o sí (es un dato de contacto que queremos siempre).
+    if (cfg.mostrar_telefono && !telefono) {
+      return NextResponse.json({ error: 'El teléfono es obligatorio' }, { status: 400 })
+    }
 
     // Categoría (obligatoria): predefinida del catálogo o libre ("Otros").
     //   - con costo: la categoría fija el importe. "Otros" toma la tarifa más

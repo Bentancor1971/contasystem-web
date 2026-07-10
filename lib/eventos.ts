@@ -348,12 +348,18 @@ export async function precioCategoria(
   categoriaId: string,
   tipo: TipoParticipante,
 ): Promise<{ importe: number; categoria_nombre: string } | null> {
+  // Tolerante a duplicados: evento_categorias_remoto no tiene índice único sobre
+  // (evento_id, categoria_id, tipo_participante) y el push upserta por id local,
+  // así que una categoría recreada en el desktop puede dejar dos filas. Tomamos
+  // la más reciente (limit 1) en vez de romper con maybeSingle.
   const { data, error } = await admin
     .from('evento_categorias_remoto')
     .select('importe, categoria_nombre')
     .eq('evento_id', eventoId)
     .eq('categoria_id', categoriaId)
     .eq('tipo_participante', tipo)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
   if (error) throw new Error(`Error consultando precio: ${error.message}`)
   if (!data) return null
