@@ -20,11 +20,10 @@ import {
   resolverParticipante,
 } from '@/lib/eventos'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
+import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
-import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
+import { enviarAcuseInscripcion } from '@/lib/evento-acuse'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
-import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
-import { sendInscripcionEmail } from '@/lib/mailer'
 import type { CambioDato } from '@/lib/recibo-evento-email'
 
 export const runtime = 'nodejs'
@@ -137,6 +136,20 @@ export async function POST(
 
     // Resolver participante (socio/no_socio según cuotas)
     const part = await resolverParticipante(admin, evento, documento)
+
+    // Cédula válida: se exige SÓLO a quien no está en el padrón. A los que ya
+    // están se los deja pasar aunque su documento no verifique (hay documentos
+    // históricos que no cumplen el DV; ver lib/cedula). Así atajamos el error de
+    // tipeo del que se registra por primera vez sin dejar afuera a un socio.
+    if (!part.encontrado && !esCedulaUruguayaValida(documento)) {
+      return NextResponse.json(
+        {
+          error:
+            'La cédula no es válida. Revisá el número; si tu documento no es una cédula uruguaya, escribinos.',
+        },
+        { status: 400 },
+      )
+    }
 
     // El formulario ya no pre-rellena los datos del socio (el lookup público no
     // los entrega, ver ResolucionPublica). Por eso un campo vacío significa "no
@@ -351,89 +364,44 @@ export async function POST(
 
     // ── Acuse de inscripción por email (best-effort; no bloquea ni falla la
     //    respuesta). Va al mail ingresado por la persona (que puede diferir del
-    //    de la ficha) o, si no puso, al de la ficha. Sólo si la empresa tiene
-    //    casilla Gmail configurada.
-    try {
-      const destino = (mail || part.mail || '').trim()
-      if (destino) {
-        const cuenta = await loadGmailAccountForEmpresa(admin, evento.empresa_id)
-        if (cuenta) {
-          const cambios: CambioDato[] = []
-          if (part.encontrado) {
-            const dif = (campo: string, anterior: string, nuevo: string) => {
-              const a = (anterior ?? '').trim()
-              const b = (nuevo ?? '').trim()
-              if ((a || b) && a.toLowerCase() !== b.toLowerCase()) {
-                cambios.push({ campo, anterior: a, nuevo: b })
-              }
-            }
-            dif('Nombre', part.nombre, nombre)
-            dif('Apellido', part.apellido, apellido)
-            dif('Email', part.mail, mail)
-          }
-          // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
-          // Las variables se escapan y el HTML se sanea antes de enviarlo.
-          const totalMail =
-            Number(inserted.importe) +
-            Number(inserted.transporte_importe) +
-            Number(inserted.alimentacion_importe)
-          // El asunto es texto plano; el cuerpo es HTML (variables escapadas).
-          const varsTexto: Record<string, string> = {
-            nombre: `${nombre} ${apellido}`.trim(),
-            evento: evento.nombre,
-            numero: (inserted.numero as string | null) ?? '',
-            total: `${evento.moneda_codigo} ${totalMail.toFixed(2)}`,
-          }
-          const varsHtml = Object.fromEntries(
-            Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
-          )
-          // Plantilla según la modalidad: pago declarado usa la propia (con el
-          // aviso de verificación de transferencia); preinscripción usa la suya.
-          // Si el campo del caso está vacío, cae al recibo branded por defecto.
-          const esPago = modalidadFinal === 'pago_transferencia'
-          const asuntoTpl = esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
-          const htmlTpl = esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
-          const override = {
-            asunto: asuntoTpl ? aplicarVariables(asuntoTpl, varsTexto) : null,
-            html: htmlTpl ? sanitizeHtml(aplicarVariables(htmlTpl, varsHtml)) : null,
-          }
-
-          const envio = await sendInscripcionEmail({
-            cuenta,
-            to: destino,
-            override,
-            data: {
-              empresa: { nombre: cuenta.fromName },
-              eventoNombre: evento.nombre,
-              eventoFecha: evento.fecha_inicio,
-              socioNombre: `${nombre} ${apellido}`.trim(),
-              socioDocumento: normalizeDocumento(documento),
-              categoriaNombre: (inserted.categoria_nombre as string | null) ?? null,
-              tipoParticipante: part.tipo_participante,
-              importe: Number(inserted.importe),
-              transporteImporte: Number(inserted.transporte_importe),
-              alimentacionImporte: Number(inserted.alimentacion_importe),
-              alimentacionTipo: (inserted.alimentacion_tipo as string | null) ?? null,
-              total:
-                Number(inserted.importe) +
-                Number(inserted.transporte_importe) +
-                Number(inserted.alimentacion_importe),
-              monedaCodigo: inserted.moneda_codigo as string,
-              modalidad: modalidadFinal,
-              datosDeposito:
-                modalidadFinal === 'pago_transferencia' ? evento.datos_deposito : null,
-              numero: (inserted.numero as string | null) ?? null,
-              referenciaDeclarada: referencia || null,
-              cambios,
-            },
-          })
-          if (!envio.ok) {
-            console.error('[inscribir] acuse no enviado:', envio.error)
-          }
+    //    de la ficha) o, si no puso, al de la ficha. El armado del mail es el
+    //    mismo que usa el reenvío de copia (ver lib/evento-acuse).
+    const cambios: CambioDato[] = []
+    if (part.encontrado) {
+      const dif = (campo: string, anterior: string, nuevo: string) => {
+        const a = (anterior ?? '').trim()
+        const b = (nuevo ?? '').trim()
+        if ((a || b) && a.toLowerCase() !== b.toLowerCase()) {
+          cambios.push({ campo, anterior: a, nuevo: b })
         }
       }
-    } catch (mailErr) {
-      console.error('[inscribir] acuse por email falló:', mailErr)
+      dif('Nombre', part.nombre, nombre)
+      dif('Apellido', part.apellido, apellido)
+      dif('Email', part.mail, mail)
+    }
+    const acuse = await enviarAcuseInscripcion(admin, {
+      evento,
+      cfg,
+      destino: mail || part.mail || '',
+      documento: normalizeDocumento(documento),
+      nombre,
+      apellido,
+      inscripcion: {
+        numero: (inserted.numero as string | null) ?? null,
+        categoria_nombre: (inserted.categoria_nombre as string | null) ?? null,
+        tipo_participante: part.tipo_participante,
+        importe: Number(inserted.importe),
+        transporte_importe: Number(inserted.transporte_importe),
+        alimentacion_importe: Number(inserted.alimentacion_importe),
+        alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
+        moneda_codigo: inserted.moneda_codigo as string,
+        modalidad: modalidadFinal,
+        referencia_transferencia: referencia || null,
+      },
+      cambios,
+    })
+    if (!acuse.ok && acuse.motivo === 'error') {
+      console.error('[inscribir] acuse no enviado:', acuse.error)
     }
 
     return NextResponse.json({

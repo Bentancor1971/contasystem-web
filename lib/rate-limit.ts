@@ -69,6 +69,8 @@ export const LIMITES = {
   inscribir: { nombre: 'inscribir', limite: 5, ventanaSegundos: 300 },
   /** Declarar un pago: idem. */
   pago: { nombre: 'pago', limite: 5, ventanaSegundos: 300 },
+  /** Reenviar la copia del comprobante: cada intento es un mail real saliendo. */
+  reenviarAcuse: { nombre: 'reenviar_acuse', limite: 3, ventanaSegundos: 600 },
 } as const satisfies Record<string, RateLimitRule>
 
 /** Cuerpo estándar del 429. */
