@@ -43,7 +43,14 @@
       "PowerShell(if \\($?\\) { \"eslint OK\" })",
       "PowerShell(npm run lint --silent)",
       "PowerShell(npm run lint 2>&1)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(git push *)",
+      "Bash(git stash *)",
+      "Bash(echo \"exit $?\")",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'fix\\(eventos\\): no mostrar datos de transferencia a quien ya pagó *)",
+      "Bash(git commit -q -m 'chore\\(claude\\): permisos de git en el allowlist *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
