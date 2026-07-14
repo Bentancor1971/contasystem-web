@@ -22,7 +22,7 @@ import {
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
-import { enviarAcuseInscripcion } from '@/lib/evento-acuse'
+import { enviarAcuseInscripcion, origenPublico } from '@/lib/evento-acuse'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 import type { CambioDato } from '@/lib/recibo-evento-email'
 
@@ -401,6 +401,7 @@ export async function POST(
         referencia_transferencia: referencia || null,
       },
       cambios,
+      origen: origenPublico(req),
     })
     if (!acuse.ok && acuse.motivo === 'error') {
       console.error('[inscribir] acuse no enviado:', acuse.error)

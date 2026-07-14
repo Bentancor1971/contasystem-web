@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadEventoRemotoBySlug, maskMail } from '@/lib/eventos'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
-import { enviarAcuseInscripcion } from '@/lib/evento-acuse'
+import { enviarAcuseInscripcion, origenPublico } from '@/lib/evento-acuse'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 import type { ModalidadInscripcion } from '@/lib/eventos-types'
@@ -106,6 +106,7 @@ export async function POST(
       },
       // El reenvío es una copia del comprobante: no propone cambios de ficha.
       cambios: [],
+      origen: origenPublico(req),
     })
 
     if (!acuse.ok) {

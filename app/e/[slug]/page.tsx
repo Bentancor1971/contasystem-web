@@ -58,10 +58,14 @@ function formatFechaLarga(iso: string | null): string | null {
 
 export default async function EventoPublicoPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ pago?: string }>
 }) {
   const { slug } = await params
+  // ?pago=1 — link del mail de preinscripción: abre directo el registro de pago.
+  const { pago } = await searchParams
   const admin = createAdminClient()
   const evento = await loadEventoPublico(admin, slug)
   if (!evento) notFound()
@@ -126,7 +130,7 @@ export default async function EventoPublicoPage({
         {/* Declarar el pago de una preinscripción vive DENTRO del formulario: se
             ofrece al verificar la cédula, sólo a quien tiene una preinscripción
             impaga (ver EventoForm). En la portada era ruido para todos los demás. */}
-        <EventoForm evento={evento} />
+        <EventoForm evento={evento} abrirRegistrarPago={pago === '1'} />
 
         {/* HTML propio configurado en /configuracion/eventos (pie). Saneado. */}
         {htmlPie && (

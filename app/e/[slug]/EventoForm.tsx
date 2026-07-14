@@ -83,6 +83,24 @@ function describirInscripcionPrevia(p: InscripcionPrevia): {
   }
 }
 
+/**
+ * Dato que ya está en la ficha del socio: se muestra ENMASCARADO y no se edita.
+ * Es informativo (para que la persona se reconozca); el server usa el valor real
+ * de la ficha al inscribir. Si un dato cambió, lo actualiza la organización.
+ */
+function DatoDeFicha({ id, valor }: { id: string; valor: string }) {
+  return (
+    <input
+      id={id}
+      className="field bg-paper-2 text-ink-2 cursor-not-allowed"
+      value={valor}
+      readOnly
+      tabIndex={-1}
+      aria-readonly="true"
+    />
+  )
+}
+
 /** Valor de `categoriaId` cuando el participante elige la opción de categoría libre. */
 const OTROS = '__otros__'
 /** Valor del select de tipo de alimentación cuando elige "Otros". */
@@ -104,7 +122,14 @@ interface Resultado {
   datos_deposito: string | null
 }
 
-export function EventoForm({ evento }: { evento: EventoPublico }) {
+export function EventoForm({
+  evento,
+  abrirRegistrarPago = false,
+}: {
+  evento: EventoPublico
+  /** Viene de ?pago=1 (link del mail de preinscripción): arranca en el registro de pago. */
+  abrirRegistrarPago?: boolean
+}) {
   // Modalidades ofrecidas antes de pedir la cédula. "Pago realizado" sólo tiene
   // sentido si la config web lo permite y hay dónde transferir (datos de
   // depósito cargados). Misma condición que el servidor en /inscribir.
@@ -130,9 +155,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
       : null
 
   // Lo elegido en esa pantalla: una modalidad de inscripción o el registro de pago.
+  // Con ?pago=1 se salta la elección y se entra directo a declarar el pago.
   const [modalidadElegida, setModalidadElegida] = useState<
     ModalidadElegida | 'registrar_pago' | null
-  >(modalidadUnica)
+  >(abrirRegistrarPago && registrarPagoDisponible ? 'registrar_pago' : modalidadUnica)
   const [documento, setDocumento] = useState('')
   const [verificando, setVerificando] = useState(false)
   const [resuelto, setResuelto] = useState<ResolucionPublica | null>(null)
@@ -859,9 +885,9 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
               <Info size={15} className="mt-0.5 shrink-0" />
               <span>
                 Tus datos ya están registrados (los mostramos parcialmente para que los
-                reconozcas). Dejá los campos en blanco y usamos los de tu ficha; el mail de
-                confirmación llega con tus datos reales. Si alguno cambió, escribinos por
-                correo y lo actualizamos.
+                reconozcas) y no se pueden editar acá: usamos los de tu ficha, y el mail de
+                confirmación llega con tus datos reales. Sólo tenés que completar lo que falte.
+                Si alguno cambió, escribinos por correo y lo actualizamos.
               </span>
             </p>
           )}
@@ -869,14 +895,22 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label htmlFor="nombre" className="label-mono block mb-1">Nombre</label>
-              <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={resuelto?.nombre_mask ?? undefined} required={!nombreEnFicha} />
+              {nombreEnFicha ? (
+                <DatoDeFicha id="nombre" valor={resuelto!.nombre_mask!} />
+              ) : (
+                <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+              )}
             </div>
             {cfg.mostrar_apellido && (
               <div>
                 <label htmlFor="apellido" className="label-mono block mb-1">
                   Apellido{cfg.apellido_obligatorio && !apellidoEnFicha ? ' *' : ''}
                 </label>
-                <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder={resuelto?.apellido_mask ?? undefined} required={cfg.apellido_obligatorio && !apellidoEnFicha} />
+                {apellidoEnFicha ? (
+                  <DatoDeFicha id="apellido" valor={resuelto!.apellido_mask!} />
+                ) : (
+                  <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} required={cfg.apellido_obligatorio} />
+                )}
               </div>
             )}
             {cfg.mostrar_email && (
@@ -884,7 +918,11 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 <label htmlFor="mail" className="label-mono block mb-1">
                   Email{cfg.email_obligatorio && !mailEnFicha ? ' *' : ''}
                 </label>
-                <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder={resuelto?.mail_mask ?? 'tu@correo.com'} required={cfg.email_obligatorio && !mailEnFicha} />
+                {mailEnFicha ? (
+                  <DatoDeFicha id="mail" valor={resuelto!.mail_mask!} />
+                ) : (
+                  <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="tu@correo.com" required={cfg.email_obligatorio} />
+                )}
               </div>
             )}
             {cfg.mostrar_telefono && (
@@ -892,7 +930,11 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
                 <label htmlFor="telefono" className="label-mono block mb-1">
                   Teléfono{!telefonoEnFicha ? ' *' : ''}
                 </label>
-                <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder={resuelto?.telefono_mask ?? '099 123 456'} required={!telefonoEnFicha} />
+                {telefonoEnFicha ? (
+                  <DatoDeFicha id="telefono" valor={resuelto!.telefono_mask!} />
+                ) : (
+                  <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="099 123 456" required />
+                )}
               </div>
             )}
           </div>

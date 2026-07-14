@@ -40,6 +40,19 @@ export interface EnviarAcuseParams {
   inscripcion: InscripcionAcuse
   /** Diferencias entre la ficha del socio y lo que escribió (sólo en el alta). */
   cambios?: CambioDato[]
+  /** Origen público (https://host) para armar el link al registro de pago. */
+  origen?: string | null
+}
+
+/**
+ * Origen público del sitio a partir del request. Detrás del proxy de Vercel el
+ * host real viaja en x-forwarded-*; `req.url` puede traer el interno.
+ */
+export function origenPublico(req: Request): string {
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host')
+  if (!host) return new URL(req.url).origin
+  const proto = req.headers.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+  return `${proto}://${host}`
 }
 
 export type ResultadoAcuse =
@@ -48,7 +61,7 @@ export type ResultadoAcuse =
 
 export async function enviarAcuseInscripcion(
   admin: SupabaseClient,
-  { evento, cfg, destino, documento, nombre, apellido, inscripcion, cambios = [] }: EnviarAcuseParams,
+  { evento, cfg, destino, documento, nombre, apellido, inscripcion, cambios = [], origen }: EnviarAcuseParams,
 ): Promise<ResultadoAcuse> {
   const to = destino.trim()
   if (!to) return { ok: false, motivo: 'sin_destino' }
@@ -81,6 +94,14 @@ export async function enviarAcuseInscripcion(
     const asuntoTpl = esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
     const htmlTpl = esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
 
+    // Link al registro de pago: sólo tiene sentido en la preinscripción y sólo
+    // si el form público lo ofrece (misma condición que EventoForm/RegistrarPago:
+    // transferencia habilitada y datos de depósito cargados).
+    const urlPago =
+      !esPago && origen && cfg.permitir_pago_transferencia && evento.datos_deposito
+        ? `${origen}/e/${evento.slug}?pago=1`
+        : null
+
     const envio = await sendInscripcionEmail({
       cuenta,
       to,
@@ -103,8 +124,9 @@ export async function enviarAcuseInscripcion(
         total,
         monedaCodigo: inscripcion.moneda_codigo,
         modalidad: inscripcion.modalidad,
-        datosDeposito: esPago ? evento.datos_deposito : null,
+        datosDeposito: evento.datos_deposito,
         numero: inscripcion.numero,
+        urlPago,
         referenciaDeclarada: inscripcion.referencia_transferencia,
         cambios,
       },

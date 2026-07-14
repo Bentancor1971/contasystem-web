@@ -42,7 +42,8 @@
       "PowerShell(npx eslint \"app/\\(app\\)/configuracion/eventos/page.tsx\" \"lib/evento-plantillas-ejemplo.ts\")",
       "PowerShell(if \\($?\\) { \"eslint OK\" })",
       "PowerShell(npm run lint --silent)",
-      "PowerShell(npm run lint 2>&1)"
+      "PowerShell(npm run lint 2>&1)",
+      "Bash(npx tsx *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
