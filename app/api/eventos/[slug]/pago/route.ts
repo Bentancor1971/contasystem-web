@@ -12,7 +12,9 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { loadEventoRemotoBySlug } from '@/lib/eventos'
+import { loadEventoRemotoBySlug, maskMail } from '@/lib/eventos'
+import { loadEventoWebConfig } from '@/lib/evento-web-config'
+import { enviarAcuseInscripcion } from '@/lib/evento-acuse'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 
@@ -87,7 +89,7 @@ export async function POST(
     const documentoHash = hashDocumento(documento)
     const { data: insc, error: inscErr } = await admin
       .from('inscripciones_evento_remoto')
-      .select('id, numero, importe, transporte_importe, alimentacion_importe, moneda_codigo')
+      .select('id, numero, importe, transporte_importe, alimentacion_importe, moneda_codigo, nombre, apellido, mail, categoria_nombre, tipo_participante, alimentacion_tipo')
       .eq('evento_id', evento.id)
       .eq('documento_hash', documentoHash)
       .neq('estado', 'anulado')
@@ -151,12 +153,49 @@ export async function POST(
       Number(insc.transporte_importe ?? 0) +
       Number(insc.alimentacion_importe ?? 0)
 
+    // ── Acuse por email (best-effort; no falla la respuesta). Va al mail que la
+    //    persona dejó en su inscripción: acá no elige destino, así que esto no
+    //    sirve para mandarle mails a un tercero (mismo criterio que /reenviar-acuse).
+    //    Se arma como PAGO DECLARADO (con la referencia recién registrada), no
+    //    como la reserva original: es lo que la persona acaba de hacer.
+    const destino = ((insc.mail as string | null) ?? '').trim()
+    let mailMask: string | null = null
+    if (destino) {
+      const cfg = await loadEventoWebConfig(admin, evento.id)
+      const acuse = await enviarAcuseInscripcion(admin, {
+        evento,
+        cfg,
+        destino,
+        documento: normalizeDocumento(documento),
+        nombre: (insc.nombre as string | null) ?? '',
+        apellido: (insc.apellido as string | null) ?? '',
+        inscripcion: {
+          numero: (insc.numero as string | null) ?? null,
+          categoria_nombre: (insc.categoria_nombre as string | null) ?? null,
+          tipo_participante: (insc.tipo_participante as 'socio' | 'no_socio') ?? 'no_socio',
+          importe: Number(insc.importe ?? 0),
+          transporte_importe: Number(insc.transporte_importe ?? 0),
+          alimentacion_importe: Number(insc.alimentacion_importe ?? 0),
+          alimentacion_tipo: (insc.alimentacion_tipo as string | null) ?? null,
+          moneda_codigo: (insc.moneda_codigo as string | null) ?? evento.moneda_codigo,
+          modalidad: 'pago_transferencia',
+          referencia_transferencia: referencia,
+        },
+        cambios: [],
+      })
+      if (acuse.ok) mailMask = maskMail(destino)
+      else if (acuse.motivo === 'error') console.error('[pago] acuse no enviado:', acuse.error)
+    }
+
     return NextResponse.json({
       ok: true,
       actualizado: !!yaPendiente,
       numero: (insc.numero as string | null) ?? null,
       total,
       moneda_codigo: insc.moneda_codigo as string,
+      // Mail ENMASCARADO al que salió la copia. null si no se envió (sin casilla
+      // configurada, sin mail en la inscripción o error): la UI no lo promete.
+      mail_mask: mailMask,
     })
   } catch (err) {
     console.error('[POST /api/eventos/[slug]/pago] error:', err)

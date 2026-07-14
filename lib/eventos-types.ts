@@ -238,6 +238,50 @@ export interface ResolucionPublica {
   mail_mask: string | null
   /** Teléfono enmascarado (ej. "•••456"). null si no se resolvió o no tiene. */
   telefono_mask: string | null
+  /**
+   * Inscripción vigente de esta cédula en este evento, si ya se inscribió.
+   * Se expone para avisarlo al verificar en vez de dejar que llene todo el
+   * formulario y choque con el 409 al enviar. No agrega superficie: el mismo
+   * hecho ya se filtraba por el 409 de /inscribir, y ambos endpoints tienen
+   * tope por IP.
+   */
+  inscripcion_previa: InscripcionPrevia | null
+  /**
+   * La cédula no pasa el dígito verificador Y no está en el padrón: es un error
+   * de tipeo de alguien que se registra por primera vez. A los que YA están en el
+   * padrón nunca se les exige el DV (hay documentos históricos que no cumplen).
+   * Ver lib/cedula.
+   */
+  cedula_invalida: boolean
+}
+
+/**
+ * Inscripción ya registrada para una cédula en un evento (aviso al verificar).
+ * Lleva lo necesario para que la persona sepa CÓMO quedó registrada: modalidad
+ * (pago declarado vs. preinscripción), estado y cuánto falta abonar.
+ */
+export interface InscripcionPrevia {
+  numero: string | null
+  estado: EstadoInscripcionRemota
+  modalidad: ModalidadInscripcion
+  /**
+   * Nombre y apellido ENMASCARADOS tal como quedaron en la inscripción (ej.
+   * "MA••• BE•••"). Sirve para que la persona reconozca su registro sin que el
+   * dato en claro baje a un endpoint público. null si la inscripción no tiene nombre.
+   */
+  nombre_mask: string | null
+  categoria_nombre: string | null
+  /** Suma de inscripción + transporte + alimentación. */
+  total: number
+  moneda_codigo: string
+  /** Referencia de transferencia declarada (sólo en modalidad pago_transferencia). */
+  referencia_transferencia: string | null
+  /**
+   * Mail ENMASCARADO al que se enviaría la copia del comprobante (ej.
+   * "b•••@gmail.com"). null si la inscripción no tiene mail: en ese caso no se
+   * ofrece el reenvío. El mail en claro nunca baja al navegador.
+   */
+  mail_mask: string | null
 }
 
 /** Resultado interno de resolver la cédula. NUNCA se serializa al cliente. */

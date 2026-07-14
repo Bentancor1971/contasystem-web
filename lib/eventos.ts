@@ -13,15 +13,21 @@ import type {
   CategoriaSocioPublica,
   EventoPublico,
   EventoRemoto,
+  InscripcionPrevia,
   ResolucionParticipante,
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { normalizeDocumento } from '@/lib/documento'
+import { hashDocumento, normalizeDocumento } from '@/lib/documento'
+import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
 
-/** Estados de inscripción que ocupan cupo. */
-const ESTADOS_OCUPAN = ['pendiente', 'importado']
+/**
+ * Estados de inscripción que ocupan cupo (evento y transporte).
+ * Incluye 'pagado' (pago declarado, a verificar): reserva lugar igual que la
+ * preinscripción. Sólo 'rechazado' y 'anulado' liberan el cupo.
+ */
+const ESTADOS_OCUPAN = ['pendiente', 'pagado', 'importado']
 
 /** Trae el evento por slug (no anulado), o null. */
 export async function loadEventoRemotoBySlug(
@@ -349,13 +355,19 @@ function maskTexto(v: string): string | null {
 }
 
 /** "bentancor@gmail.com" → "b•••@gmail.com". Deja visible el dominio. */
-function maskMail(v: string): string | null {
+export function maskMail(v: string): string | null {
   const s = v.trim()
   const at = s.indexOf('@')
   if (at <= 0) return null // sin @ o sin local: no arriesgamos, no mostramos nada
   const local = s.slice(0, at)
   const dominio = s.slice(at) // incluye la "@"
   return `${local.slice(0, 1)}•••${dominio}`
+}
+
+/** "Mario Bentancor" → "Ma••• Be•••". Enmascara cada parte por separado. */
+function maskNombreCompleto(nombre: string, apellido: string): string | null {
+  const partes = [maskTexto(nombre), maskTexto(apellido)].filter(Boolean)
+  return partes.length ? partes.join(' ') : null
 }
 
 /** "099123456" → "•••456". Deja visibles los últimos 3 dígitos. */
@@ -366,11 +378,60 @@ function maskTelefono(v: string): string | null {
 }
 
 /**
+ * Inscripción vigente de una cédula en un evento, o null si no se inscribió.
+ * Mismo criterio de vigencia que el dedupe de POST /inscribir (todo salvo
+ * 'anulado'): si acá devuelve algo, ese endpoint devolvería 409.
+ */
+export async function buscarInscripcionPrevia(
+  admin: SupabaseClient,
+  eventoId: string,
+  documento: string,
+): Promise<InscripcionPrevia | null> {
+  const { data, error } = await admin
+    .from('inscripciones_evento_remoto')
+    .select('numero, estado, modalidad, categoria_nombre, importe, transporte_importe, alimentacion_importe, moneda_codigo, referencia_transferencia, mail, nombre, apellido')
+    .eq('evento_id', eventoId)
+    .eq('documento_hash', hashDocumento(documento))
+    .neq('estado', 'anulado')
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`Error buscando inscripción previa: ${error.message}`)
+  if (!data) return null
+  const modalidad = (data.modalidad as InscripcionPrevia['modalidad']) ?? 'reserva'
+  return {
+    numero: (data.numero as string | null) ?? null,
+    estado: data.estado as InscripcionPrevia['estado'],
+    modalidad,
+    // Enmascarado por parte (nombre y apellido), nunca en claro: este payload lo
+    // sirve un endpoint público (ver ResolucionPublica).
+    nombre_mask: maskNombreCompleto(
+      (data.nombre as string | null) ?? '',
+      (data.apellido as string | null) ?? '',
+    ),
+    categoria_nombre: (data.categoria_nombre as string | null) ?? null,
+    total:
+      Number(data.importe ?? 0) +
+      Number(data.transporte_importe ?? 0) +
+      Number(data.alimentacion_importe ?? 0),
+    moneda_codigo: (data.moneda_codigo as string | null) ?? 'UYU',
+    referencia_transferencia:
+      modalidad === 'pago_transferencia'
+        ? ((data.referencia_transferencia as string | null) ?? null)
+        : null,
+    // Enmascarado: es el destino del reenvío de copia, no un dato para mostrar.
+    mail_mask: maskMail(((data.mail as string | null) ?? '').trim()),
+  }
+}
+
+/**
  * Proyección pública del lookup: lo único que se serializa al navegador.
  * Recorta la resolución interna a tipo + categoría + datos ENMASCARADOS.
  * Ver `ResolucionPublica` para el detalle de por qué cada campo está o no.
  */
-export function proyectarResolucionPublica(r: ResolucionParticipante): ResolucionPublica {
+export function proyectarResolucionPublica(
+  r: ResolucionParticipante,
+  opts: { documento: string; inscripcionPrevia?: InscripcionPrevia | null },
+): ResolucionPublica {
   const esSocioResuelto = r.encontrado && r.tipo_participante === 'socio'
   return {
     tipo_participante: r.tipo_participante,
@@ -379,6 +440,10 @@ export function proyectarResolucionPublica(r: ResolucionParticipante): Resolucio
     apellido_mask: esSocioResuelto ? maskTexto(r.apellido) : null,
     mail_mask: esSocioResuelto ? maskMail(r.mail) : null,
     telefono_mask: esSocioResuelto ? maskTelefono(r.telefono) : null,
+    inscripcion_previa: opts.inscripcionPrevia ?? null,
+    // El DV sólo se exige a quien no está en el padrón (ver lib/cedula). Se
+    // avisa acá para que no complete todo el formulario y recién ahí se entere.
+    cedula_invalida: !r.encontrado && !esCedulaUruguayaValida(opts.documento),
   }
 }
 

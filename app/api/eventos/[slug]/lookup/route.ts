@@ -8,7 +8,12 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { loadEventoRemotoBySlug, resolverParticipante, proyectarResolucionPublica } from '@/lib/eventos'
+import {
+  buscarInscripcionPrevia,
+  loadEventoRemotoBySlug,
+  proyectarResolucionPublica,
+  resolverParticipante,
+} from '@/lib/eventos'
 import { normalizeDocumento } from '@/lib/documento'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 
@@ -50,12 +55,19 @@ export async function POST(
       return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
     }
 
-    const r = await resolverParticipante(admin, evento, documentoRaw)
+    const [r, previa] = await Promise.all([
+      resolverParticipante(admin, evento, documentoRaw),
+      // Si ya se inscribió, se avisa acá (con su modalidad y estado de pago) en
+      // vez de dejar que llene todo el formulario y choque con el 409 al enviar.
+      buscarInscripcionPrevia(admin, evento.id, documentoRaw),
+    ])
 
     // Proyección pública: tipo + categoría + datos ENMASCARADOS. El dato en
     // claro (nombre/mail/socio_id/cuotas) nunca se serializa — este endpoint no
     // tiene autenticación (ver ResolucionPublica y proyectarResolucionPublica).
-    return NextResponse.json(proyectarResolucionPublica(r))
+    return NextResponse.json(
+      proyectarResolucionPublica(r, { documento: documentoRaw, inscripcionPrevia: previa }),
+    )
   } catch (err) {
     console.error('[POST /api/eventos/[slug]/lookup] error:', err)
     const msg = err instanceof Error ? err.message : 'Error interno'

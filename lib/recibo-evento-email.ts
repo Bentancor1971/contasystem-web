@@ -62,8 +62,11 @@ export interface ReciboEventoEmailData {
   total: number
   monedaCodigo: string
   modalidad: ModalidadInscripcion
+  /** Datos de la cuenta donde depositar (texto libre del evento). */
   datosDeposito: string | null
   numero: string | null
+  /** Link al formulario público de "registrar mi pago" (sólo preinscripción). */
+  urlPago?: string | null
   /** Referencia de transferencia que la persona declaró (modalidad "pago realizado"). */
   referenciaDeclarada?: string | null
   cambios: CambioDato[]
@@ -154,10 +157,25 @@ export function renderReciboEventoEmail(
             <td style="padding:28px 32px 8px;">
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
               <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${esTransferencia
-                ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia para confirmar tu lugar.'
-                : 'Tu preinscripción quedó registrada. Coordiná el pago con la organización para confirmar la inscripción.'}</p>
+                ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
+                : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? ':' : ' el formulario de inscripción del evento.'}`}</p>
             </td>
           </tr>
+
+          ${!esTransferencia && d.urlPago ? `
+          <!-- Botón: registrar el pago -->
+          <tr>
+            <td style="padding:12px 32px 4px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background-color:${C.accent};border-radius:6px;">
+                    <a href="${esc(d.urlPago)}" target="_blank" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:bold;color:${C.white};text-decoration:none;">Registrar mi pago</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Si el botón no funciona, copiá este enlace: <a href="${esc(d.urlPago)}" style="color:${C.secondary};">${esc(d.urlPago)}</a></p>
+            </td>
+          </tr>` : ''}
 
           <!-- Monto destacado -->
           <tr>
@@ -186,6 +204,19 @@ export function renderReciboEventoEmail(
               </table>
             </td>
           </tr>
+
+          ${!esTransferencia && (d.datosDeposito || d.numero) ? `
+          <tr>
+            <td style="padding:0 32px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
+                <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Datos para el pago</td></tr>
+                ${d.datosDeposito ? `<tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>` : ''}
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:180px;">Importe a pagar</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, d.monedaCodigo)}</td></tr>
+                ${d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
+              </table>
+              <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Después de transferir, registrá el pago con el botón de arriba para que podamos verificarlo.</p>
+            </td>
+          </tr>` : ''}
 
           ${esTransferencia && d.datosDeposito ? `
           <tr>
@@ -223,8 +254,8 @@ export function renderReciboEventoEmail(
     '',
     `Hola ${d.socioNombre},`,
     esTransferencia
-      ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia para confirmar tu lugar.'
-      : 'Tu preinscripción quedó registrada. Coordiná el pago con la organización para confirmar la inscripción.',
+      ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
+      : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? `:\n${d.urlPago}` : ' el formulario de inscripción del evento.'}`,
     fecha ? `Fecha: ${fecha}` : '',
     d.categoriaNombre ? `Categoría: ${d.categoriaNombre} (${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'})` : '',
     `Modalidad: ${esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}`,
@@ -233,6 +264,13 @@ export function renderReciboEventoEmail(
   if (esTransferencia && d.datosDeposito) {
     lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, d.monedaCodigo)}`)
     if (d.referenciaDeclarada) lineas.push(`Referencia declarada: ${d.referenciaDeclarada}`)
+  }
+  if (!esTransferencia && (d.datosDeposito || d.numero)) {
+    lineas.push('', 'Datos para el pago:')
+    if (d.datosDeposito) lineas.push(d.datosDeposito)
+    lineas.push(`Importe a pagar: ${formatImporte(d.total, d.monedaCodigo)}`)
+    if (d.numero) lineas.push(`Referencia de inscripción: ${d.numero}`)
+    if (d.urlPago) lineas.push('', `Registrá tu pago acá: ${d.urlPago}`)
   }
   if (d.cambios.length > 0) {
     lineas.push('', 'Actualizamos tus datos:')
