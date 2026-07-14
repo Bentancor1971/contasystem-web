@@ -78,6 +78,26 @@ export interface TransportePublico {
   completo: boolean
 }
 
+/**
+ * Tipo de alimentación por defecto: el que queda elegido si la persona no toca
+ * el desplegable. Se antepone SIEMPRE a las opciones del evento (aun si el
+ * evento no lo cargó), para que todo evento con opciones tenga un default válido.
+ */
+export const ALIMENTACION_SIN_RESTRICCION = 'Sin restricción'
+
+/**
+ * Opciones de alimentación que ve la persona: las del evento con
+ * "Sin restricción" garantizada al frente. Lista vacía (evento sin opciones) se
+ * deja vacía: ahí no hay desplegable, sólo el checkbox de reservar.
+ */
+export function opcionesConSinRestriccion(opciones: string[]): string[] {
+  if (opciones.length === 0) return []
+  const resto = opciones.filter(
+    (o) => o.toLowerCase() !== ALIMENTACION_SIN_RESTRICCION.toLowerCase(),
+  )
+  return [ALIMENTACION_SIN_RESTRICCION, ...resto]
+}
+
 /** Config de alimentación tal como la ve el formulario público. Espejo de
  * transporte + la lista de tipos (opciones) para que la persona elija. */
 export interface AlimentacionPublica {
@@ -86,7 +106,10 @@ export interface AlimentacionPublica {
   importe_socio: number
   importe_no_socio: number
   descripcion: string | null
-  /** Tipos ofrecidos (Estándar, Vegetariano, …). Vacío = solo checkbox. */
+  /**
+   * Tipos ofrecidos, con "Sin restricción" primero (el default).
+   * Vacío = el evento no cargó opciones: sólo checkbox, sin desplegable.
+   */
   opciones: string[]
 }
 

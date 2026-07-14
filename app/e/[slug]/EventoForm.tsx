@@ -19,6 +19,7 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
+import { ALIMENTACION_SIN_RESTRICCION } from '@/lib/eventos-types'
 import { simboloMoneda } from '@/lib/format'
 import { RegistrarPago } from './RegistrarPago'
 
@@ -171,7 +172,8 @@ export function EventoForm({
   const [categoriaOtros, setCategoriaOtros] = useState('')
   const [llevaTransporte, setLlevaTransporte] = useState(false)
   const [llevaAlimentacion, setLlevaAlimentacion] = useState(false)
-  const [alimentacionTipo, setAlimentacionTipo] = useState('')
+  // Preseleccionado en el default: reservar alimentación no obliga a elegir tipo.
+  const [alimentacionTipo, setAlimentacionTipo] = useState(ALIMENTACION_SIN_RESTRICCION)
   const [alimentacionOtros, setAlimentacionOtros] = useState('')
   const [referenciaTransferencia, setReferenciaTransferencia] = useState('')
 
@@ -219,7 +221,7 @@ export function EventoForm({
     setCategoriaOtros('')
     setLlevaTransporte(false)
     setLlevaAlimentacion(false)
-    setAlimentacionTipo('')
+    setAlimentacionTipo(ALIMENTACION_SIN_RESTRICCION)
     setAlimentacionOtros('')
     setReferenciaTransferencia('')
   }
@@ -655,14 +657,20 @@ export function EventoForm({
       toast.error('Escribí tu categoría')
       return
     }
-    // Tipo de alimentación obligatorio si el evento ofrece opciones y se reserva.
+    // Tipo de alimentación: nunca vacío si el evento ofrece opciones (el select
+    // arranca en "Sin restricción"). Sólo hay que exigir el texto de "Otros".
     const alimTipoFinal = llevaAlimentacion
       ? alimentacionTipo === ALIM_OTROS
         ? alimentacionOtros.trim()
         : alimentacionTipo
       : ''
-    if (alimentacionVisible && llevaAlimentacion && alim.opciones.length > 0 && !alimTipoFinal) {
-      toast.error('Elegí el tipo de alimentación')
+    if (
+      alimentacionVisible &&
+      llevaAlimentacion &&
+      alimentacionTipo === ALIM_OTROS &&
+      !alimentacionOtros.trim()
+    ) {
+      toast.error('Escribí el tipo de alimentación')
       return
     }
     // "Pago realizado": la referencia de la transferencia es obligatoria.
@@ -1097,16 +1105,17 @@ export function EventoForm({
                 </span>
               </label>
 
+              {/* El desplegable arranca en "Sin restricción" (siempre la 1ª opción,
+                  la garantiza el server): elegir otro tipo es opcional. */}
               {llevaAlimentacion && alim.opciones.length > 0 && (
                 <div className="pl-7">
-                  <label htmlFor="alim-tipo" className="label-mono block mb-1">Tipo de alimentación *</label>
+                  <label htmlFor="alim-tipo" className="label-mono block mb-1">Tipo de alimentación</label>
                   <select
                     id="alim-tipo"
                     className="field"
                     value={alimentacionTipo}
                     onChange={(e) => setAlimentacionTipo(e.target.value)}
                   >
-                    <option value="">— Elegir —</option>
                     {alim.opciones.map((o) => (
                       <option key={o} value={o}>{o}</option>
                     ))}

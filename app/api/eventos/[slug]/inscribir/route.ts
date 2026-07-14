@@ -19,6 +19,7 @@ import {
   precioMaximoCategoria,
   resolverParticipante,
 } from '@/lib/eventos'
+import { ALIMENTACION_SIN_RESTRICCION } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -253,8 +254,9 @@ export async function POST(
       }
     }
 
-    // Alimentación (opcional): espejo de transporte + tipo elegido. Si el evento
-    // tiene opciones configuradas, el tipo es obligatorio al reservar.
+    // Alimentación (opcional): espejo de transporte + tipo elegido. El tipo NO es
+    // obligatorio: si el evento ofrece opciones y la persona no eligió ninguna,
+    // vale el default ("Sin restricción", el mismo que el form trae preseleccionado).
     let llevaAlimentacion = false
     let alimentacionImporte = 0
     let alimentacionTipo: string | null = null
@@ -262,10 +264,8 @@ export async function POST(
       llevaAlimentacion = true
       const opciones = parseOpcionesAlimentacion(evento.alimentacion_opciones)
       const tipoElegido = str(body.alimentacion_tipo)
-      if (opciones.length > 0 && !tipoElegido) {
-        return NextResponse.json({ error: 'Elegí el tipo de alimentación' }, { status: 400 })
-      }
-      alimentacionTipo = tipoElegido || null
+      alimentacionTipo =
+        tipoElegido || (opciones.length > 0 ? ALIMENTACION_SIN_RESTRICCION : null)
       if (evento.alimentacion_con_costo) {
         alimentacionImporte =
           part.tipo_participante === 'socio'

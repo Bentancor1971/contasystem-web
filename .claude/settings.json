@@ -50,7 +50,17 @@
       "Bash(echo \"exit $?\")",
       "Bash(git add *)",
       "Bash(git commit -q -m 'fix\\(eventos\\): no mostrar datos de transferencia a quien ya pagó *)",
-      "Bash(git commit -q -m 'chore\\(claude\\): permisos de git en el allowlist *)"
+      "Bash(git commit -q -m 'chore\\(claude\\): permisos de git en el allowlist *)",
+      "Bash(git branch *)",
+      "Bash(grep -rln \"alimentacion_opciones\" \"c:/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src\" 2>/dev/null | head)",
+      "Read(//c/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/**)",
+      "Bash(grep -rn \"alimentacion_opciones\" -B4 -A10 \"c:/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/routes/eventos/index.tsx\" | head -60)",
+      "Read(//c/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/routes/eventos/**)",
+      "Bash(grep -n \"setAlimentacionTipo\\(''\\)\\\\|useState\\(''\\)\\\\s*$\\\\|alimentacionTipo, setAlimentacionTipo\" \"app/e/[slug]/EventoForm.tsx\")",
+      "Bash(grep -rn \"ALIMENTACION_OPCIONES_DEFAULT\" -B3 -A6 \"c:/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/routes/eventos/index.tsx\" | head -30; echo \"--- label textarea ---\"; grep -rn \"alimentacion_opciones\" -B6 -A6 \"c:/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/routes/eventos/index.tsx\" | grep -n \"Tipos\\\\|label\\\\|placeholder\\\\|textarea\" )",
+      "Bash(sed -n '1108,1130p' \"c:/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/src/routes/eventos/index.tsx\")",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git commit -q -m 'feat\\(eventos\\): '\\\\''Sin restricción'\\\\'' como tipo de alimentación por defecto *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",

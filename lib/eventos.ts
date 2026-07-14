@@ -18,6 +18,7 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
+import { opcionesConSinRestriccion } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -244,7 +245,7 @@ export async function loadEventoPublico(
       importe_socio: Number(ev.alimentacion_importe_socio ?? 0),
       importe_no_socio: Number(ev.alimentacion_importe_no_socio ?? 0),
       descripcion: ev.alimentacion_descripcion,
-      opciones: parseOpcionesAlimentacion(ev.alimentacion_opciones),
+      opciones: opcionesConSinRestriccion(parseOpcionesAlimentacion(ev.alimentacion_opciones)),
     },
   }
 }
