@@ -275,12 +275,14 @@ export async function POST(
     }
 
     // Modalidad efectiva: "pago_transferencia" (= "pago realizado") sólo si el
-    // evento habilita esa modalidad, publica datos de depósito y hay algo para
-    // pagar; si no, es una preinscripción (reserva de cupo).
+    // evento habilita esa modalidad, la config web la permite, publica datos de
+    // depósito y hay algo para pagar; si no, es una preinscripción (reserva de
+    // cupo).
     const totalAPagar = importe + transporteImporte + alimentacionImporte
     const modalidadFinal =
       modalidad === 'pago_transferencia' &&
       evento.permitir_pago_realizado &&
+      cfg.permitir_pago_transferencia &&
       !!evento.datos_deposito &&
       totalAPagar > 0
         ? 'pago_transferencia'

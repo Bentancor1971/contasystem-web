@@ -31,7 +31,22 @@
       "PowerShell(Get-Process -Name node -ErrorAction SilentlyContinue)",
       "PowerShell(node \"C:\\\\Users\\\\benta\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-benta-OneDrive-Documents-Programas-contasystem-web\\\\3a9a24dd-feb9-4ce2-ba28-dd11fe2632c4\\\\scratchpad\\\\eventos.mjs\")",
       "PowerShell(Copy-Item \"C:\\\\Users\\\\benta\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-benta-OneDrive-Documents-Programas-contasystem-web\\\\3a9a24dd-feb9-4ce2-ba28-dd11fe2632c4\\\\scratchpad\\\\eventos.mjs\" \".\\\\tmp-eventos.mjs\")",
-      "PowerShell(node \".\\\\tmp-eventos.mjs\")"
+      "PowerShell(node \".\\\\tmp-eventos.mjs\")",
+      "Bash(ls \"c:/Users/benta/OneDrive/Documents/Programas/\")",
+      "Read(//c/Users/benta/OneDrive/Documents/Programas/**)",
+      "Read(//c/Users/benta/OneDrive/Documents/Programas/contasystem-desktop/**)",
+      "Bash(npx next *)",
+      "Bash(npx eslint *)",
+      "PowerShell(npx tsc --noEmit -p \"c:\\\\Users\\\\benta\\\\OneDrive\\\\Documents\\\\Programas\\\\contasystem-desktop\\\\tsconfig.json\")",
+      "PowerShell(npx tsc --noEmit; if \\($?\\) { \"tsc OK\" }; npx eslint app/\\(app\\)/configuracion/eventos/page.tsx lib/evento-plantillas-ejemplo.ts)",
+      "PowerShell(npx eslint \"app/\\(app\\)/configuracion/eventos/page.tsx\" \"lib/evento-plantillas-ejemplo.ts\")",
+      "PowerShell(if \\($?\\) { \"eslint OK\" })",
+      "PowerShell(npm run lint --silent)",
+      "PowerShell(npm run lint 2>&1)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
+      "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\routes\\eventos"
     ]
   }
 }

@@ -22,8 +22,12 @@ import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
 
-/** Estados de inscripción que ocupan cupo. */
-const ESTADOS_OCUPAN = ['pendiente', 'importado']
+/**
+ * Estados de inscripción que ocupan cupo (evento y transporte).
+ * Incluye 'pagado' (pago declarado, a verificar): reserva lugar igual que la
+ * preinscripción. Sólo 'rechazado' y 'anulado' liberan el cupo.
+ */
+const ESTADOS_OCUPAN = ['pendiente', 'pagado', 'importado']
 
 /** Trae el evento por slug (no anulado), o null. */
 export async function loadEventoRemotoBySlug(
@@ -360,6 +364,12 @@ export function maskMail(v: string): string | null {
   return `${local.slice(0, 1)}•••${dominio}`
 }
 
+/** "Mario Bentancor" → "Ma••• Be•••". Enmascara cada parte por separado. */
+function maskNombreCompleto(nombre: string, apellido: string): string | null {
+  const partes = [maskTexto(nombre), maskTexto(apellido)].filter(Boolean)
+  return partes.length ? partes.join(' ') : null
+}
+
 /** "099123456" → "•••456". Deja visibles los últimos 3 dígitos. */
 function maskTelefono(v: string): string | null {
   const digitos = v.replace(/\D/g, '')
@@ -379,7 +389,7 @@ export async function buscarInscripcionPrevia(
 ): Promise<InscripcionPrevia | null> {
   const { data, error } = await admin
     .from('inscripciones_evento_remoto')
-    .select('numero, estado, modalidad, categoria_nombre, importe, transporte_importe, alimentacion_importe, moneda_codigo, referencia_transferencia, mail')
+    .select('numero, estado, modalidad, categoria_nombre, importe, transporte_importe, alimentacion_importe, moneda_codigo, referencia_transferencia, mail, nombre, apellido')
     .eq('evento_id', eventoId)
     .eq('documento_hash', hashDocumento(documento))
     .neq('estado', 'anulado')
@@ -392,6 +402,12 @@ export async function buscarInscripcionPrevia(
     numero: (data.numero as string | null) ?? null,
     estado: data.estado as InscripcionPrevia['estado'],
     modalidad,
+    // Enmascarado por parte (nombre y apellido), nunca en claro: este payload lo
+    // sirve un endpoint público (ver ResolucionPublica).
+    nombre_mask: maskNombreCompleto(
+      (data.nombre as string | null) ?? '',
+      (data.apellido as string | null) ?? '',
+    ),
     categoria_nombre: (data.categoria_nombre as string | null) ?? null,
     total:
       Number(data.importe ?? 0) +

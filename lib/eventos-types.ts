@@ -264,6 +264,12 @@ export interface InscripcionPrevia {
   numero: string | null
   estado: EstadoInscripcionRemota
   modalidad: ModalidadInscripcion
+  /**
+   * Nombre y apellido ENMASCARADOS tal como quedaron en la inscripción (ej.
+   * "MA••• BE•••"). Sirve para que la persona reconozca su registro sin que el
+   * dato en claro baje a un endpoint público. null si la inscripción no tiene nombre.
+   */
+  nombre_mask: string | null
   categoria_nombre: string | null
   /** Suma de inscripción + transporte + alimentación. */
   total: number

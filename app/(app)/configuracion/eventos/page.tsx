@@ -13,11 +13,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Save, ExternalLink, Info } from 'lucide-react'
+import { ArrowLeft, Loader2, Save, ExternalLink, Info, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
 import { canSeeConfig } from '@/lib/roles'
 import { DEFAULT_EVENTO_WEB_CONFIG, type EventoWebConfig } from '@/lib/eventos-types'
+import { PLANTILLAS_EJEMPLO, conPlantillasEjemplo } from '@/lib/evento-plantillas-ejemplo'
 
 interface EventoRow {
   id: string
@@ -106,6 +107,37 @@ function HtmlArea({
   )
 }
 
+/**
+ * Etiqueta de un campo de plantilla, con el atajo para volver al ejemplo.
+ * El botón sólo aparece si lo que hay escrito difiere del ejemplo.
+ */
+function LabelPlantilla({
+  label,
+  actual,
+  ejemplo,
+  onRestaurar,
+}: {
+  label: string
+  actual: string | null
+  ejemplo: string
+  onRestaurar: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 mb-2">
+      <label className="label-mono">{label}</label>
+      {(actual ?? '') !== ejemplo && (
+        <button
+          type="button"
+          onClick={onRestaurar}
+          className="inline-flex items-center gap-1 font-mono text-[11px] text-ink-3 hover:text-ink-1 transition-colors"
+        >
+          <RotateCcw size={12} /> Restaurar ejemplo
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <section className="border-t border-line pt-6">
@@ -139,7 +171,9 @@ export default function ConfiguracionEventosPage() {
       if (!res.ok) throw new Error(data.error ?? 'No se pudo cargar')
       setEventos(data.eventos as EventoRow[])
       setFaltaTabla(!data.tablaExiste)
-      setCfg(data.config as EventoWebConfig)
+      // Los campos que el evento todavía no tiene arrancan con la plantilla de
+      // ejemplo, a la vista y editable, en vez de un placeholder fantasma.
+      setCfg(conPlantillasEjemplo(data.config as EventoWebConfig))
       return data.eventos as EventoRow[]
     },
     [empresa.empresa_id],
@@ -376,9 +410,22 @@ export default function ConfiguracionEventosPage() {
           </Seccion>
 
           <Seccion titulo="HTML de la página pública">
+            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+              <Info size={14} className="mt-0.5 shrink-0" />
+              Vienen con un texto de ejemplo para que lo uses de referencia: editalo a
+              gusto. Si borrás el campo, la sección no se muestra. Acá el HTML sale tal
+              cual, sin variables.
+            </p>
             <div className="space-y-5">
               <div>
-                <label className="label-mono block mb-2">Encabezado (arriba del formulario)</label>
+                <LabelPlantilla
+                  label="Encabezado (arriba del formulario)"
+                  actual={cfg.pagina_html_encabezado}
+                  ejemplo={PLANTILLAS_EJEMPLO.pagina_html_encabezado}
+                  onRestaurar={() =>
+                    setHtml('pagina_html_encabezado', PLANTILLAS_EJEMPLO.pagina_html_encabezado)
+                  }
+                />
                 <HtmlArea
                   value={cfg.pagina_html_encabezado}
                   onChange={(v) => setHtml('pagina_html_encabezado', v)}
@@ -386,7 +433,12 @@ export default function ConfiguracionEventosPage() {
                 />
               </div>
               <div>
-                <label className="label-mono block mb-2">Pie (debajo del formulario)</label>
+                <LabelPlantilla
+                  label="Pie (debajo del formulario)"
+                  actual={cfg.pagina_html_pie}
+                  ejemplo={PLANTILLAS_EJEMPLO.pagina_html_pie}
+                  onRestaurar={() => setHtml('pagina_html_pie', PLANTILLAS_EJEMPLO.pagina_html_pie)}
+                />
                 <HtmlArea
                   value={cfg.pagina_html_pie}
                   onChange={(v) => setHtml('pagina_html_pie', v)}
@@ -404,7 +456,14 @@ export default function ConfiguracionEventosPage() {
             </p>
             <div className="space-y-5">
               <div>
-                <label className="label-mono block mb-2">Asunto</label>
+                <LabelPlantilla
+                  label="Asunto"
+                  actual={cfg.mail_acuse_asunto}
+                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_asunto}
+                  onRestaurar={() =>
+                    setHtml('mail_acuse_asunto', PLANTILLAS_EJEMPLO.mail_acuse_asunto)
+                  }
+                />
                 <input
                   className="field"
                   placeholder="Preinscripción registrada — {evento}"
@@ -414,7 +473,12 @@ export default function ConfiguracionEventosPage() {
                 />
               </div>
               <div>
-                <label className="label-mono block mb-2">Cuerpo (HTML)</label>
+                <LabelPlantilla
+                  label="Cuerpo (HTML)"
+                  actual={cfg.mail_acuse_html}
+                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_html}
+                  onRestaurar={() => setHtml('mail_acuse_html', PLANTILLAS_EJEMPLO.mail_acuse_html)}
+                />
                 <HtmlArea
                   value={cfg.mail_acuse_html}
                   onChange={(v) => setHtml('mail_acuse_html', v)}
@@ -437,7 +501,14 @@ export default function ConfiguracionEventosPage() {
             </p>
             <div className="space-y-5">
               <div>
-                <label className="label-mono block mb-2">Asunto</label>
+                <LabelPlantilla
+                  label="Asunto"
+                  actual={cfg.mail_acuse_pago_asunto}
+                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto}
+                  onRestaurar={() =>
+                    setHtml('mail_acuse_pago_asunto', PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto)
+                  }
+                />
                 <input
                   className="field"
                   placeholder="Inscripción con pago declarado — {evento}"
@@ -447,7 +518,14 @@ export default function ConfiguracionEventosPage() {
                 />
               </div>
               <div>
-                <label className="label-mono block mb-2">Cuerpo (HTML)</label>
+                <LabelPlantilla
+                  label="Cuerpo (HTML)"
+                  actual={cfg.mail_acuse_pago_html}
+                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_html}
+                  onRestaurar={() =>
+                    setHtml('mail_acuse_pago_html', PLANTILLAS_EJEMPLO.mail_acuse_pago_html)
+                  }
+                />
                 <HtmlArea
                   value={cfg.mail_acuse_pago_html}
                   onChange={(v) => setHtml('mail_acuse_pago_html', v)}
@@ -463,12 +541,20 @@ export default function ConfiguracionEventosPage() {
 
           <Seccion titulo="Página de certificado">
             <div>
-              <label className="label-mono block mb-2">HTML de /c/[token]</label>
+              <LabelPlantilla
+                label="HTML de /c/[token]"
+                actual={cfg.certificado_html}
+                ejemplo={PLANTILLAS_EJEMPLO.certificado_html}
+                onRestaurar={() => setHtml('certificado_html', PLANTILLAS_EJEMPLO.certificado_html)}
+              />
               <HtmlArea
                 value={cfg.certificado_html}
                 onChange={(v) => setHtml('certificado_html', v)}
                 placeholder="<p>Certificado válido…</p>"
               />
+              <p className="mt-2 text-[11px] text-ink-3">
+                Se agrega debajo de la tarjeta de validación. No admite variables.
+              </p>
             </div>
           </Seccion>
 

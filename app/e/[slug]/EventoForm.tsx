@@ -10,7 +10,7 @@
 
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail } from 'lucide-react'
+import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail, Receipt } from 'lucide-react'
 import type {
   EventoPublico,
   InscripcionPrevia,
@@ -20,6 +20,7 @@ import type {
   TipoParticipante,
 } from '@/lib/eventos-types'
 import { simboloMoneda } from '@/lib/format'
+import { RegistrarPago } from './RegistrarPago'
 
 function formatImporte(n: number, moneda: string): string {
   const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -105,17 +106,33 @@ interface Resultado {
 
 export function EventoForm({ evento }: { evento: EventoPublico }) {
   // Modalidades ofrecidas antes de pedir la cédula. "Pago realizado" sólo tiene
-  // sentido si hay dónde transferir (datos de depósito cargados).
-  const pagoRealizadoDisponible = evento.permitir_pago_realizado && !!evento.datos_deposito
+  // sentido si la config web lo permite y hay dónde transferir (datos de
+  // depósito cargados). Misma condición que el servidor en /inscribir.
+  const pagoRealizadoDisponible =
+    evento.permitir_pago_realizado &&
+    evento.config.permitir_pago_transferencia &&
+    !!evento.datos_deposito
   const preinscripcionDisponible = evento.permitir_preinscripcion
   const modalidadesDisponibles: ModalidadElegida[] = [
     ...(pagoRealizadoDisponible ? (['pago_realizado'] as const) : []),
     ...(preinscripcionDisponible ? (['preinscripcion'] as const) : []),
   ]
-  // Si sólo hay una, se auto-elige y se saltea la pantalla de elección.
-  const modalidadUnica = modalidadesDisponibles.length === 1 ? modalidadesDisponibles[0] : null
+  // Tercera opción, que NO es una modalidad de inscripción: el que ya se
+  // preinscribió y vuelve sólo a declarar la transferencia. Requiere lo mismo
+  // que "pago realizado" salvo la modalidad del evento (ver RegistrarPago).
+  const registrarPagoDisponible =
+    evento.config.permitir_pago_transferencia && !!evento.datos_deposito
+  // Se saltea la pantalla de elección sólo si hay UNA sola cosa para elegir. Con
+  // el registro de pago disponible siempre hay al menos dos.
+  const modalidadUnica =
+    modalidadesDisponibles.length === 1 && !registrarPagoDisponible
+      ? modalidadesDisponibles[0]
+      : null
 
-  const [modalidadElegida, setModalidadElegida] = useState<ModalidadElegida | null>(modalidadUnica)
+  // Lo elegido en esa pantalla: una modalidad de inscripción o el registro de pago.
+  const [modalidadElegida, setModalidadElegida] = useState<
+    ModalidadElegida | 'registrar_pago' | null
+  >(modalidadUnica)
   const [documento, setDocumento] = useState('')
   const [verificando, setVerificando] = useState(false)
   const [resuelto, setResuelto] = useState<ResolucionPublica | null>(null)
@@ -161,11 +178,13 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
   const categoriaVisible = conCosto || cfg.mostrar_categoria
   const permitirOtros = cfg.permitir_categoria_otros
 
-  // Vuelve el formulario al estado inicial (útil en modo kiosco, para el siguiente inscripto).
-  function cerrarFormulario() {
-    setDocumento('')
-    setVerificando(false)
-    setResuelto(null)
+  /**
+   * Vacía lo que la persona escribió sobre sí misma. Se llama al cambiar de
+   * cédula: si no, los datos del inscripto anterior quedan en los campos y el
+   * server los toma como escritos (sólo completa desde la ficha lo que viene
+   * vacío), guardando la inscripción del nuevo con el mail/teléfono del previo.
+   */
+  function limpiarDatosPersona() {
     setNombre('')
     setApellido('')
     setMail('')
@@ -177,6 +196,14 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
     setAlimentacionTipo('')
     setAlimentacionOtros('')
     setReferenciaTransferencia('')
+  }
+
+  // Vuelve el formulario al estado inicial (útil en modo kiosco, para el siguiente inscripto).
+  function cerrarFormulario() {
+    setDocumento('')
+    setVerificando(false)
+    setResuelto(null)
+    limpiarDatosPersona()
     setEnviando(false)
     setResultado(null)
     setYaInscripto(null)
@@ -426,6 +453,12 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           )
         )}
 
+        {/* Declarar la transferencia: SÓLO para la preinscripción impaga. Quien ya
+            declaró el pago al inscribirse no tiene nada que registrar acá. */}
+        {debeAbonar && cfg.permitir_pago_transferencia && (
+          <RegistrarPago slug={evento.slug} documento={documento.trim()} />
+        )}
+
         {/* Copia del comprobante: se envía al mail que ya está guardado en la
             inscripción (mostrado enmascarado). No se puede elegir otro destino. */}
         <div className="mt-6 border-t border-line pt-5">
@@ -538,8 +571,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         toast.error('La cédula no es válida. Revisá el número.')
         return
       }
+      // Cada verificación arranca de cero: lo que haya en los campos es de la
+      // cédula anterior, no de esta persona (ver limpiarDatosPersona).
+      limpiarDatosPersona()
       setResuelto(data)
-      setCategoriaOtros('')
       // Pre-seleccionar la categoría que el socio tiene definida en la BD, si
       // está disponible en el evento (y con costo, con tarifa para su tipo).
       let preseleccion = ''
@@ -557,9 +592,6 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
         }
       }
       setCategoriaId(preseleccion)
-      setLlevaAlimentacion(false)
-      setAlimentacionTipo('')
-      setAlimentacionOtros('')
       // No se pre-rellenan nombre/apellido/mail en claro: el lookup sólo entrega
       // versiones enmascaradas (`*_mask`), que se muestran como placeholder para
       // que el socio se reconozca. Si deja un campo vacío, el server lo completa
@@ -688,38 +720,60 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
     )
   }
 
-  // Pantalla de elección de modalidad (sólo si hay dos y no se eligió aún).
+  // Pantalla de elección (sólo si hay más de una opción y no se eligió aún).
   if (!modalidadElegida) {
+    const opcion = (
+      onClick: () => void,
+      icono: React.ReactNode,
+      titulo: string,
+      detalle: string,
+    ) => (
+      <button
+        type="button"
+        className="w-full text-left rounded-xl border border-line hover:border-ink transition p-5 flex items-start gap-4"
+        onClick={onClick}
+      >
+        {icono}
+        <span>
+          <span className="block font-medium text-lg">{titulo}</span>
+          <span className="block text-sm text-ink-2 mt-0.5">{detalle}</span>
+        </span>
+      </button>
+    )
     return (
       <div className="rise space-y-5">
-        <p className="label-mono">¿Cómo querés inscribirte?</p>
-        <button
-          type="button"
-          className="w-full text-left rounded-xl border border-line hover:border-ink transition p-5 flex items-start gap-4"
-          onClick={() => setModalidadElegida('pago_realizado')}
-        >
-          <Landmark size={22} className="mt-0.5 shrink-0" />
-          <span>
-            <span className="block font-medium text-lg">Ya realicé el pago</span>
-            <span className="block text-sm text-ink-2 mt-0.5">
-              Transferiste y querés registrar el pago. Te vamos a pedir la referencia del comprobante.
-            </span>
-          </span>
-        </button>
-        <button
-          type="button"
-          className="w-full text-left rounded-xl border border-line hover:border-ink transition p-5 flex items-start gap-4"
-          onClick={() => setModalidadElegida('preinscripcion')}
-        >
-          <CalendarClock size={22} className="mt-0.5 shrink-0" />
-          <span>
-            <span className="block font-medium text-lg">Preinscripción (pago después)</span>
-            <span className="block text-sm text-ink-2 mt-0.5">
-              Reservás tu cupo ahora y coordinás el pago con la organización más adelante.
-            </span>
-          </span>
-        </button>
+        <p className="label-mono">¿Qué querés hacer?</p>
+        {pagoRealizadoDisponible &&
+          opcion(
+            () => setModalidadElegida('pago_realizado'),
+            <Landmark size={22} className="mt-0.5 shrink-0" />,
+            'Ya realicé el pago',
+            'Transferiste y querés registrar el pago. Te vamos a pedir la referencia del comprobante.',
+          )}
+        {preinscripcionDisponible &&
+          opcion(
+            () => setModalidadElegida('preinscripcion'),
+            <CalendarClock size={22} className="mt-0.5 shrink-0" />,
+            'Preinscripción (pago después)',
+            'Reservás tu cupo ahora y coordinás el pago con la organización más adelante.',
+          )}
+        {/* No inscribe: declara la transferencia de una preinscripción ya hecha. */}
+        {registrarPagoDisponible &&
+          opcion(
+            () => setModalidadElegida('registrar_pago'),
+            <Receipt size={22} className="mt-0.5 shrink-0" />,
+            'Ya me inscribí — sólo registrar mi pago',
+            'Te preinscribiste antes y ahora transferiste. Registrá la referencia para que la organización confirme tu lugar.',
+          )}
       </div>
+    )
+  }
+
+  // Registro de pago de una preinscripción previa: no pasa por el formulario de
+  // inscripción, sólo pide cédula + referencia.
+  if (modalidadElegida === 'registrar_pago') {
+    return (
+      <RegistrarPago slug={evento.slug} onVolver={() => setModalidadElegida(modalidadUnica)} />
     )
   }
 
@@ -733,7 +787,8 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
           {esPagoRealizado ? <Landmark size={15} /> : <CalendarClock size={15} />}
           {esPagoRealizado ? 'Ya realicé el pago' : 'Preinscripción (pago después)'}
         </span>
-        {modalidadesDisponibles.length > 1 && (
+        {/* Hay pantalla de elección a la que volver (no se auto-eligió una única opción). */}
+        {modalidadUnica == null && (
           <button
             type="button"
             className="btn-ghost text-sm"
@@ -757,7 +812,10 @@ export function EventoForm({ evento }: { evento: EventoPublico }) {
             value={documento}
             onChange={(e) => {
               setDocumento(e.target.value)
+              // Otra cédula = otra persona: se cierra el paso 2 y se descarta lo
+              // que hubiera escrito la anterior.
               setResuelto(null)
+              limpiarDatosPersona()
             }}
             disabled={verificando}
           />
