@@ -308,7 +308,7 @@ export function EventoForm({
         </div>
         <p className="text-ink-2 mb-6">
           {resultado.modalidad === 'pago_transferencia' ? (
-            <>Tu inscripción a <strong>{evento.nombre}</strong> quedó registrada. Realizá la transferencia con los datos de abajo para confirmar tu lugar.</>
+            <>Recibimos tu inscripción a <strong>{evento.nombre}</strong> y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos el recibo con la confirmación definitiva.</>
           ) : (
             <>Reservaste tu cupo para <strong>{evento.nombre}</strong>. Coordiná el pago con la organización para confirmar la inscripción.</>
           )}
@@ -357,31 +357,8 @@ export function EventoForm({
           </div>
         </dl>
 
-        {resultado.modalidad === 'pago_transferencia' && resultado.datos_deposito && (
-          <div className="mt-6 rounded-xl border border-ink bg-paper-2 p-5">
-            <p className="flex items-center gap-2 label-mono mb-3">
-              <Landmark size={15} /> Datos para la transferencia
-            </p>
-            <p className="font-mono text-sm text-ink-1 whitespace-pre-line">
-              {resultado.datos_deposito}
-            </p>
-            <dl className="font-mono text-sm space-y-1.5 border-t border-line pt-3 mt-3">
-              <div className="flex justify-between">
-                <dt className="text-ink-3">Importe a transferir</dt>
-                <dd className="font-semibold">{formatImporte(resultado.total, resultado.moneda_codigo)}</dd>
-              </div>
-              {resultado.numero && (
-                <div className="flex justify-between">
-                  <dt className="text-ink-3">Referencia</dt>
-                  <dd className="font-semibold">{resultado.numero}</dd>
-                </div>
-              )}
-            </dl>
-            <p className="text-[12px] text-ink-3 mt-3">
-              Indicá la referencia en la transferencia para que podamos identificar tu pago.
-            </p>
-          </div>
-        )}
+        {/* Quien declaró el pago ya transfirió: no se le muestran los datos de
+            depósito (ver el form de "Ya realicé el pago", mismo criterio). */}
 
         {evento.texto_despues && (
           <p className="text-ink-3 text-sm mt-6 whitespace-pre-line">{evento.texto_despues}</p>
@@ -1159,18 +1136,11 @@ export function EventoForm({
             </div>
           )}
 
+          {/* "Ya realicé el pago": la persona ya transfirió, así que NO se le
+              muestran los datos de depósito (no tiene nada que hacer con ellos).
+              Sólo se le pide la referencia del comprobante. */}
           {esPagoRealizado ? (
             <div className="space-y-3 border-t border-line pt-5">
-              {evento.datos_deposito && (
-                <div className="rounded-xl border border-ink bg-paper-2 p-5">
-                  <p className="flex items-center gap-2 label-mono mb-3">
-                    <Landmark size={15} /> Datos para la transferencia
-                  </p>
-                  <p className="font-mono text-sm text-ink-1 whitespace-pre-line">
-                    {evento.datos_deposito}
-                  </p>
-                </div>
-              )}
               <div>
                 <label htmlFor="referencia" className="label-mono block mb-1">
                   Referencia de la transferencia *
