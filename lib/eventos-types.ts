@@ -156,14 +156,21 @@ export interface EventoWebConfig {
   certificado_html: string | null
 }
 
-/** Config por defecto: todo visible, nada obligatorio salvo el nombre, sin HTML propio. */
+/**
+ * Config por defecto: todo visible; apellido, email y teléfono OBLIGATORIOS.
+ *
+ * Los eventos alimentan el alta de socios en el desktop (una inscripción de
+ * alguien que no está en el padrón crea una ficha de socio). Para que esa ficha
+ * nazca completa, estos tres datos de contacto se exigen por defecto. Un evento
+ * puntual puede aflojarlos desde /configuracion/eventos.
+ */
 export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
   mostrar_apellido: true,
-  apellido_obligatorio: false,
+  apellido_obligatorio: true,
   mostrar_email: true,
-  email_obligatorio: false,
+  email_obligatorio: true,
   mostrar_telefono: true,
-  telefono_obligatorio: false,
+  telefono_obligatorio: true,
   mostrar_categoria: true,
   permitir_categoria_otros: true,
   mostrar_transporte: true,

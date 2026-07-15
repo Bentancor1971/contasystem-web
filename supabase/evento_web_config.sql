@@ -21,12 +21,14 @@ CREATE TABLE IF NOT EXISTS public.evento_web_config (
   empresa_id  TEXT NOT NULL,
 
   -- ── Visibilidad de campos de datos ──────────────────────────
+  -- apellido/email/teléfono OBLIGATORIOS por defecto: los eventos alimentan el
+  -- alta de socios en el desktop y la ficha necesita estos datos de contacto.
   mostrar_apellido      BOOLEAN NOT NULL DEFAULT TRUE,
-  apellido_obligatorio  BOOLEAN NOT NULL DEFAULT FALSE,
+  apellido_obligatorio  BOOLEAN NOT NULL DEFAULT TRUE,
   mostrar_email         BOOLEAN NOT NULL DEFAULT TRUE,
-  email_obligatorio     BOOLEAN NOT NULL DEFAULT FALSE,
+  email_obligatorio     BOOLEAN NOT NULL DEFAULT TRUE,
   mostrar_telefono      BOOLEAN NOT NULL DEFAULT TRUE,
-  telefono_obligatorio  BOOLEAN NOT NULL DEFAULT FALSE,
+  telefono_obligatorio  BOOLEAN NOT NULL DEFAULT TRUE,
 
   -- ── Categoría ───────────────────────────────────────────────
   mostrar_categoria         BOOLEAN NOT NULL DEFAULT TRUE,
