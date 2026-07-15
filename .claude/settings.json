@@ -96,7 +96,13 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"interface FormaPago\\\\|interface TipoPago\\\\|interface EstadoRegistro\\\\|type FormaPago\\\\|type TipoPago\" src/types/index.ts && echo \"=== module list sigs ===\" && grep -n \"list\" src/lib/modules/formas-pago.ts src/lib/modules/tipos-pago.ts | head)",
       "Read(//c/Users/benta/Documentos/Programas/contasystem-desktop/src/components/layout/**)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1,40p' src/hooks/useStore.ts 2>/dev/null || find src -name \"useStore*\" && echo \"=== selector usage examples ===\" && grep -rn \"useStore\\(\\(\" src --include=*.tsx | head -3)",
-      "Bash(echo \"=== EXIT: $? ===\")"
+      "Bash(echo \"=== EXIT: $? ===\")",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"rol\\\\|inscripciones_evento\\\\|es_asistente\\\\|asistente\" src/lib/schema.ts | head -40)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"roles_evento\\\\|Asistente\\\\|Expositor\\\\|Organiz\\\\|tiene_costo\" src/lib/seed.ts | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rln \"ya inscripta\\\\|segunda inscripción\\\\|figura como inscripta\\\\|Inscribir Persona\\\\|No es posible registrar\" src --include=*.tsx --include=*.ts)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"ya inscripta\\\\|segunda inscripción\\\\|figura como inscripta\\\\|No es posible registrar\\\\|rol_evento\\\\|rolEvento\\\\|inscripcionExistente\\\\|yaInscript\\\\|existe\" src/routes/eventos/index.tsx | head -30)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"cupoDetalle\\\\|ocupados\\\\|contarInscript\\\\|en_lista_espera\\\\|inscripciones.filter\\\\|inscripciones.length\" src/routes/eventos/index.tsx | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"rol_evento\\\\b\\\\|rol_evento?:\\\\|interface Inscripcion\\\\|InscripcionEvento\\\\|useSqliteQuery<.*[Ii]nscrip\\\\|refetchInscripciones\\\\|const.*inscripciones.*=.*useSqliteQuery\" src/routes/eventos/index.tsx | head; echo \"=== type in types ===\"; grep -rn \"rol_evento\" src/types/index.ts)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
