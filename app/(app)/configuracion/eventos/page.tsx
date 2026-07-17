@@ -31,6 +31,7 @@ interface EventoRow {
   texto_despues: string | null
   transporte_disponible: boolean
   alimentacion_disponible: boolean
+  sorteo_disponible: boolean
   datos_deposito: string | null
 }
 
@@ -373,7 +374,7 @@ export default function ConfiguracionEventosPage() {
             </div>
           </Seccion>
 
-          <Seccion titulo="Transporte y Alimentación">
+          <Seccion titulo="Extras del evento">
             <div className="space-y-4">
               <Check
                 label="Mostrar Transporte"
@@ -388,6 +389,14 @@ export default function ConfiguracionEventosPage() {
                 onChange={(v) => set('mostrar_alimentacion', v)}
                 disabled={!evento?.alimentacion_disponible}
                 disabledReason="Este evento no tiene alimentación configurada en el desktop."
+              />
+              <Check
+                label="Mostrar Sorteo"
+                hint="El participante marca si quiere entrar al sorteo y recibe su número por correo."
+                checked={cfg.mostrar_sorteo}
+                onChange={(v) => set('mostrar_sorteo', v)}
+                disabled={!evento?.sorteo_disponible}
+                disabledReason="Este evento no tiene sorteo configurado en el desktop."
               />
             </div>
           </Seccion>

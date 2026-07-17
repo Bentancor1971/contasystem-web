@@ -59,6 +59,18 @@ export interface EventoRemoto {
   /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
   permitir_pago_realizado: boolean
   permitir_preinscripcion: boolean
+  /** El evento incluye un sorteo (opt-in al inscribirse). Ver docs/supabase/31. */
+  sorteo_disponible: boolean
+  /**
+   * Sólo socios al día pueden participar. La tolerancia de cuotas NO es propia:
+   * reusa `umbral_cuotas_no_socio`, así que elegible ≡ tipo_participante 'socio'.
+   * Ver el racional de privacidad en docs/supabase/31_eventos_sorteo.sql.
+   */
+  sorteo_solo_socios: boolean
+  sorteo_descripcion: string | null
+  /** Rango del número correlativo sorteable (default 0–100). */
+  sorteo_numero_desde: number
+  sorteo_numero_hasta: number
 }
 
 /** Config de transporte tal como la ve el formulario público. */
@@ -113,6 +125,44 @@ export interface AlimentacionPublica {
   opciones: string[]
 }
 
+/**
+ * Config del sorteo tal como la ve el formulario público.
+ *
+ * NO lleva el rango de números ni cuántos se asignaron: el número correlativo ya
+ * revela la posición a quien lo recibe por mail, no hace falta además convertir
+ * la página pública en un contador de participantes. Mismo criterio que
+ * EventoPublico.ocupacion_nivel: sólo banda cualitativa.
+ */
+export interface SorteoPublico {
+  disponible: boolean
+  /** Sólo socios al día. El form usa el `tipo_participante` del lookup para gatear. */
+  solo_socios: boolean
+  descripcion: string | null
+  /** Ocupación del rango de números, en banda. null = todavía no se asignó ninguno. */
+  ocupacion_nivel: 'baja' | 'media' | 'alta' | null
+  /** Rango agotado: la inscripción sigue abierta, pero ya no se dan números. */
+  completo: boolean
+}
+
+/**
+ * Regla de elegibilidad al sorteo, en un solo lugar.
+ *
+ * La usan el formulario público (para decidir si ofrece el opt-in) y /inscribir,
+ * que la RE-APLICA server-side: el `participa_sorteo` del body no se confía,
+ * igual que el importe.
+ *
+ * `solo_socios` se resuelve contra `tipo_participante`, que ya trae aplicada la
+ * tolerancia de cuotas (`umbral_cuotas_no_socio`). Por eso el sorteo no necesita
+ * umbral propio — ver docs/supabase/31_eventos_sorteo.sql.
+ */
+export function elegibleParaSorteo(
+  sorteo: { disponible: boolean; solo_socios: boolean },
+  tipo: TipoParticipante,
+): boolean {
+  if (!sorteo.disponible) return false
+  return !sorteo.solo_socios || tipo === 'socio'
+}
+
 /** Categoría agrupada para el formulario público (una fila por categoría, con ambos precios). */
 export interface CategoriaEvento {
   categoria_id: string
@@ -143,6 +193,8 @@ export interface EventoWebConfig {
   permitir_categoria_otros: boolean
   mostrar_transporte: boolean
   mostrar_alimentacion: boolean
+  /** Oculta el opt-in al sorteo. NO lo habilita: eso es sorteo_disponible. */
+  mostrar_sorteo: boolean
   mostrar_total: boolean
   permitir_pago_transferencia: boolean
   pagina_html_encabezado: string | null
@@ -175,6 +227,7 @@ export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
   permitir_categoria_otros: true,
   mostrar_transporte: true,
   mostrar_alimentacion: true,
+  mostrar_sorteo: true,
   mostrar_total: true,
   permitir_pago_transferencia: true,
   pagina_html_encabezado: null,
@@ -215,6 +268,7 @@ export interface EventoPublico {
   categorias_socio: CategoriaSocioPublica[]
   transporte: TransportePublico
   alimentacion: AlimentacionPublica
+  sorteo: SorteoPublico
   /** Config web del evento (visibilidad + HTML propio). Nunca null: cae a defaults. */
   config: EventoWebConfig
   /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */
@@ -289,6 +343,12 @@ export interface ResolucionPublica {
  * Inscripción ya registrada para una cédula en un evento (aviso al verificar).
  * Lleva lo necesario para que la persona sepa CÓMO quedó registrada: modalidad
  * (pago declarado vs. preinscripción), estado y cuánto falta abonar.
+ *
+ * NO lleva `numero_sorteo` a propósito. Este payload lo sirve un endpoint público
+ * sin autenticación: incluirlo permitiría enumerar cédulas y armar el mapa
+ * cédula → número sorteable de todo el evento. Quien perdió el mail recupera su
+ * número por POST /api/eventos/[slug]/reenviar-acuse, que manda la copia al mail
+ * guardado en la inscripción y nunca a uno elegido por el requester.
  */
 export interface InscripcionPrevia {
   numero: string | null

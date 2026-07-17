@@ -60,7 +60,7 @@ export async function POST(
 
     const { data: ins, error } = await admin
       .from('inscripciones_evento_remoto')
-      .select('numero, estado, modalidad, categoria_nombre, tipo_participante, nombre, apellido, mail, importe, transporte_importe, alimentacion_importe, alimentacion_tipo, moneda_codigo, referencia_transferencia')
+      .select('numero, estado, modalidad, categoria_nombre, tipo_participante, nombre, apellido, mail, importe, transporte_importe, alimentacion_importe, alimentacion_tipo, moneda_codigo, referencia_transferencia, numero_sorteo')
       .eq('evento_id', evento.id)
       .eq('documento_hash', hashDocumento(documentoRaw))
       .neq('estado', 'anulado')
@@ -103,6 +103,10 @@ export async function POST(
         moneda_codigo: (ins.moneda_codigo as string | null) ?? evento.moneda_codigo,
         modalidad: ((ins.modalidad as ModalidadInscripcion | null) ?? 'reserva'),
         referencia_transferencia: (ins.referencia_transferencia as string | null) ?? null,
+        // Esta es la vía por la que se recupera el número: el lookup público no
+        // lo expone a propósito (ver InscripcionPrevia), y acá el destino es el
+        // mail guardado en la inscripción, no uno que elija quien pide la copia.
+        numero_sorteo: ins.numero_sorteo == null ? null : Number(ins.numero_sorteo),
       },
       // El reenvío es una copia del comprobante: no propone cambios de ficha.
       cambios: [],

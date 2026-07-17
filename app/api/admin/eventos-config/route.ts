@@ -27,7 +27,7 @@ const FALTA_TABLA =
 /** Campos del evento que la pantalla muestra (algunos solo lectura, vienen del desktop). */
 const EVENTO_COLS =
   'id, slug, nombre, tipo, estado, fecha_inicio, texto_antes, texto_despues, ' +
-  'transporte_disponible, alimentacion_disponible, datos_deposito'
+  'transporte_disponible, alimentacion_disponible, sorteo_disponible, datos_deposito'
 
 /** Verifica que el evento exista y pertenezca a la empresa. */
 async function eventoDeEmpresa(

@@ -10,7 +10,7 @@
 
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail, Receipt } from 'lucide-react'
+import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail, Receipt, Gift } from 'lucide-react'
 import type {
   EventoPublico,
   InscripcionPrevia,
@@ -19,7 +19,7 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { ALIMENTACION_SIN_RESTRICCION } from '@/lib/eventos-types'
+import { ALIMENTACION_SIN_RESTRICCION, elegibleParaSorteo } from '@/lib/eventos-types'
 import { simboloMoneda } from '@/lib/format'
 import { RegistrarPago } from './RegistrarPago'
 
@@ -36,6 +36,13 @@ const BARRA_TRANSPORTE = {
   baja:  { texto: 'Lugares disponibles', fill: '34%', texto_cls: 'text-status-ok',   barra_cls: 'bg-status-ok' },
   media: { texto: 'Últimos lugares',     fill: '70%', texto_cls: 'text-status-warn', barra_cls: 'bg-status-warn' },
   alta:  { texto: 'Casi completo',       fill: '92%', texto_cls: 'text-status-no',   barra_cls: 'bg-status-no' },
+} as const
+
+/** Barra del rango de números del sorteo. Espejo de BARRA_TRANSPORTE. */
+const BARRA_SORTEO = {
+  baja:  { texto: 'Números disponibles', fill: '34%', texto_cls: 'text-status-ok',   barra_cls: 'bg-status-ok' },
+  media: { texto: 'Últimos números',     fill: '70%', texto_cls: 'text-status-warn', barra_cls: 'bg-status-warn' },
+  alta:  { texto: 'Casi sin números',    fill: '92%', texto_cls: 'text-status-no',   barra_cls: 'bg-status-no' },
 } as const
 
 /**
@@ -118,6 +125,11 @@ interface Resultado {
   lleva_alimentacion: boolean
   alimentacion_importe: number
   alimentacion_tipo: string | null
+  participa_sorteo: boolean
+  /** Correlativo asignado. OJO: 0 es válido — comparar contra null, no truthiness. */
+  numero_sorteo: number | null
+  /** Pidió sorteo pero el rango ya estaba agotado. */
+  sorteo_completo: boolean
   total: number
   modalidad: ModalidadInscripcion
   datos_deposito: string | null
@@ -172,6 +184,8 @@ export function EventoForm({
   const [categoriaOtros, setCategoriaOtros] = useState('')
   const [llevaTransporte, setLlevaTransporte] = useState(false)
   const [llevaAlimentacion, setLlevaAlimentacion] = useState(false)
+  // Opt-in al sorteo: arranca apagado. Participa sólo quien lo pide.
+  const [participaSorteo, setParticipaSorteo] = useState(false)
   // Preseleccionado en el default: reservar alimentación no obliga a elegir tipo.
   const [alimentacionTipo, setAlimentacionTipo] = useState(ALIMENTACION_SIN_RESTRICCION)
   const [alimentacionOtros, setAlimentacionOtros] = useState('')
@@ -221,6 +235,7 @@ export function EventoForm({
     setCategoriaOtros('')
     setLlevaTransporte(false)
     setLlevaAlimentacion(false)
+    setParticipaSorteo(false)
     setAlimentacionTipo(ALIMENTACION_SIN_RESTRICCION)
     setAlimentacionOtros('')
     setReferenciaTransferencia('')
@@ -266,6 +281,20 @@ export function EventoForm({
         ? alim.importe_socio
         : alim.importe_no_socio
       : 0
+  // Sorteo: opt-in. `mostrar_sorteo` sólo oculta; habilitarlo es del desktop.
+  // La elegibilidad usa el MISMO predicado que /inscribir, que la re-aplica
+  // server-side. Sale de `tipo`, que ya trae aplicada la tolerancia de cuotas.
+  const sorteo = evento.sorteo
+  const sorteoVisible = sorteo.disponible && cfg.mostrar_sorteo
+  const sorteoElegible = elegibleParaSorteo(
+    { disponible: sorteoVisible, solo_socios: sorteo.solo_socios },
+    tipo,
+  )
+  // Rango agotado: se muestra pero bloqueado (igual que el cupo de transporte).
+  // La inscripción al evento sigue disponible, sin número.
+  const sorteoMarcable = sorteoElegible && !sorteo.completo
+  const participaSorteoEfectivo = sorteoMarcable && participaSorteo
+
   // Opciones de categoría según el tipo de evento:
   //   - con costo: las categorías con precio del evento (tarifa socio/no_socio).
   //   - sin costo: el catálogo de categorías de socio, como clasificación.
@@ -315,6 +344,28 @@ export function EventoForm({
             <>Reservaste tu cupo para <strong>{evento.nombre}</strong>. Coordiná el pago con la organización para confirmar la inscripción.</>
           )}
         </p>
+        {/* El número de sorteo se destaca: es lo que la persona tiene que
+            conservar. `!= null` y no truthiness — el 0 es un número válido. */}
+        {resultado.numero_sorteo != null && (
+          <div className="mb-6 rounded-xl border-2 border-amber-deep px-5 py-4 text-center">
+            <span className="label-mono block text-ink-3">Tu número para el sorteo</span>
+            <span className="block font-mono text-4xl font-semibold text-amber-deep mt-1 leading-tight">
+              {resultado.numero_sorteo}
+            </span>
+            <span className="block text-sm text-ink-2 mt-1">
+              Te lo enviamos por correo. Guardalo: es el que participa del sorteo.
+            </span>
+          </div>
+        )}
+        {resultado.sorteo_completo && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-line px-4 py-3">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-status-warn" />
+            <p className="text-sm text-ink-2">
+              Los números del sorteo se agotaron justo antes de tu inscripción, así que
+              esta vez quedaste fuera del sorteo. Tu inscripción al evento sí quedó registrada.
+            </p>
+          </div>
+        )}
         <dl className="font-mono text-sm space-y-2 border-t border-line pt-4">
           {resultado.numero && (
             <div className="flex justify-between">
@@ -694,6 +745,7 @@ export function EventoForm({
           lleva_transporte: llevaTransporteEfectivo,
           lleva_alimentacion: llevaAlimentacion,
           alimentacion_tipo: alimTipoFinal,
+          participa_sorteo: participaSorteoEfectivo,
           referencia_transferencia: referenciaTransferencia.trim(),
           modalidad,
         }),
@@ -1131,6 +1183,82 @@ export function EventoForm({
                       autoFocus
                     />
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sorteo: opt-in, no cambia el total. A quien no es elegible se le
+              informa que existe, sin ofrecerle el checkbox: el motivo ("socios al
+              día") no revela nada que el precio de su categoría no diga ya. */}
+          {sorteoVisible && (
+            <div className="border-t border-line pt-5 space-y-3">
+              {sorteo.completo ? (
+                <div className="mb-4 max-w-[16rem]">
+                  <span className="block mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] font-medium text-status-no">
+                    Sorteo completo
+                  </span>
+                  <div className="h-2 rounded-full bg-paper-3 overflow-hidden">
+                    <div className="h-full rounded-full bg-status-no" style={{ width: '100%' }} />
+                  </div>
+                </div>
+              ) : (
+                sorteo.ocupacion_nivel && (
+                  <div className="mb-4 max-w-[16rem]">
+                    <span
+                      className={`block mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] font-medium ${BARRA_SORTEO[sorteo.ocupacion_nivel].texto_cls}`}
+                    >
+                      {BARRA_SORTEO[sorteo.ocupacion_nivel].texto}
+                    </span>
+                    <div className="h-2 rounded-full bg-paper-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${BARRA_SORTEO[sorteo.ocupacion_nivel].barra_cls}`}
+                        style={{ width: BARRA_SORTEO[sorteo.ocupacion_nivel].fill }}
+                      />
+                    </div>
+                  </div>
+                )
+              )}
+
+              {sorteoElegible ? (
+                <label
+                  className={`flex items-start gap-3 ${sorteo.completo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-amber-deep w-4 h-4 mt-1"
+                    checked={participaSorteoEfectivo}
+                    disabled={sorteo.completo}
+                    onChange={(e) => setParticipaSorteo(e.target.checked)}
+                  />
+                  <span>
+                    <span className="font-medium">Quiero participar del sorteo</span>
+                    {sorteo.completo ? (
+                      <span className="block text-sm text-status-no mt-0.5">
+                        Se agotaron los números del sorteo. Podés inscribirte al evento igual.
+                      </span>
+                    ) : (
+                      <span className="block text-sm text-ink-2 mt-0.5">
+                        Te asignamos un número y te lo enviamos por correo. Sin costo.
+                      </span>
+                    )}
+                    {sorteo.descripcion && (
+                      <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
+                    )}
+                  </span>
+                </label>
+              ) : (
+                <div className="flex items-start gap-3 text-ink-2">
+                  <Gift className="w-4 h-4 mt-1 shrink-0" />
+                  <span>
+                    <span className="font-medium">Este evento incluye un sorteo</span>
+                    <span className="block text-sm mt-0.5">
+                      La participación está reservada a los socios al día.
+                    </span>
+                    {sorteo.descripcion && (
+                      <span className="block text-sm mt-0.5">{sorteo.descripcion}</span>
+                    )}
+                  </span>
                 </div>
               )}
             </div>

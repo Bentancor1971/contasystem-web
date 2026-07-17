@@ -161,6 +161,62 @@ export async function contarConTransporte(
   return count ?? 0
 }
 
+// ────────────────────────────────────────────────────────────────
+// Sorteo: número correlativo por evento.
+//
+// El número NO se reusa: una inscripción anulada o rechazada conserva el suyo
+// (queda quemado). Por eso la asignación es un contador monótono —el mayor
+// asignado + 1— y NO una búsqueda de huecos libres: el hueco que deja una
+// anulación no vuelve al pool. Se cuentan TODAS las filas del evento, sin
+// filtrar por estado (a diferencia de los cupos, que usan ESTADOS_OCUPAN).
+// Ver docs/supabase/31_eventos_sorteo.sql en el repo del desktop.
+// ────────────────────────────────────────────────────────────────
+
+/** Mayor número de sorteo asignado en el evento, o null si no se asignó ninguno. */
+async function maxNumeroSorteo(
+  admin: SupabaseClient,
+  eventoId: string,
+): Promise<number | null> {
+  const { data, error } = await admin
+    .from('inscripciones_evento_remoto')
+    .select('numero_sorteo')
+    .eq('evento_id', eventoId)
+    .not('numero_sorteo', 'is', null)
+    .order('numero_sorteo', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`Error consultando números de sorteo: ${error.message}`)
+  return data ? Number(data.numero_sorteo) : null
+}
+
+/** Rango de números del evento, o null si está mal configurado (desde > hasta). */
+function rangoSorteo(evento: EventoRemoto): { desde: number; hasta: number } | null {
+  const desde = Number(evento.sorteo_numero_desde ?? 0)
+  const hasta = Number(evento.sorteo_numero_hasta ?? 100)
+  if (!Number.isFinite(desde) || !Number.isFinite(hasta) || hasta < desde) return null
+  return { desde, hasta }
+}
+
+/**
+ * Próximo número a asignar, o null si el rango se agotó (o está mal configurado).
+ *
+ * NO es atómico: dos inscripciones simultáneas pueden leer el mismo máximo. La
+ * unicidad la garantiza el índice uq_inscripciones_evento_sorteo_numero, y el
+ * insert reintenta ante su 23505. Ver POST /api/eventos/[slug]/inscribir.
+ */
+export async function proximoNumeroSorteo(
+  admin: SupabaseClient,
+  evento: EventoRemoto,
+): Promise<number | null> {
+  const rango = rangoSorteo(evento)
+  if (!rango) return null
+  const max = await maxNumeroSorteo(admin, evento.id)
+  // Si el rango se movió después de asignar números, max+1 puede caer por debajo
+  // del nuevo `desde`: el arranque manda.
+  const proximo = max == null ? rango.desde : Math.max(max + 1, rango.desde)
+  return proximo > rango.hasta ? null : proximo
+}
+
 /**
  * Traduce la ocupación a una banda cualitativa para el semáforo del form.
  * Devuelve null si el evento no tiene cupo (no se muestra semáforo). NUNCA
@@ -187,22 +243,32 @@ export async function loadEventoPublico(
 
   // El cupo de transporte tiene su propio conteo (sólo si hay tope definido).
   const transporteConCupo = ev.transporte_disponible && ev.transporte_cupo_maximo != null
-  const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos] = await Promise.all([
-    loadCategoriasEvento(admin, ev.id),
-    ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
-    // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
-    // grilla en eventos sin costo; en los con costo la grilla son las categorías
-    // con precio (evento_categorias_remoto).
-    ev.tipo === 'sin_costo'
-      ? loadCategoriasSocio(admin, ev.empresa_id)
-      : Promise.resolve([] as CategoriaSocioPublica[]),
-    loadEventoWebConfig(admin, ev.id),
-    transporteConCupo ? contarConTransporte(admin, ev.id) : Promise.resolve(0),
-  ])
+  const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos, sorteoMax] =
+    await Promise.all([
+      loadCategoriasEvento(admin, ev.id),
+      ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
+      // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
+      // grilla en eventos sin costo; en los con costo la grilla son las categorías
+      // con precio (evento_categorias_remoto).
+      ev.tipo === 'sin_costo'
+        ? loadCategoriasSocio(admin, ev.empresa_id)
+        : Promise.resolve([] as CategoriaSocioPublica[]),
+      loadEventoWebConfig(admin, ev.id),
+      transporteConCupo ? contarConTransporte(admin, ev.id) : Promise.resolve(0),
+      ev.sorteo_disponible ? maxNumeroSorteo(admin, ev.id) : Promise.resolve(null),
+    ])
 
   const cupoCompleto = ev.cupo_maximo != null && inscriptos >= ev.cupo_maximo
   const transporteCompleto =
     transporteConCupo && transporteInscriptos >= (ev.transporte_cupo_maximo as number)
+
+  // Sorteo: el rango se consume de corrido (los números se queman), así que lo
+  // asignado se deduce del máximo, no de un conteo de filas.
+  const rango = ev.sorteo_disponible ? rangoSorteo(ev) : null
+  const sorteoAsignados = rango && sorteoMax != null ? sorteoMax - rango.desde + 1 : 0
+  const sorteoTotal = rango ? rango.hasta - rango.desde + 1 : 0
+  // Rango mal configurado (rango null con sorteo prendido) = sin números que dar.
+  const sorteoCompleto = !!ev.sorteo_disponible && (!rango || sorteoAsignados >= sorteoTotal)
   let motivo: string | null = null
   if (ev.estado !== 'abierto') motivo = 'Las inscripciones están cerradas'
   else if (cupoCompleto) motivo = 'Se completó el cupo del evento'
@@ -246,6 +312,16 @@ export async function loadEventoPublico(
       importe_no_socio: Number(ev.alimentacion_importe_no_socio ?? 0),
       descripcion: ev.alimentacion_descripcion,
       opciones: opcionesConSinRestriccion(parseOpcionesAlimentacion(ev.alimentacion_opciones)),
+    },
+    sorteo: {
+      disponible: !!ev.sorteo_disponible,
+      // Default TRUE si viene null (eventos previos a la migración 31): el caso
+      // conservador es restringir a socios, no abrir el sorteo a todos.
+      solo_socios: ev.sorteo_solo_socios !== false,
+      descripcion: ev.sorteo_descripcion,
+      ocupacion_nivel:
+        rango && sorteoMax != null ? nivelOcupacion(sorteoAsignados, sorteoTotal) : null,
+      completo: sorteoCompleto,
     },
   }
 }

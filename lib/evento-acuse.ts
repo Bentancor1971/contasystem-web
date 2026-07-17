@@ -27,6 +27,13 @@ export interface InscripcionAcuse {
   moneda_codigo: string
   modalidad: ModalidadInscripcion
   referencia_transferencia: string | null
+  /**
+   * Número correlativo sorteable. null = no participa del sorteo.
+   * Este mail es el ÚNICO canal por el que la persona lo recibe: el lookup
+   * público no lo expone (ver InscripcionPrevia), así que quien lo pierde lo
+   * recupera reenviándose esta copia.
+   */
+  numero_sorteo: number | null
 }
 
 export interface EnviarAcuseParams {
@@ -82,6 +89,10 @@ export async function enviarAcuseInscripcion(
       nombre: `${nombre} ${apellido}`.trim(),
       evento: evento.nombre,
       numero: inscripcion.numero ?? '',
+      // Vacío si no participa del sorteo: una plantilla propia que use
+      // {numero_sorteo} en un evento sin sorteo no muestra nada, no "null".
+      numero_sorteo:
+        inscripcion.numero_sorteo == null ? '' : String(inscripcion.numero_sorteo),
       total: `${inscripcion.moneda_codigo} ${total.toFixed(2)}`,
     }
     const varsHtml = Object.fromEntries(
@@ -126,6 +137,7 @@ export async function enviarAcuseInscripcion(
         modalidad: inscripcion.modalidad,
         datosDeposito: evento.datos_deposito,
         numero: inscripcion.numero,
+        numeroSorteo: inscripcion.numero_sorteo,
         urlPago,
         referenciaDeclarada: inscripcion.referencia_transferencia,
         cambios,

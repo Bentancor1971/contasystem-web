@@ -17,9 +17,10 @@ import {
   parseOpcionesAlimentacion,
   precioCategoria,
   precioMaximoCategoria,
+  proximoNumeroSorteo,
   resolverParticipante,
 } from '@/lib/eventos'
-import { ALIMENTACION_SIN_RESTRICCION } from '@/lib/eventos-types'
+import { ALIMENTACION_SIN_RESTRICCION, elegibleParaSorteo } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -45,6 +46,8 @@ interface Body {
   lleva_alimentacion?: unknown
   /** Tipo de alimentación elegido (de las opciones o "Otros" a mano). */
   alimentacion_tipo?: unknown
+  /** Opt-in al sorteo del evento. La elegibilidad se re-decide server-side. */
+  participa_sorteo?: unknown
   modalidad?: unknown
 }
 
@@ -274,6 +277,24 @@ export async function POST(
       }
     }
 
+    // Sorteo (opcional, opt-in): sólo si el evento lo tiene, la config web no lo
+    // oculta, la persona lo pidió y es elegible. La elegibilidad se re-decide acá
+    // contra el tipo de participante resuelto server-side: el flag del body no se
+    // confía (mismo criterio que el importe).
+    //
+    // El número NO se asigna todavía: se resuelve junto al insert, porque dos
+    // inscripciones simultáneas pueden calcular el mismo y hay que reintentar.
+    const participaSorteo =
+      body.participa_sorteo === true &&
+      elegibleParaSorteo(
+        {
+          disponible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
+          // Default TRUE si viene null (eventos previos a la migración 31).
+          solo_socios: evento.sorteo_solo_socios !== false,
+        },
+        part.tipo_participante,
+      )
+
     // Modalidad efectiva: "pago_transferencia" (= "pago realizado") sólo si el
     // evento habilita esa modalidad, la config web la permite, publica datos de
     // depósito y hay algo para pagar; si no, es una preinscripción (reserva de
@@ -320,38 +341,66 @@ export async function POST(
       )
     }
 
-    const { data: inserted, error: insErr } = await admin
-      .from('inscripciones_evento_remoto')
-      .insert({
-        evento_id: evento.id,
-        empresa_id: evento.empresa_id,
-        categoria_id: categoriaIdFinal,
-        categoria_nombre: categoriaNombre,
-        tipo_participante: part.tipo_participante,
-        socio_id: part.socio_id,
-        documento: normalizeDocumento(documento),
-        documento_hash: documentoHash,
-        nombre,
-        apellido: apellido || null,
-        mail: mail || null,
-        telefono: telefono || null,
-        importe,
-        moneda_codigo: evento.moneda_codigo,
-        cuotas_pendientes: part.cuotas_pendientes,
-        lleva_transporte: llevaTransporte,
-        transporte_importe: transporteImporte,
-        lleva_alimentacion: llevaAlimentacion,
-        alimentacion_importe: alimentacionImporte,
-        alimentacion_tipo: alimentacionTipo,
-        modalidad: modalidadFinal,
-        // Sólo tiene sentido si efectivamente declaró pago por transferencia.
-        referencia_transferencia: referencia || null,
-        estado: estadoInicial,
-      })
-      .select('numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad')
-      .single()
+    const filaBase = {
+      evento_id: evento.id,
+      empresa_id: evento.empresa_id,
+      categoria_id: categoriaIdFinal,
+      categoria_nombre: categoriaNombre,
+      tipo_participante: part.tipo_participante,
+      socio_id: part.socio_id,
+      documento: normalizeDocumento(documento),
+      documento_hash: documentoHash,
+      nombre,
+      apellido: apellido || null,
+      mail: mail || null,
+      telefono: telefono || null,
+      importe,
+      moneda_codigo: evento.moneda_codigo,
+      cuotas_pendientes: part.cuotas_pendientes,
+      lleva_transporte: llevaTransporte,
+      transporte_importe: transporteImporte,
+      lleva_alimentacion: llevaAlimentacion,
+      alimentacion_importe: alimentacionImporte,
+      alimentacion_tipo: alimentacionTipo,
+      modalidad: modalidadFinal,
+      // Sólo tiene sentido si efectivamente declaró pago por transferencia.
+      referencia_transferencia: referencia || null,
+      estado: estadoInicial,
+    }
+    const COLUMNAS_INSERTADAS =
+      'numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad, participa_sorteo, numero_sorteo'
 
-    if (insErr) {
+    // Desde la migración 31 hay DOS índices únicos sobre esta tabla y ambos
+    // devuelven 23505: el de (evento_id, documento_hash) —cédula repetida, error
+    // definitivo— y el del número de sorteo —colisión transitoria entre dos
+    // inscripciones simultáneas, que se arregla recalculando—. Hay que
+    // distinguirlos por nombre: tratar la colisión de número como "ya inscripta"
+    // le mentiría a alguien que se está inscribiendo por primera vez.
+    const IDX_SORTEO = 'uq_inscripciones_evento_sorteo_numero'
+    const MAX_INTENTOS = 5
+
+    let inserted: Record<string, unknown> | null = null
+    let colisionSorteo = false
+    for (let intento = 0; intento < MAX_INTENTOS; intento++) {
+      // Se recalcula en cada vuelta: si perdimos la carrera, el máximo cambió.
+      // null = el rango se agotó; la inscripción sigue, pero sin número.
+      const numero = participaSorteo ? await proximoNumeroSorteo(admin, evento) : null
+      // Invariante que consume el desktop: participa_sorteo ⟺ numero_sorteo != NULL.
+      // Si el rango se agotó, no participa (no habría número que sortearle).
+      const { data, error: insErr } = await admin
+        .from('inscripciones_evento_remoto')
+        .insert({ ...filaBase, participa_sorteo: numero != null, numero_sorteo: numero })
+        .select(COLUMNAS_INSERTADAS)
+        .single()
+
+      if (!insErr) {
+        inserted = data as Record<string, unknown>
+        break
+      }
+      if (insErr.code === '23505' && insErr.message.includes(IDX_SORTEO)) {
+        colisionSorteo = true
+        continue
+      }
       if (insErr.code === '23505') {
         return NextResponse.json(
           { error: 'Esta cédula ya está inscripta a este evento' },
@@ -363,6 +412,20 @@ export async function POST(
         { status: 500 },
       )
     }
+    if (!inserted) {
+      // Sólo se llega acá perdiendo la carrera del número MAX_INTENTOS veces
+      // seguidas. Es reintentable, así que no se quema la inscripción.
+      console.error('[inscribir] no se pudo asignar número de sorteo:', {
+        evento: evento.id,
+        colisionSorteo,
+      })
+      return NextResponse.json(
+        { error: 'Hay mucha demanda en este momento. Reintentá en unos segundos.' },
+        { status: 503 },
+      )
+    }
+    const numeroSorteo =
+      inserted.numero_sorteo == null ? null : Number(inserted.numero_sorteo)
 
     // ── Acuse de inscripción por email (best-effort; no bloquea ni falla la
     //    respuesta). Va al mail ingresado por la persona (que puede diferir del
@@ -399,6 +462,7 @@ export async function POST(
         moneda_codigo: inserted.moneda_codigo as string,
         modalidad: modalidadFinal,
         referencia_transferencia: referencia || null,
+        numero_sorteo: numeroSorteo,
       },
       cambios,
       origen: origenPublico(req),
@@ -422,6 +486,10 @@ export async function POST(
         lleva_alimentacion: !!inserted.lleva_alimentacion,
         alimentacion_importe: Number(inserted.alimentacion_importe),
         alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
+        participa_sorteo: !!inserted.participa_sorteo,
+        numero_sorteo: numeroSorteo,
+        // Pidió sorteo pero no hubo número: el rango se agotó. El form lo avisa.
+        sorteo_completo: participaSorteo && numeroSorteo == null,
         total:
           Number(inserted.importe) +
           Number(inserted.transporte_importe) +

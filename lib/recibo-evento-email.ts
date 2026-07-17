@@ -65,6 +65,12 @@ export interface ReciboEventoEmailData {
   /** Datos de la cuenta donde depositar (texto libre del evento). */
   datosDeposito: string | null
   numero: string | null
+  /**
+   * Número correlativo del sorteo. null = no participa.
+   * OJO: el rango arranca en 0 por defecto, así que 0 es un número VÁLIDO.
+   * Chequear siempre `!= null`, nunca por truthiness.
+   */
+  numeroSorteo?: number | null
   /** Link al formulario público de "registrar mi pago" (sólo preinscripción). */
   urlPago?: string | null
   /** Referencia de transferencia que la persona declaró (modalidad "pago realizado"). */
@@ -150,6 +156,8 @@ export function renderReciboEventoEmail(
   const C = getColors(b)
   const esTransferencia = d.modalidad === 'pago_transferencia'
   const fecha = fechaLarga(d.eventoFecha)
+  // El 0 es un número de sorteo válido (el rango arranca ahí por defecto).
+  const tieneSorteo = d.numeroSorteo != null
 
   const contenido = `
           <!-- Saludo -->
@@ -188,6 +196,21 @@ export function renderReciboEventoEmail(
               </table>
             </td>
           </tr>
+
+          ${tieneSorteo ? `
+          <!-- Número de sorteo: es el dato que la persona tiene que conservar,
+               y este mail es el único lugar donde lo recibe. -->
+          <tr>
+            <td style="padding:0 32px 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:2px solid ${C.accent};border-radius:8px;">
+                <tr><td style="padding:20px;text-align:center;">
+                  <p style="margin:0;font-size:13px;color:#94949b;text-transform:uppercase;letter-spacing:1px;">Tu número para el sorteo</p>
+                  <p style="margin:6px 0 0;font-size:40px;font-weight:bold;color:${C.accent};line-height:1.1;">${esc(String(d.numeroSorteo))}</p>
+                  <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Guardá este número: es el que participa del sorteo.</p>
+                </td></tr>
+              </table>
+            </td>
+          </tr>` : ''}
 
           <!-- Datos del evento -->
           <tr>
@@ -261,6 +284,9 @@ export function renderReciboEventoEmail(
     `Modalidad: ${esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}`,
     `Total: ${formatImporte(d.total, d.monedaCodigo)}`,
   ].filter(Boolean)
+  if (tieneSorteo) {
+    lineas.push('', `TU NÚMERO PARA EL SORTEO: ${d.numeroSorteo}`, 'Guardá este número: es el que participa del sorteo.')
+  }
   if (esTransferencia && d.datosDeposito) {
     lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, d.monedaCodigo)}`)
     if (d.referenciaDeclarada) lineas.push(`Referencia declarada: ${d.referenciaDeclarada}`)

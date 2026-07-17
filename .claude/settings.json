@@ -102,7 +102,23 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rln \"ya inscripta\\\\|segunda inscripción\\\\|figura como inscripta\\\\|Inscribir Persona\\\\|No es posible registrar\" src --include=*.tsx --include=*.ts)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"ya inscripta\\\\|segunda inscripción\\\\|figura como inscripta\\\\|No es posible registrar\\\\|rol_evento\\\\|rolEvento\\\\|inscripcionExistente\\\\|yaInscript\\\\|existe\" src/routes/eventos/index.tsx | head -30)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"cupoDetalle\\\\|ocupados\\\\|contarInscript\\\\|en_lista_espera\\\\|inscripciones.filter\\\\|inscripciones.length\" src/routes/eventos/index.tsx | head -20)",
-      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"rol_evento\\\\b\\\\|rol_evento?:\\\\|interface Inscripcion\\\\|InscripcionEvento\\\\|useSqliteQuery<.*[Ii]nscrip\\\\|refetchInscripciones\\\\|const.*inscripciones.*=.*useSqliteQuery\" src/routes/eventos/index.tsx | head; echo \"=== type in types ===\"; grep -rn \"rol_evento\" src/types/index.ts)"
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"rol_evento\\\\b\\\\|rol_evento?:\\\\|interface Inscripcion\\\\|InscripcionEvento\\\\|useSqliteQuery<.*[Ii]nscrip\\\\|refetchInscripciones\\\\|const.*inscripciones.*=.*useSqliteQuery\" src/routes/eventos/index.tsx | head; echo \"=== type in types ===\"; grep -rn \"rol_evento\" src/types/index.ts)",
+      "Bash(git log *)",
+      "Bash(grep -n \"useState\\\\|fetch\\(\\\\|const \\\\[.*\\\\] =\\\\|paso\\\\|modalidad\\\\|function \\\\|=> {$\" \"app/e/[slug]/EventoForm.tsx\")",
+      "Bash(grep -n \"useState\\\\|fetch\\(\\\\|export function\\\\|/\\\\*\\\\*\\\\| \\\\* \" \"app/e/[slug]/RegistrarPago.tsx\")",
+      "Bash(ls -d /c/Users/benta/Documentos/Programas/*/ 2>/dev/null)",
+      "Bash(ls /c/Users/benta/Documentos/Programas/contasystem-desktop/docs/supabase/ 2>/dev/null)",
+      "Read(//c/Users/benta/Documentos/Programas/contasystem-desktop/docs/supabase//**)",
+      "Bash(ls /c/Users/benta/Documentos/Programas/contasystem-desktop)",
+      "Bash(node -e ' *)",
+      "Bash(echo \"\\(desktop exit: $?\\)\")",
+      "Bash(echo \"\\(web exit: $?\\)\")",
+      "Bash(ls -la /c/Users/benta/Documentos/Programas/contasystem-desktop/docs/supabase/ | grep -i \"31\\\\|30_\")",
+      "Read(//c/Users/benta/OneDrive/**)",
+      "PowerShell(Write-Output \"=== Redireccion de shell folders \\(registro\\) ===\"; $p = Get-ItemProperty \"HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\User Shell Folders\"; [PSCustomObject]@{ Personal = $p.Personal; Desktop = $p.Desktop } | Format-List; Write-Output \"=== Donde esta realmente el repo web? ===\"; \\(Get-Item \"C:\\\\Users\\\\benta\\\\Documentos\\\\Programas\\\\contasystem-web\"\\).FullName; Write-Output \"=== Volumen del disco ===\"; Get-Volume -DriveLetter C | Select-Object DriveLetter, FileSystemLabel, FileSystemType | Format-List)",
+      "Bash(cd /c/Users/benta/Documentos/Programas/contasystem-desktop *)",
+      "Bash(grep -rln *)",
+      "Bash(echo \"\\(desktop tsc exit: $?\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
@@ -111,7 +127,10 @@
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\lib",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\routes\\eventos",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\components\\layout",
-      "c:\\Users\\benta\\.claude\\projects\\c--Users-benta-Documentos-Programas-contasystem-web\\memory"
+      "c:\\Users\\benta\\.claude\\projects\\c--Users-benta-Documentos-Programas-contasystem-web\\memory",
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\docs\\supabase",
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\types",
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\lib\\sync"
     ]
   }
 }

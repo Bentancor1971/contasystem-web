@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS public.evento_web_config (
   -- ── Extras (solo pueden OCULTAR lo que el desktop habilitó) ──
   mostrar_transporte    BOOLEAN NOT NULL DEFAULT TRUE,
   mostrar_alimentacion  BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Oculta el opt-in al sorteo. No lo habilita: eso lo decide el desktop con
+  -- eventos_remoto.sorteo_disponible (ver docs/supabase/31_eventos_sorteo.sql).
+  mostrar_sorteo        BOOLEAN NOT NULL DEFAULT TRUE,
 
   -- ── Pago / Total ────────────────────────────────────────────
   mostrar_total                BOOLEAN NOT NULL DEFAULT TRUE,
@@ -65,6 +68,10 @@ CREATE TABLE IF NOT EXISTS public.evento_web_config (
 ALTER TABLE public.evento_web_config
   ADD COLUMN IF NOT EXISTS mail_acuse_pago_asunto TEXT,
   ADD COLUMN IF NOT EXISTS mail_acuse_pago_html   TEXT;
+
+-- Migración idempotente: opt-in al sorteo (para tablas ya creadas).
+ALTER TABLE public.evento_web_config
+  ADD COLUMN IF NOT EXISTS mostrar_sorteo BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_evento_web_config_empresa
   ON public.evento_web_config(empresa_id);

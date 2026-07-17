@@ -24,6 +24,7 @@ export const EVENTO_CONFIG_COLUMNS = [
   'permitir_categoria_otros',
   'mostrar_transporte',
   'mostrar_alimentacion',
+  'mostrar_sorteo',
   'mostrar_total',
   'permitir_pago_transferencia',
   'pagina_html_encabezado',
@@ -55,6 +56,7 @@ export function rowToConfig(row: Record<string, unknown> | null): EventoWebConfi
     permitir_categoria_otros: bool(row.permitir_categoria_otros, d.permitir_categoria_otros),
     mostrar_transporte: bool(row.mostrar_transporte, d.mostrar_transporte),
     mostrar_alimentacion: bool(row.mostrar_alimentacion, d.mostrar_alimentacion),
+    mostrar_sorteo: bool(row.mostrar_sorteo, d.mostrar_sorteo),
     mostrar_total: bool(row.mostrar_total, d.mostrar_total),
     permitir_pago_transferencia: bool(
       row.permitir_pago_transferencia,

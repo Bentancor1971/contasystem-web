@@ -89,7 +89,7 @@ export async function POST(
     const documentoHash = hashDocumento(documento)
     const { data: insc, error: inscErr } = await admin
       .from('inscripciones_evento_remoto')
-      .select('id, numero, importe, transporte_importe, alimentacion_importe, moneda_codigo, nombre, apellido, mail, categoria_nombre, tipo_participante, alimentacion_tipo')
+      .select('id, numero, importe, transporte_importe, alimentacion_importe, moneda_codigo, nombre, apellido, mail, categoria_nombre, tipo_participante, alimentacion_tipo, numero_sorteo')
       .eq('evento_id', evento.id)
       .eq('documento_hash', documentoHash)
       .neq('estado', 'anulado')
@@ -180,6 +180,9 @@ export async function POST(
           moneda_codigo: (insc.moneda_codigo as string | null) ?? evento.moneda_codigo,
           modalidad: 'pago_transferencia',
           referencia_transferencia: referencia,
+          // El número se asignó al inscribirse; declarar el pago no lo cambia.
+          // Se repite en este acuse para que la copia más reciente lo tenga.
+          numero_sorteo: insc.numero_sorteo == null ? null : Number(insc.numero_sorteo),
         },
         cambios: [],
       })
