@@ -118,7 +118,9 @@
       "PowerShell(Write-Output \"=== Redireccion de shell folders \\(registro\\) ===\"; $p = Get-ItemProperty \"HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\User Shell Folders\"; [PSCustomObject]@{ Personal = $p.Personal; Desktop = $p.Desktop } | Format-List; Write-Output \"=== Donde esta realmente el repo web? ===\"; \\(Get-Item \"C:\\\\Users\\\\benta\\\\Documentos\\\\Programas\\\\contasystem-web\"\\).FullName; Write-Output \"=== Volumen del disco ===\"; Get-Volume -DriveLetter C | Select-Object DriveLetter, FileSystemLabel, FileSystemType | Format-List)",
       "Bash(cd /c/Users/benta/Documentos/Programas/contasystem-desktop *)",
       "Bash(grep -rln *)",
-      "Bash(echo \"\\(desktop tsc exit: $?\\)\")"
+      "Bash(echo \"\\(desktop tsc exit: $?\\)\")",
+      "Bash(git status *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
