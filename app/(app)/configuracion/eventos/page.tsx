@@ -495,7 +495,7 @@ export default function ConfiguracionEventosPage() {
                   placeholder="<p>Hola {nombre}…</p>"
                 />
                 <p className="mt-2 text-[11px] font-mono text-ink-3">
-                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{total}'}
+                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
                 </p>
               </div>
             </div>
@@ -542,7 +542,7 @@ export default function ConfiguracionEventosPage() {
                   placeholder="<p>Hola {nombre}… vamos a verificar tu transferencia.</p>"
                 />
                 <p className="mt-2 text-[11px] font-mono text-ink-3">
-                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{total}'}
+                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
                 </p>
               </div>
             </div>

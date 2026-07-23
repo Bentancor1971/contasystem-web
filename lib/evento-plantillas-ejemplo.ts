@@ -6,7 +6,7 @@
  * guardado: quedan a la vista, sirven de referencia y se pueden editar.
  *
  * Ojo con las variables: sólo los mails las interpolan ({nombre} {evento}
- * {numero} {total}). El encabezado/pie de la página pública y el certificado se
+ * {numero} {numero_sorteo} {total}). El encabezado/pie de la página pública y el certificado se
  * sanean y se insertan tal cual, así que ahí una llave sale literal.
  */
 

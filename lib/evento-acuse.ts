@@ -83,6 +83,12 @@ export async function enviarAcuseInscripcion(
       Number(inscripcion.transporte_importe) +
       Number(inscripcion.alimentacion_importe)
 
+    // Registro sin costo: evento sin costo cuya inscripción no genera pago. Sus
+    // plantillas propias son de flujos de pago (preinscripción a pagar / pago
+    // declarado), que acá no aplican: se ignoran y se usa el recibo branded, ya
+    // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
+    const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
+
     // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
     // El asunto es texto plano; el cuerpo es HTML (variables escapadas y saneado).
     const varsTexto: Record<string, string> = {
@@ -102,14 +108,15 @@ export async function enviarAcuseInscripcion(
     // verificación de transferencia); preinscripción usa la suya. Si el campo del
     // caso está vacío, cae al recibo branded por defecto.
     const esPago = inscripcion.modalidad === 'pago_transferencia'
-    const asuntoTpl = esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
-    const htmlTpl = esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
+    const asuntoTpl = registroSinCosto ? null : esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
+    const htmlTpl = registroSinCosto ? null : esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
 
-    // Link al registro de pago: sólo tiene sentido en la preinscripción y sólo
-    // si el form público lo ofrece (misma condición que EventoForm/RegistrarPago:
-    // transferencia habilitada y datos de depósito cargados).
+    // Link al registro de pago: sólo tiene sentido en la preinscripción con pago
+    // pendiente y sólo si el form público lo ofrece (misma condición que
+    // EventoForm/RegistrarPago: transferencia habilitada y datos de depósito
+    // cargados). En un registro sin costo no hay pago que registrar.
     const urlPago =
-      !esPago && origen && cfg.permitir_pago_transferencia && evento.datos_deposito
+      !esPago && !registroSinCosto && origen && cfg.permitir_pago_transferencia && evento.datos_deposito
         ? `${origen}/e/${evento.slug}?pago=1`
         : null
 
@@ -135,6 +142,7 @@ export async function enviarAcuseInscripcion(
         total,
         monedaCodigo: inscripcion.moneda_codigo,
         modalidad: inscripcion.modalidad,
+        registroSinCosto,
         datosDeposito: evento.datos_deposito,
         numero: inscripcion.numero,
         numeroSorteo: inscripcion.numero_sorteo,
