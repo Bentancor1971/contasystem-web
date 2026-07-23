@@ -50,7 +50,10 @@ const BARRA_SORTEO = {
  * registró (modalidad) y en qué estado quedó. `pendientePago` decide si además
  * se le muestran los datos de transferencia y el importe a abonar.
  */
-function describirInscripcionPrevia(p: InscripcionPrevia): {
+function describirInscripcionPrevia(
+  p: InscripcionPrevia,
+  registroSinCosto: boolean,
+): {
   titulo: string
   detalle: string
   pendientePago: boolean
@@ -78,6 +81,14 @@ function describirInscripcionPrevia(p: InscripcionPrevia): {
       titulo: 'Ya te inscribiste y declaraste el pago',
       detalle:
         'Registramos tu transferencia. La organización la va a verificar para confirmar tu inscripción.',
+      pendientePago: false,
+      rechazada: false,
+    }
+  }
+  if (registroSinCosto) {
+    return {
+      titulo: 'Ya estás inscripto',
+      detalle: 'Tu inscripción ya quedó registrada. No tenés que hacer nada más.',
       pendientePago: false,
       rechazada: false,
     }
@@ -143,23 +154,42 @@ export function EventoForm({
   /** Viene de ?pago=1 (link del mail de preinscripción): arranca en el registro de pago. */
   abrirRegistrarPago?: boolean
 }) {
+  // "Registro sin costo": evento sin costo cuya inscripción no puede generar
+  // ningún pago (sin transporte ni alimentación con costo). Ahí el formulario no
+  // menciona pagos: no hay "preinscripción a pagar después", sólo un registro.
+  // Un evento sin costo CON transporte o alimentación paga conserva las
+  // modalidades de pago normales (todavía hay algo que abonar).
+  const registroSinCosto =
+    evento.tipo !== 'con_costo' &&
+    !(evento.transporte.disponible && evento.config.mostrar_transporte && evento.transporte.con_costo) &&
+    !(evento.alimentacion.disponible && evento.config.mostrar_alimentacion && evento.alimentacion.con_costo)
+
   // Modalidades ofrecidas antes de pedir la cédula. "Pago realizado" sólo tiene
   // sentido si la config web lo permite y hay dónde transferir (datos de
   // depósito cargados). Misma condición que el servidor en /inscribir.
+  //
+  // En un registro sin costo esas dos modalidades no aplican (no hay pago): si
+  // la organización habilitó CUALQUIERA de las dos, se ofrece una única acción
+  // "Registro" que manda una inscripción común (el servidor la fuerza a reserva,
+  // importe 0). Si no habilitó ninguna, la inscripción web sigue deshabilitada.
   const pagoRealizadoDisponible =
+    !registroSinCosto &&
     evento.permitir_pago_realizado &&
     evento.config.permitir_pago_transferencia &&
     !!evento.datos_deposito
-  const preinscripcionDisponible = evento.permitir_preinscripcion
+  const preinscripcionDisponible = registroSinCosto
+    ? evento.permitir_preinscripcion || evento.permitir_pago_realizado
+    : evento.permitir_preinscripcion
   const modalidadesDisponibles: ModalidadElegida[] = [
     ...(pagoRealizadoDisponible ? (['pago_realizado'] as const) : []),
     ...(preinscripcionDisponible ? (['preinscripcion'] as const) : []),
   ]
   // Tercera opción, que NO es una modalidad de inscripción: el que ya se
   // preinscribió y vuelve sólo a declarar la transferencia. Requiere lo mismo
-  // que "pago realizado" salvo la modalidad del evento (ver RegistrarPago).
+  // que "pago realizado" salvo la modalidad del evento (ver RegistrarPago). En un
+  // registro sin costo no hay pago que declarar, así que no se ofrece.
   const registrarPagoDisponible =
-    evento.config.permitir_pago_transferencia && !!evento.datos_deposito
+    !registroSinCosto && evento.config.permitir_pago_transferencia && !!evento.datos_deposito
   // Se saltea la pantalla de elección sólo si hay UNA sola cosa para elegir. Con
   // el registro de pago disponible siempre hay al menos dos.
   const modalidadUnica =
@@ -340,6 +370,8 @@ export function EventoForm({
         <p className="text-ink-2 mb-6">
           {resultado.modalidad === 'pago_transferencia' ? (
             <>Recibimos tu inscripción a <strong>{evento.nombre}</strong> y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos el recibo con la confirmación definitiva.</>
+          ) : registroSinCosto ? (
+            <>Te inscribiste a <strong>{evento.nombre}</strong>. Tu registro quedó confirmado; te esperamos.</>
           ) : (
             <>Reservaste tu cupo para <strong>{evento.nombre}</strong>. Coordiná el pago con la organización para confirmar la inscripción.</>
           )}
@@ -379,10 +411,12 @@ export function EventoForm({
               <dd>{resultado.categoria_nombre} · {resultado.tipo_participante === 'socio' ? 'Socio' : 'No socio'}</dd>
             </div>
           )}
-          <div className="flex justify-between">
-            <dt className="text-ink-3">Inscripción</dt>
-            <dd>{formatImporte(resultado.importe, resultado.moneda_codigo)}</dd>
-          </div>
+          {!registroSinCosto && (
+            <div className="flex justify-between">
+              <dt className="text-ink-3">Inscripción</dt>
+              <dd>{formatImporte(resultado.importe, resultado.moneda_codigo)}</dd>
+            </div>
+          )}
           {resultado.lleva_transporte && (
             <div className="flex justify-between">
               <dt className="text-ink-3">Transporte</dt>
@@ -404,10 +438,12 @@ export function EventoForm({
               </dd>
             </div>
           )}
-          <div className="flex justify-between border-t border-line pt-2 mt-1">
-            <dt className="text-ink-3 font-semibold">Total</dt>
-            <dd className="font-semibold">{formatImporte(resultado.total, resultado.moneda_codigo)}</dd>
-          </div>
+          {!registroSinCosto && (
+            <div className="flex justify-between border-t border-line pt-2 mt-1">
+              <dt className="text-ink-3 font-semibold">Total</dt>
+              <dd className="font-semibold">{formatImporte(resultado.total, resultado.moneda_codigo)}</dd>
+            </div>
+          )}
         </dl>
 
         {/* Quien declaró el pago ya transfirió: no se le muestran los datos de
@@ -427,7 +463,7 @@ export function EventoForm({
   // Aviso de "ya estás inscripto": reemplaza al formulario (no hay nada que
   // completar) y le dice CÓMO quedó registrado y si le falta abonar.
   if (yaInscripto) {
-    const info = describirInscripcionPrevia(yaInscripto)
+    const info = describirInscripcionPrevia(yaInscripto, registroSinCosto)
     const debeAbonar = info.pendientePago && yaInscripto.total > 0
     return (
       <div className="card p-8 rise">
@@ -451,19 +487,27 @@ export function EventoForm({
             <dd className="text-right">
               {yaInscripto.modalidad === 'pago_transferencia'
                 ? 'Pago declarado por transferencia'
-                : 'Preinscripción (pago después)'}
+                : registroSinCosto
+                  ? 'Registro sin costo'
+                  : 'Preinscripción (pago después)'}
             </dd>
           </div>
           <div className="flex justify-between gap-4">
-            <dt className="text-ink-3">Estado del pago</dt>
+            <dt className="text-ink-3">{registroSinCosto ? 'Estado' : 'Estado del pago'}</dt>
             <dd className={`text-right font-semibold ${info.rechazada ? 'text-status-no' : info.pendientePago ? 'text-status-warn' : 'text-status-ok'}`}>
-              {yaInscripto.estado === 'importado'
-                ? 'Confirmado'
-                : yaInscripto.estado === 'rechazado'
-                  ? 'Rechazado'
-                  : yaInscripto.estado === 'pagado'
-                    ? 'A verificar'
-                    : 'Pendiente de pago'}
+              {registroSinCosto
+                ? yaInscripto.estado === 'importado'
+                  ? 'Confirmada'
+                  : yaInscripto.estado === 'rechazado'
+                    ? 'Rechazada'
+                    : 'Registrada'
+                : yaInscripto.estado === 'importado'
+                  ? 'Confirmado'
+                  : yaInscripto.estado === 'rechazado'
+                    ? 'Rechazado'
+                    : yaInscripto.estado === 'pagado'
+                      ? 'A verificar'
+                      : 'Pendiente de pago'}
             </dd>
           </div>
           {yaInscripto.categoria_nombre && (
@@ -478,12 +522,14 @@ export function EventoForm({
               <dd className="text-right">{yaInscripto.referencia_transferencia}</dd>
             </div>
           )}
-          <div className="flex justify-between border-t border-line pt-2 mt-1">
-            <dt className="text-ink-3 font-semibold">{debeAbonar ? 'Falta abonar' : 'Total'}</dt>
-            <dd className="font-semibold">
-              {formatImporte(yaInscripto.total, yaInscripto.moneda_codigo)}
-            </dd>
-          </div>
+          {!(registroSinCosto && yaInscripto.total === 0) && (
+            <div className="flex justify-between border-t border-line pt-2 mt-1">
+              <dt className="text-ink-3 font-semibold">{debeAbonar ? 'Falta abonar' : 'Total'}</dt>
+              <dd className="font-semibold">
+                {formatImporte(yaInscripto.total, yaInscripto.moneda_codigo)}
+              </dd>
+            </div>
+          )}
         </dl>
 
         {debeAbonar && (
@@ -848,7 +894,11 @@ export function EventoForm({
       <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-paper-2 px-4 py-2.5">
         <span className="flex items-center gap-2 text-sm font-mono">
           {esPagoRealizado ? <Landmark size={15} /> : <CalendarClock size={15} />}
-          {esPagoRealizado ? 'Ya realicé el pago' : 'Preinscripción (pago después)'}
+          {esPagoRealizado
+            ? 'Ya realicé el pago'
+            : registroSinCosto
+              ? 'Registro'
+              : 'Preinscripción (pago después)'}
         </span>
         {/* Hay pantalla de elección a la que volver (no se auto-eligió una única opción). */}
         {modalidadUnica == null && (
@@ -1314,7 +1364,11 @@ export function EventoForm({
               disabled={enviando}
             >
               {enviando ? <Loader2 className="animate-spin" size={16} /> : <Ticket size={16} />}
-              {enviando ? 'Registrando…' : 'Confirmar preinscripción'}
+              {enviando
+                ? 'Registrando…'
+                : registroSinCosto
+                  ? 'Confirmar inscripción'
+                  : 'Confirmar preinscripción'}
             </button>
           )}
 
