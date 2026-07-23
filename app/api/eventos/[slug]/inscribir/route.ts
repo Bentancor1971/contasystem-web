@@ -109,15 +109,11 @@ export async function POST(
     if (!cfg.mostrar_apellido) apellido = ''
     if (!cfg.mostrar_email) mail = ''
     if (!cfg.mostrar_telefono) telefono = ''
-    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido) {
-      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
-    }
-    if (cfg.mostrar_email && cfg.email_obligatorio && !mail) {
-      return NextResponse.json({ error: 'El email es obligatorio' }, { status: 400 })
-    }
-    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono) {
-      return NextResponse.json({ error: 'El teléfono es obligatorio' }, { status: 400 })
-    }
+    // Los obligatorios NO se exigen todavía: un socio deja apellido/email/teléfono
+    // vacíos a propósito (en el formulario ve el dato enmascarado de su ficha) y
+    // los completamos más abajo desde esa ficha. Exigirlos acá —antes de resolver
+    // la cédula— rechazaría a un socio cuyo dato ya tenemos. Se validan después
+    // del relleno, igual que el nombre.
 
     // En eventos con costo la categoría define el precio: siempre se exige.
     const categoriaVisible = evento.tipo === 'con_costo' || cfg.mostrar_categoria
@@ -167,10 +163,17 @@ export async function POST(
       if (!telefono) telefono = part.telefono
     }
 
-    // Recién ahora exigimos el nombre: para un socio ya viene de la ficha; para
-    // alguien que no está en la base, sigue siendo obligatorio escribirlo.
+    // Recién ahora exigimos los datos obligatorios: para un socio ya vienen de la
+    // ficha (completados arriba); para alguien que no está en la base, siguen
+    // siendo obligatorios y hay que escribirlos.
     if (!nombre) {
       return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+    }
+    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido) {
+      return NextResponse.json({ error: 'El apellido es obligatorio' }, { status: 400 })
+    }
+    if (cfg.mostrar_email && cfg.email_obligatorio && !mail) {
+      return NextResponse.json({ error: 'El email es obligatorio' }, { status: 400 })
     }
     // Teléfono: obligatorio para todos cuando el campo se muestra. Si es un socio
     // con teléfono en la ficha ya se completó arriba; si no lo tenemos, hay que
