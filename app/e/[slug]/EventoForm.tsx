@@ -20,7 +20,11 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { ALIMENTACION_SIN_RESTRICCION, elegibleParaSorteo } from '@/lib/eventos-types'
+import {
+  ALIMENTACION_SIN_RESTRICCION,
+  elegibleParaSorteo,
+  motivoNoPuedeInscribirse,
+} from '@/lib/eventos-types'
 import { simboloMoneda } from '@/lib/format'
 import { RegistrarPago } from './RegistrarPago'
 
@@ -239,6 +243,10 @@ export function EventoForm({
   // Inscripción que esta cédula YA tiene en el evento (detectada al verificar,
   // o al chocar con el 409 si alguien se inscribió mientras completaba el form).
   const [yaInscripto, setYaInscripto] = useState<InscripcionPrevia | null>(null)
+  // Esta cédula no cumple la política de admisión del evento (registro_permitido).
+  // Guarda el motivo para explicarlo en vez de abrir un formulario que el server
+  // va a rechazar igual.
+  const [rechazo, setRechazo] = useState<string | null>(null)
   // Reenvío de la copia del comprobante: pide confirmación antes de mandar el mail.
   const [confirmandoCopia, setConfirmandoCopia] = useState(false)
   const [enviandoCopia, setEnviandoCopia] = useState(false)
@@ -662,6 +670,7 @@ export function EventoForm({
       toast.error('Ingresá una cédula válida')
       return
     }
+    setRechazo(null)
     setVerificando(true)
     try {
       const res = await fetch(`/api/eventos/${evento.slug}/lookup`, {
@@ -684,6 +693,12 @@ export function EventoForm({
       // le avisa acá y no se le abre el formulario (el server lo rechazaría).
       if (data.cedula_invalida) {
         toast.error('La cédula no es válida. Revisá el número.')
+        return
+      }
+      // Política de admisión del evento. El veredicto lo calcula el server; acá
+      // sólo se explica, para no hacerle completar todo y chocar al enviar.
+      if (!data.puede_inscribirse) {
+        setRechazo(motivoNoPuedeInscribirse(evento.registro_permitido))
         return
       }
       // Cada verificación arranca de cero: lo que haya en los campos es de la
@@ -944,8 +959,9 @@ export function EventoForm({
             onChange={(e) => {
               setDocumento(e.target.value)
               // Otra cédula = otra persona: se cierra el paso 2 y se descarta lo
-              // que hubiera escrito la anterior.
+              // que hubiera escrito la anterior (incluido un rechazo previo).
               setResuelto(null)
+              setRechazo(null)
               limpiarDatosPersona()
             }}
             disabled={verificando}
@@ -956,6 +972,18 @@ export function EventoForm({
           </button>
         </div>
       </div>
+
+      {/* Rechazado por la política de admisión del evento. Reemplaza al paso 2:
+          no hay formulario que completar. La cédula queda editable arriba por si
+          se equivocó de número. */}
+      {rechazo && (
+        <div className="rounded-lg border border-status-warn bg-paper-2 px-4 py-3">
+          <p className="flex items-start gap-2 text-sm">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-status-warn" />
+            <span className="text-ink-2">{rechazo}</span>
+          </p>
+        </div>
+      )}
 
       {/* Paso 2 — Datos + categoría (tras verificar) */}
       {resuelto && (

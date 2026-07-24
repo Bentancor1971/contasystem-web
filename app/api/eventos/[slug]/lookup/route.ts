@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   buscarInscripcionPrevia,
   loadEventoRemotoBySlug,
+  normalizarRegistroPermitido,
   proyectarResolucionPublica,
   resolverParticipante,
 } from '@/lib/eventos'
@@ -66,7 +67,11 @@ export async function POST(
     // claro (nombre/mail/socio_id/cuotas) nunca se serializa — este endpoint no
     // tiene autenticación (ver ResolucionPublica y proyectarResolucionPublica).
     return NextResponse.json(
-      proyectarResolucionPublica(r, { documento: documentoRaw, inscripcionPrevia: previa }),
+      proyectarResolucionPublica(r, {
+        documento: documentoRaw,
+        inscripcionPrevia: previa,
+        registroPermitido: normalizarRegistroPermitido(evento.registro_permitido),
+      }),
     )
   } catch (err) {
     console.error('[POST /api/eventos/[slug]/lookup] error:', err)

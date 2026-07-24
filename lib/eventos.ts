@@ -14,11 +14,12 @@ import type {
   EventoPublico,
   EventoRemoto,
   InscripcionPrevia,
+  RegistroPermitido,
   ResolucionParticipante,
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { opcionesConSinRestriccion } from '@/lib/eventos-types'
+import { opcionesConSinRestriccion, puedeInscribirse } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -291,6 +292,7 @@ export async function loadEventoPublico(
     // Default TRUE si la columna viene null (eventos previos a la migración 29).
     permitir_pago_realizado: ev.permitir_pago_realizado !== false,
     permitir_preinscripcion: ev.permitir_preinscripcion !== false,
+    registro_permitido: normalizarRegistroPermitido(ev.registro_permitido),
     categorias,
     categorias_socio: categoriasSocio,
     config,
@@ -505,13 +507,30 @@ export async function buscarInscripcionPrevia(
  * Recorta la resolución interna a tipo + categoría + datos ENMASCARADOS.
  * Ver `ResolucionPublica` para el detalle de por qué cada campo está o no.
  */
+/**
+ * Normaliza la política de admisión que viene de la BD. Cualquier valor
+ * desconocido (o null, en eventos previos a la migración) cae a 'todos', que es
+ * el comportamiento histórico: una columna nueva nunca debe cerrar por accidente
+ * un evento que ya estaba abierto.
+ */
+export function normalizarRegistroPermitido(v: unknown): RegistroPermitido {
+  return v === 'padron' || v === 'socios_al_dia' ? v : 'todos'
+}
+
 export function proyectarResolucionPublica(
   r: ResolucionParticipante,
-  opts: { documento: string; inscripcionPrevia?: InscripcionPrevia | null },
+  opts: {
+    documento: string
+    inscripcionPrevia?: InscripcionPrevia | null
+    /** Política del evento. Por defecto 'todos' (no restringe). */
+    registroPermitido?: RegistroPermitido
+  },
 ): ResolucionPublica {
   const esSocioResuelto = r.encontrado && r.tipo_participante === 'socio'
+  const politica = opts.registroPermitido ?? 'todos'
   return {
     tipo_participante: r.tipo_participante,
+    puede_inscribirse: puedeInscribirse(politica, r.tipo_participante, r.encontrado),
     categoria_id: r.categoria_id,
     nombre_mask: esSocioResuelto ? maskTexto(r.nombre) : null,
     apellido_mask: esSocioResuelto ? maskTexto(r.apellido) : null,

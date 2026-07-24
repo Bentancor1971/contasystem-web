@@ -41,6 +41,8 @@ interface EventoRow {
   alimentacion_disponible: boolean
   sorteo_disponible: boolean
   datos_deposito: string | null
+  /** Política de admisión. La define el desktop; acá sólo se muestra. */
+  registro_permitido: 'todos' | 'padron' | 'socios_al_dia' | null
 }
 
 type BoolKey = {
@@ -472,6 +474,21 @@ export default function ConfiguracionEventosPage() {
                     disabledReason="Este evento no tiene datos de depósito cargados en el desktop."
                   />
                 </div>
+              </Seccion>
+
+              <Seccion titulo="Quién puede inscribirse (lo define el desktop)">
+                <p className="text-[12px] text-ink-2 mb-3 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Se configura en ContaSystem junto al resto del evento. Cada
+                  sincronización lo sobreescribe, por eso no se edita acá.
+                </p>
+                <p className="font-mono text-[13px]">
+                  {evento?.registro_permitido === 'socios_al_dia'
+                    ? 'Sólo socios al día (según el umbral de cuotas del evento)'
+                    : evento?.registro_permitido === 'padron'
+                      ? 'Sólo personas registradas en la base'
+                      : 'Abierto — cualquiera, incluso quien no está en la base'}
+                </p>
               </Seccion>
 
               <Seccion titulo="Leyendas del formulario">

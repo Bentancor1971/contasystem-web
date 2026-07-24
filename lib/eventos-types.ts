@@ -6,6 +6,48 @@
 
 export type TipoParticipante = 'socio' | 'no_socio'
 
+/**
+ * Quién puede inscribirse al evento. La define el DESKTOP (ver
+ * docs/supabase/evento_registro_permitido.sql); la web sólo la hace cumplir.
+ *
+ *   'todos'          cualquiera, incluso fuera del padrón (histórico y default)
+ *   'padron'         sólo quien exista en la base, con o sin cuotas pendientes
+ *   'socios_al_dia'  sólo quien pase la regla de cuotas del evento
+ */
+export type RegistroPermitido = 'todos' | 'padron' | 'socios_al_dia'
+
+/**
+ * Regla de admisión al evento, en un solo lugar.
+ *
+ * La usan el formulario público (para avisar al verificar la cédula) y
+ * /inscribir, que la RE-APLICA server-side: igual que con el sorteo y el
+ * importe, lo que diga el cliente no se confía.
+ *
+ * `encontrado` = la cédula existe en el padrón. `tipo` ya trae aplicada la
+ * tolerancia de cuotas (umbral_cuotas_no_socio), así que 'socios_al_dia' se
+ * resuelve simplemente contra tipo === 'socio'.
+ */
+export function puedeInscribirse(
+  politica: RegistroPermitido,
+  tipo: TipoParticipante,
+  encontrado: boolean,
+): boolean {
+  if (politica === 'socios_al_dia') return tipo === 'socio'
+  if (politica === 'padron') return encontrado
+  return true
+}
+
+/** Texto que ve quien queda excluido por la política del evento. */
+export function motivoNoPuedeInscribirse(politica: RegistroPermitido): string {
+  if (politica === 'socios_al_dia') {
+    return 'Este evento es sólo para socios al día. Si sos socio y tenés cuotas pendientes, regularizá tu situación o consultá con la organización.'
+  }
+  if (politica === 'padron') {
+    return 'Este evento es sólo para personas registradas en nuestra base. Si creés que deberías estarlo, consultá con la organización.'
+  }
+  return ''
+}
+
 /** Modalidad de inscripción elegida en el formulario público. */
 export type ModalidadInscripcion = 'reserva' | 'pago_transferencia'
 
@@ -59,6 +101,8 @@ export interface EventoRemoto {
   /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
   permitir_pago_realizado: boolean
   permitir_preinscripcion: boolean
+  /** Política de admisión. La setea el desktop; default 'todos'. */
+  registro_permitido: RegistroPermitido
   /** El evento incluye un sorteo (opt-in al inscribirse). Ver docs/supabase/31. */
   sorteo_disponible: boolean
   /**
@@ -317,6 +361,12 @@ export interface EventoPublico {
   /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
   permitir_pago_realizado: boolean
   permitir_preinscripcion: boolean
+  /**
+   * Política de admisión del evento. Se expone para que el formulario explique
+   * el rechazo; el veredicto por cédula viaja en ResolucionPublica y se
+   * re-decide server-side al inscribir.
+   */
+  registro_permitido: RegistroPermitido
 }
 
 /** Validación pública de un certificado (leído por /c/[token]). */
@@ -371,6 +421,15 @@ export interface ResolucionPublica {
    * tope por IP.
    */
   inscripcion_previa: InscripcionPrevia | null
+  /**
+   * Veredicto de la política de admisión para ESTA cédula, resuelto server-side.
+   * El formulario lo usa para avisar al verificar en vez de dejar que complete
+   * todo; /inscribir lo vuelve a calcular y no confía en el cliente.
+   *
+   * Con 'padron' este booleano ES el bit de pertenencia al padrón: es el costo
+   * de privacidad asumido al elegir esa política (ver el SQL de la columna).
+   */
+  puede_inscribirse: boolean
   /**
    * La cédula no pasa el dígito verificador Y no está en el padrón: es un error
    * de tipeo de alguien que se registra por primera vez. A los que YA están en el

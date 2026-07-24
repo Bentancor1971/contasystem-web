@@ -14,13 +14,19 @@ import {
   contarInscriptos,
   loadEventoRemotoBySlug,
   nombreCategoriaSocio,
+  normalizarRegistroPermitido,
   parseOpcionesAlimentacion,
   precioCategoria,
   precioMaximoCategoria,
   proximoNumeroSorteo,
   resolverParticipante,
 } from '@/lib/eventos'
-import { ALIMENTACION_SIN_RESTRICCION, elegibleParaSorteo } from '@/lib/eventos-types'
+import {
+  ALIMENTACION_SIN_RESTRICCION,
+  elegibleParaSorteo,
+  motivoNoPuedeInscribirse,
+  puedeInscribirse,
+} from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -148,6 +154,18 @@ export async function POST(
             'La cédula no es válida. Revisá el número; si tu documento no es una cédula uruguaya, escribinos.',
         },
         { status: 400 },
+      )
+    }
+
+    // Política de admisión del evento. Se RE-APLICA acá aunque el formulario ya
+    // la haya evaluado en /lookup: el cliente no se confía, igual que con el
+    // importe y el opt-in al sorteo. Va después del dígito verificador para que
+    // un error de tipeo reciba su mensaje específico y no éste.
+    const politica = normalizarRegistroPermitido(evento.registro_permitido)
+    if (!puedeInscribirse(politica, part.tipo_participante, part.encontrado)) {
+      return NextResponse.json(
+        { error: motivoNoPuedeInscribirse(politica) },
+        { status: 403 },
       )
     }
 
