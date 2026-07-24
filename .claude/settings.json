@@ -120,7 +120,8 @@
       "Bash(grep -rln *)",
       "Bash(echo \"\\(desktop tsc exit: $?\\)\")",
       "Bash(git status *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -q -m ' *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
