@@ -698,10 +698,15 @@ export function EventoForm({
       // versiones enmascaradas (`*_mask`), que se muestran como placeholder para
       // que el socio se reconozca. Si deja un campo vacío, el server lo completa
       // desde su ficha al inscribir.
+      // En un registro sin costo no hay tarifa que anunciar: sólo se confirma la
+      // verificación (la distinción socio/no socio sigue importando por el sorteo).
       if (data.tipo_participante === 'socio') {
-        toast.success('Se aplica la tarifa Socio')
+        toast.success(registroSinCosto ? 'Socio al día verificado' : 'Se aplica la tarifa Socio')
       } else {
-        toast('Se aplica la tarifa No socio', { icon: 'ℹ️' })
+        toast(
+          registroSinCosto ? 'Verificado — completá tus datos' : 'Se aplica la tarifa No socio',
+          { icon: 'ℹ️' },
+        )
       }
     } catch {
       toast.error('Error de conexión')
@@ -949,19 +954,32 @@ export function EventoForm({
           }}
         >
           {resuelto.tipo_participante === 'socio' ? (
-            <p className="text-sm text-status-ok font-mono">✓ Socio al día — Evento con costo bonificado</p>
+            <p className="text-sm text-status-ok font-mono">
+              {registroSinCosto
+                ? '✓ Socio al día — Registro sin costo'
+                : '✓ Socio al día — Evento con costo bonificado'}
+            </p>
           ) : (
             /* No socio. Cubre por igual a quien no está en el padrón y al socio con
                cuotas pendientes: el texto no distingue los dos casos a propósito
                (distinguirlos revelaría la deuda de cualquiera cuya cédula se tipee).
-               En ambos, la persona completa sus datos y elige con tarifa No socio. */
+               En un registro sin costo no se menciona tarifa —no la hay—, pero sí
+               el aviso de cuotas: ser socio al día sigue gateando el sorteo. */
             <div className="rounded-lg border border-line bg-paper-2 px-4 py-3">
-              <p className="font-medium">Completá tus datos para inscribirte</p>
+              <p className="font-medium">
+                {registroSinCosto
+                  ? 'Completá tus datos para registrarte'
+                  : 'Completá tus datos para inscribirte'}
+              </p>
               <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
                 <Info size={15} className="mt-0.5 shrink-0" />
                 <span>
-                  Se aplica la tarifa <strong>No socio</strong>. Si sos socio y tenés cuotas
-                  pendientes, consultá con la organización.
+                  {!registroSinCosto && (
+                    <>
+                      Se aplica la tarifa <strong>No socio</strong>.{' '}
+                    </>
+                  )}
+                  Si sos socio y tenés cuotas pendientes, consultá con la organización.
                 </span>
               </p>
             </div>
