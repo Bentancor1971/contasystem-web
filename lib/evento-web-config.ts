@@ -34,6 +34,10 @@ export const EVENTO_CONFIG_COLUMNS = [
   'mail_acuse_pago_asunto',
   'mail_acuse_pago_html',
   'certificado_html',
+  'leyenda_socio',
+  'leyenda_no_socio',
+  'leyenda_datos_ficha',
+  'leyenda_sorteo',
 ] as const
 
 const SELECT = EVENTO_CONFIG_COLUMNS.join(', ')
@@ -69,6 +73,10 @@ export function rowToConfig(row: Record<string, unknown> | null): EventoWebConfi
     mail_acuse_pago_asunto: text(row.mail_acuse_pago_asunto),
     mail_acuse_pago_html: text(row.mail_acuse_pago_html),
     certificado_html: text(row.certificado_html),
+    leyenda_socio: text(row.leyenda_socio),
+    leyenda_no_socio: text(row.leyenda_no_socio),
+    leyenda_datos_ficha: text(row.leyenda_datos_ficha),
+    leyenda_sorteo: text(row.leyenda_sorteo),
   }
 }
 

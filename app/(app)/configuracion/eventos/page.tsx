@@ -21,7 +21,11 @@ import { ArrowLeft, Loader2, Save, ExternalLink, Info, RotateCcw } from 'lucide-
 import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
 import { canSeeConfig } from '@/lib/roles'
-import { DEFAULT_EVENTO_WEB_CONFIG, type EventoWebConfig } from '@/lib/eventos-types'
+import {
+  DEFAULT_EVENTO_WEB_CONFIG,
+  leyendasPorDefecto,
+  type EventoWebConfig,
+} from '@/lib/eventos-types'
 import { PLANTILLAS_EJEMPLO, conPlantillasEjemplo } from '@/lib/evento-plantillas-ejemplo'
 
 interface EventoRow {
@@ -108,18 +112,21 @@ function HtmlArea({
   onChange,
   rows = 6,
   placeholder,
+  disabled,
 }: {
   value: string | null
   onChange: (v: string) => void
   rows?: number
   placeholder?: string
+  disabled?: boolean
 }) {
   return (
     <textarea
-      className="field font-mono text-[13px] leading-relaxed"
+      className={`field font-mono text-[13px] leading-relaxed ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       rows={rows}
       placeholder={placeholder}
       value={value ?? ''}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     />
   )
@@ -255,6 +262,10 @@ export default function ConfiguracionEventosPage() {
 
   const evento = eventos.find((e) => e.id === eventoId) ?? null
   const conCosto = evento?.tipo === 'con_costo'
+  // Placeholders de las leyendas. Se aproxima con el tipo del evento: el
+  // formulario además mira si transporte/alimentación tienen costo, dato que
+  // esta pantalla no recibe. Alcanza para una vista previa del texto.
+  const leyendasDefault = leyendasPorDefecto(!conCosto)
 
   const set = (k: BoolKey, v: boolean) => setCfg((p) => ({ ...p, [k]: v }))
   const setHtml = (k: HtmlKey, v: string) => setCfg((p) => ({ ...p, [k]: v || null }))
@@ -460,6 +471,64 @@ export default function ConfiguracionEventosPage() {
                     disabled={!evento?.datos_deposito}
                     disabledReason="Este evento no tiene datos de depósito cargados en el desktop."
                   />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Leyendas del formulario">
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  <span>
+                    Textos que ve quien se inscribe. <strong>Dejalos vacíos</strong> salvo que
+                    quieras una redacción propia: vacío usa el texto por defecto, que se adapta
+                    solo a evento con costo o sin costo. Lo que escribas queda fijo. El
+                    placeholder muestra el texto que aparece hoy.
+                  </span>
+                </p>
+                <div className="space-y-5">
+                  <div>
+                    <label className="label-mono block mb-2">Socio al día</label>
+                    <HtmlArea
+                      rows={2}
+                      value={cfg.leyenda_socio}
+                      onChange={(v) => setHtml('leyenda_socio', v)}
+                      placeholder={leyendasDefault.socio}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-mono block mb-2">No socio</label>
+                    <HtmlArea
+                      rows={3}
+                      value={cfg.leyenda_no_socio}
+                      onChange={(v) => setHtml('leyenda_no_socio', v)}
+                      placeholder={leyendasDefault.no_socio}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-mono block mb-2">
+                      Aviso de datos ya registrados
+                    </label>
+                    <HtmlArea
+                      rows={4}
+                      value={cfg.leyenda_datos_ficha}
+                      onChange={(v) => setHtml('leyenda_datos_ficha', v)}
+                      placeholder={leyendasDefault.datos_ficha}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-mono block mb-2">Sorteo</label>
+                    <HtmlArea
+                      rows={2}
+                      value={cfg.leyenda_sorteo}
+                      onChange={(v) => setHtml('leyenda_sorteo', v)}
+                      placeholder={leyendasDefault.sorteo}
+                      disabled={!evento?.sorteo_disponible}
+                    />
+                    <p className="mt-2 text-[11px] text-ink-3">
+                      {evento?.sorteo_disponible
+                        ? 'Una línea corta, sin párrafos: va dentro del renglón del sorteo. La descripción larga la define el desktop y se muestra debajo.'
+                        : 'Este evento no tiene sorteo configurado en el desktop.'}
+                    </p>
+                  </div>
                 </div>
               </Seccion>
             </>

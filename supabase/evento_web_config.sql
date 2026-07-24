@@ -60,6 +60,16 @@ CREATE TABLE IF NOT EXISTS public.evento_web_config (
   -- Página pública de validación de certificado /c/[token]
   certificado_html  TEXT,
 
+  -- ── Leyendas del formulario público ─────────────────────────
+  -- Reemplazan los textos fijos de /e/[slug]. NULL = texto por defecto, que se
+  -- adapta solo según el evento sea con costo o sin costo. Por eso conviene
+  -- dejarlas vacías salvo que se quiera un texto propio: al escribirlas, ese
+  -- texto queda fijo para las dos variantes.
+  leyenda_socio        TEXT,
+  leyenda_no_socio     TEXT,
+  leyenda_datos_ficha  TEXT,
+  leyenda_sorteo       TEXT,
+
   actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_por UUID
 );
@@ -72,6 +82,13 @@ ALTER TABLE public.evento_web_config
 -- Migración idempotente: opt-in al sorteo (para tablas ya creadas).
 ALTER TABLE public.evento_web_config
   ADD COLUMN IF NOT EXISTS mostrar_sorteo BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Migración idempotente: leyendas editables del formulario (para tablas ya creadas).
+ALTER TABLE public.evento_web_config
+  ADD COLUMN IF NOT EXISTS leyenda_socio       TEXT,
+  ADD COLUMN IF NOT EXISTS leyenda_no_socio    TEXT,
+  ADD COLUMN IF NOT EXISTS leyenda_datos_ficha TEXT,
+  ADD COLUMN IF NOT EXISTS leyenda_sorteo      TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_evento_web_config_empresa
   ON public.evento_web_config(empresa_id);

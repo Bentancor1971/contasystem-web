@@ -12,10 +12,23 @@
 
 import type { EventoWebConfig } from '@/lib/eventos-types'
 
-/** Campos de texto/HTML de la config (los que admiten ejemplo). */
-export type CampoPlantilla = {
+/** Todos los campos de texto/HTML de la config. */
+type CampoTexto = {
   [K in keyof EventoWebConfig]: EventoWebConfig[K] extends string | null ? K : never
 }[keyof EventoWebConfig]
+
+/**
+ * Campos que arrancan con un ejemplo cargado.
+ *
+ * Las leyendas del formulario quedan FUERA a propósito: su valor por defecto se
+ * decide en runtime según el evento sea con costo o sin costo, así que
+ * precargarlas acá haría que al guardar quedara un texto fijo y se perdiera esa
+ * adaptación. En la pantalla se muestran vacías, con el default como placeholder.
+ */
+export type CampoPlantilla = Exclude<
+  CampoTexto,
+  'leyenda_socio' | 'leyenda_no_socio' | 'leyenda_datos_ficha' | 'leyenda_sorteo'
+>
 
 export const PLANTILLAS_EJEMPLO: Record<CampoPlantilla, string> = {
   pagina_html_encabezado: `<p>Te esperamos en esta nueva edición. Completá el formulario con tu cédula

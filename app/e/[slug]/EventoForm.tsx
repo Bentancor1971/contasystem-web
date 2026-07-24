@@ -12,6 +12,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail, Receipt, Gift } from 'lucide-react'
 import type {
+  ClaveLeyenda,
   EventoPublico,
   InscripcionPrevia,
   ModalidadElegida,
@@ -146,11 +147,23 @@ interface Resultado {
   datos_deposito: string | null
 }
 
+/**
+ * Leyenda propia del evento, ya saneada por el server. Cadena vacía = no hay
+ * leyenda cargada y se usa el texto por defecto (que se adapta a con/sin costo).
+ */
+function Leyenda({ html, children }: { html: string; children: React.ReactNode }) {
+  if (!html) return <>{children}</>
+  return <div className="evento-html" dangerouslySetInnerHTML={{ __html: html }} />
+}
+
 export function EventoForm({
   evento,
+  leyendas,
   abrirRegistrarPago = false,
 }: {
   evento: EventoPublico
+  /** Leyendas propias del evento, saneadas. '' en las que no tienen texto propio. */
+  leyendas: Record<ClaveLeyenda, string>
   /** Viene de ?pago=1 (link del mail de preinscripción): arranca en el registro de pago. */
   abrirRegistrarPago?: boolean
 }) {
@@ -954,47 +967,53 @@ export function EventoForm({
           }}
         >
           {resuelto.tipo_participante === 'socio' ? (
-            <p className="text-sm text-status-ok font-mono">
-              {registroSinCosto
-                ? '✓ Socio al día — Registro sin costo'
-                : '✓ Socio al día — Evento con costo bonificado'}
-            </p>
+            <Leyenda html={leyendas.socio}>
+              <p className="text-sm text-status-ok font-mono">
+                {registroSinCosto
+                  ? '✓ Socio al día — Registro sin costo'
+                  : '✓ Socio al día — Evento con costo bonificado'}
+              </p>
+            </Leyenda>
           ) : (
             /* No socio. Cubre por igual a quien no está en el padrón y al socio con
                cuotas pendientes: el texto no distingue los dos casos a propósito
                (distinguirlos revelaría la deuda de cualquiera cuya cédula se tipee).
                En un registro sin costo no se menciona tarifa —no la hay—, pero sí
                el aviso de cuotas: ser socio al día sigue gateando el sorteo. */
-            <div className="rounded-lg border border-line bg-paper-2 px-4 py-3">
-              <p className="font-medium">
-                {registroSinCosto
-                  ? 'Completá tus datos para registrarte'
-                  : 'Completá tus datos para inscribirte'}
-              </p>
-              <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
-                <Info size={15} className="mt-0.5 shrink-0" />
-                <span>
-                  {!registroSinCosto && (
-                    <>
-                      Se aplica la tarifa <strong>No socio</strong>.{' '}
-                    </>
-                  )}
-                  Si sos socio y tenés cuotas pendientes, consultá con la organización.
-                </span>
-              </p>
-            </div>
+            <Leyenda html={leyendas.no_socio}>
+              <div className="rounded-lg border border-line bg-paper-2 px-4 py-3">
+                <p className="font-medium">
+                  {registroSinCosto
+                    ? 'Completá tus datos para registrarte'
+                    : 'Completá tus datos para inscribirte'}
+                </p>
+                <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
+                  <Info size={15} className="mt-0.5 shrink-0" />
+                  <span>
+                    {!registroSinCosto && (
+                      <>
+                        Se aplica la tarifa <strong>No socio</strong>.{' '}
+                      </>
+                    )}
+                    Si sos socio y tenés cuotas pendientes, consultá con la organización.
+                  </span>
+                </p>
+              </div>
+            </Leyenda>
           )}
 
           {esSocioAlDia && (
-            <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-line rounded-lg bg-paper-2 px-4 py-3">
-              <Info size={15} className="mt-0.5 shrink-0" />
-              <span>
-                Tus datos ya están registrados (los mostramos parcialmente para que los
-                reconozcas) y no se pueden editar acá: usamos los de tu ficha, y el mail de
-                confirmación llega con tus datos reales. Sólo tenés que completar lo que falte.
-                Si alguno cambió, escribinos por correo y lo actualizamos.
-              </span>
-            </p>
+            <Leyenda html={leyendas.datos_ficha}>
+              <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-line rounded-lg bg-paper-2 px-4 py-3">
+                <Info size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  Tus datos ya están registrados (los mostramos parcialmente para que los
+                  reconozcas) y no se pueden editar acá: usamos los de tu ficha, y el mail de
+                  confirmación llega con tus datos reales. Sólo tenés que completar lo que falte.
+                  Si alguno cambió, escribinos por correo y lo actualizamos.
+                </span>
+              </p>
+            </Leyenda>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1302,9 +1321,16 @@ export function EventoForm({
                   <span>
                     <span className="font-medium">Quiero participar del sorteo</span>
                     {sorteo.completo ? (
+                      /* Mensaje de estado, no se puede personalizar: informa que el
+                         rango se agotó. */
                       <span className="block text-sm text-status-no mt-0.5">
                         Se agotaron los números del sorteo. Podés inscribirte al evento igual.
                       </span>
+                    ) : leyendas.sorteo ? (
+                      <span
+                        className="block text-sm text-ink-2 mt-0.5 evento-html"
+                        dangerouslySetInnerHTML={{ __html: leyendas.sorteo }}
+                      />
                     ) : (
                       <span className="block text-sm text-ink-2 mt-0.5">
                         Te asignamos un número y te lo enviamos por correo. Sin costo.

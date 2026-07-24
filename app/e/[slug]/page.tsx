@@ -73,6 +73,15 @@ export default async function EventoPublicoPage({
   const fecha = formatFechaLarga(evento.fecha)
   const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado)
   const htmlPie = sanitizeHtml(evento.config.pagina_html_pie)
+  // Leyendas propias del formulario. Se sanean acá (server) igual que el resto
+  // del HTML de config: al form llegan listas para inyectar. '' = sin leyenda
+  // propia, y el formulario usa su texto por defecto.
+  const leyendas = {
+    socio: sanitizeHtml(evento.config.leyenda_socio),
+    no_socio: sanitizeHtml(evento.config.leyenda_no_socio),
+    datos_ficha: sanitizeHtml(evento.config.leyenda_datos_ficha),
+    sorteo: sanitizeHtml(evento.config.leyenda_sorteo),
+  }
 
   return (
     <main className="min-h-screen bg-paper">
@@ -130,7 +139,7 @@ export default async function EventoPublicoPage({
         {/* Declarar el pago de una preinscripción vive DENTRO del formulario: se
             ofrece al verificar la cédula, sólo a quien tiene una preinscripción
             impaga (ver EventoForm). En la portada era ruido para todos los demás. */}
-        <EventoForm evento={evento} abrirRegistrarPago={pago === '1'} />
+        <EventoForm evento={evento} leyendas={leyendas} abrirRegistrarPago={pago === '1'} />
 
         {/* HTML propio configurado en /configuracion/eventos (pie). Saneado. */}
         {htmlPie && (

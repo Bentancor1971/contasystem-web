@@ -206,6 +206,16 @@ export interface EventoWebConfig {
   mail_acuse_pago_asunto: string | null
   mail_acuse_pago_html: string | null
   certificado_html: string | null
+  /**
+   * Leyendas del formulario público. NULL = texto por defecto, que se adapta
+   * solo según el evento sea con costo o sin costo (ver EventoForm). Escribir
+   * una fija ese texto para ambos casos, así que conviene dejarlas vacías salvo
+   * que se quiera una redacción propia.
+   */
+  leyenda_socio: string | null
+  leyenda_no_socio: string | null
+  leyenda_datos_ficha: string | null
+  leyenda_sorteo: string | null
 }
 
 /**
@@ -237,6 +247,37 @@ export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
   mail_acuse_pago_asunto: null,
   mail_acuse_pago_html: null,
   certificado_html: null,
+  leyenda_socio: null,
+  leyenda_no_socio: null,
+  leyenda_datos_ficha: null,
+  leyenda_sorteo: null,
+}
+
+/** Claves de las leyendas editables del formulario público. */
+export type ClaveLeyenda = 'socio' | 'no_socio' | 'datos_ficha' | 'sorteo'
+
+/**
+ * Vista previa EN TEXTO PLANO de las leyendas por defecto, para mostrarlas como
+ * placeholder en /configuracion/eventos y que se vea qué aparece si el campo
+ * queda vacío.
+ *
+ * NO es lo que renderiza el formulario: el default real vive en EventoForm con
+ * su markup (íconos, negritas, colores). Acá sólo interesa el texto.
+ *
+ * `sinCosto` = registro sin costo (evento sin costo y sin extras pagos).
+ */
+export function leyendasPorDefecto(sinCosto: boolean): Record<ClaveLeyenda, string> {
+  return {
+    socio: sinCosto
+      ? '✓ Socio al día — Registro sin costo'
+      : '✓ Socio al día — Evento con costo bonificado',
+    no_socio: sinCosto
+      ? 'Completá tus datos para registrarte. Si sos socio y tenés cuotas pendientes, consultá con la organización.'
+      : 'Completá tus datos para inscribirte. Se aplica la tarifa No socio. Si sos socio y tenés cuotas pendientes, consultá con la organización.',
+    datos_ficha:
+      'Tus datos ya están registrados (los mostramos parcialmente para que los reconozcas) y no se pueden editar acá: usamos los de tu ficha, y el mail de confirmación llega con tus datos reales. Sólo tenés que completar lo que falte. Si alguno cambió, escribinos por correo y lo actualizamos.',
+    sorteo: 'Te asignamos un número y te lo enviamos por correo. Sin costo.',
+  }
 }
 
 /** Payload que el server manda al formulario público. */

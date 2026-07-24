@@ -141,6 +141,10 @@ const HTML_FIELDS = [
   'mail_acuse_pago_asunto',
   'mail_acuse_pago_html',
   'certificado_html',
+  'leyenda_socio',
+  'leyenda_no_socio',
+  'leyenda_datos_ficha',
+  'leyenda_sorteo',
 ] as const
 
 /** Tope defensivo por campo HTML. */
