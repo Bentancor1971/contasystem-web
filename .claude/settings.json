@@ -121,7 +121,17 @@
       "Bash(echo \"\\(desktop tsc exit: $?\\)\")",
       "Bash(git status *)",
       "Bash(git commit -m ' *)",
-      "Bash(git commit -q -m ' *)"
+      "Bash(git commit -q -m ' *)",
+      "Bash(python -c ' *)",
+      "Bash(ls -la \"c:/Users/benta/Documentos/Programas/\" 2>&1 | head -30)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && echo \"=== migraciones ===\" && ls docs/supabase/ && echo \"\" && echo \"=== última definición de la función ===\" && grep -rln \"CREATE OR REPLACE FUNCTION public.upsert_evento_online\" docs/supabase/ | sort | tail -3)",
+      "Bash(sed -n '/CREATE OR REPLACE FUNCTION public.upsert_evento_online/,/GRANT EXECUTE/p' docs/supabase/31_eventos_sorteo.sql)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && echo \"=== quién llama la RPC ===\" && grep -rn \"upsert_evento_online\" --include=*.ts --include=*.tsx src/ 2>/dev/null | head -5 && echo \"\" && echo \"=== donde se arma el payload \\(sorteo_solo_socios como pista\\) ===\" && grep -rln \"sorteo_solo_socios\" --include=*.ts --include=*.tsx --include=*.rs src/ src-tauri/ 2>/dev/null | head -10)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && echo \"######## modules/eventos.ts\" && grep -n \"sorteo_solo_socios\" src/lib/modules/eventos.ts && echo \"\" && echo \"######## routes/eventos/index.tsx\" && grep -n \"sorteo_solo_socios\" src/routes/eventos/index.tsx)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1255,1275p' src/types/index.ts)",
+      "Bash(python -)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '64,74p' src/routes/eventos/index.tsx && echo \"..... defaults .....\" && sed -n '124,133p' src/routes/eventos/index.tsx && echo \"..... load .....\" && sed -n '443,451p' src/routes/eventos/index.tsx && echo \"..... save .....\" && sed -n '515,523p' src/routes/eventos/index.tsx)",
+      "Bash(npx vite *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
