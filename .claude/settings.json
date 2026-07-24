@@ -131,7 +131,9 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1255,1275p' src/types/index.ts)",
       "Bash(python -)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '64,74p' src/routes/eventos/index.tsx && echo \"..... defaults .....\" && sed -n '124,133p' src/routes/eventos/index.tsx && echo \"..... load .....\" && sed -n '443,451p' src/routes/eventos/index.tsx && echo \"..... save .....\" && sed -n '515,523p' src/routes/eventos/index.tsx)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(ls \"c:/Users/benta/Documentos/Programas/contasystem-web/supabase\" 2>/dev/null; echo \"---\"; ls \"c:/Users/benta/Documentos/Programas/\" 2>/dev/null)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
@@ -143,7 +145,8 @@
       "c:\\Users\\benta\\.claude\\projects\\c--Users-benta-Documentos-Programas-contasystem-web\\memory",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\docs\\supabase",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\types",
-      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\lib\\sync"
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\lib\\sync",
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\routes"
     ]
   }
 }
