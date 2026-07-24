@@ -128,6 +128,7 @@ const BOOL_FIELDS = [
   'permitir_categoria_otros',
   'mostrar_transporte',
   'mostrar_alimentacion',
+  'mostrar_sorteo',
   'mostrar_total',
   'permitir_pago_transferencia',
 ] as const
