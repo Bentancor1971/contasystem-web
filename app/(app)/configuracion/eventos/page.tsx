@@ -6,6 +6,10 @@
  * Controla qué se muestra en el formulario público /e/[slug] y el HTML propio
  * de la web (encabezado/pie, mail de acuse, certificado).
  *
+ * La config se agrupa en PESTAÑAS, pero el guardado es ÚNICO: el botón persiste
+ * el objeto `cfg` entero. Cambiar de pestaña no pierde lo editado en las otras,
+ * porque todo vive en el mismo estado.
+ *
  * Los textos del evento (texto_antes / texto_despues) los manda el desktop y su
  * push los sobreescribe: acá se muestran solo lectura.
  */
@@ -42,6 +46,19 @@ type BoolKey = {
 type HtmlKey = {
   [K in keyof EventoWebConfig]: EventoWebConfig[K] extends string | null ? K : never
 }[keyof EventoWebConfig]
+
+/**
+ * Pestañas de la pantalla. Agrupan la config por dónde impacta: lo que ve quien
+ * se inscribe (formulario), el HTML de la página, los mails y el certificado.
+ */
+type Tab = 'formulario' | 'pagina' | 'mails' | 'certificado'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'formulario', label: 'Formulario' },
+  { id: 'pagina', label: 'Página pública' },
+  { id: 'mails', label: 'Mails' },
+  { id: 'certificado', label: 'Certificado' },
+]
 
 /** Checkbox de config con etiqueta, ayuda y motivo de deshabilitado. */
 function Check({
@@ -158,6 +175,7 @@ export default function ConfiguracionEventosPage() {
   const [eventoId, setEventoId] = useState('')
   const [cfg, setCfg] = useState<EventoWebConfig>({ ...DEFAULT_EVENTO_WEB_CONFIG })
   const [faltaTabla, setFaltaTabla] = useState(false)
+  const [tab, setTab] = useState<Tab>('formulario')
 
   useEffect(() => {
     if (!canSeeConfig(permisos)) router.replace('/carga')
@@ -283,7 +301,7 @@ export default function ConfiguracionEventosPage() {
         </div>
       ) : (
         <div className="card p-6 lg:p-8 rise space-y-7">
-          {/* Selector de evento */}
+          {/* Selector de evento — aplica a todas las pestañas */}
           <div>
             <label htmlFor="evento" className="label-mono block mb-2">
               Evento
@@ -314,287 +332,334 @@ export default function ConfiguracionEventosPage() {
             )}
           </div>
 
-          <Seccion titulo="Campos de datos">
-            <div className="space-y-4">
-              <Check
-                label="Mostrar Apellido"
-                checked={cfg.mostrar_apellido}
-                onChange={(v) => set('mostrar_apellido', v)}
-              />
-              <Check
-                label="Apellido obligatorio"
-                checked={cfg.apellido_obligatorio}
-                onChange={(v) => set('apellido_obligatorio', v)}
-                disabled={!cfg.mostrar_apellido}
-                disabledReason="Requiere mostrar el campo"
-              />
-              <Check
-                label="Mostrar Email"
-                checked={cfg.mostrar_email}
-                onChange={(v) => set('mostrar_email', v)}
-                hint="Sin email no se puede enviar el acuse de inscripción."
-              />
-              <Check
-                label="Email obligatorio"
-                checked={cfg.email_obligatorio}
-                onChange={(v) => set('email_obligatorio', v)}
-                disabled={!cfg.mostrar_email}
-                disabledReason="Requiere mostrar el campo"
-              />
-              <Check
-                label="Mostrar Teléfono"
-                checked={cfg.mostrar_telefono}
-                onChange={(v) => set('mostrar_telefono', v)}
-              />
-              <Check
-                label="Teléfono obligatorio"
-                checked={cfg.telefono_obligatorio}
-                onChange={(v) => set('telefono_obligatorio', v)}
-                disabled={!cfg.mostrar_telefono}
-                disabledReason="Requiere mostrar el campo"
-              />
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Categoría">
-            <div className="space-y-4">
-              <Check
-                label="Mostrar Categoría"
-                checked={conCosto ? true : cfg.mostrar_categoria}
-                onChange={(v) => set('mostrar_categoria', v)}
-                disabled={conCosto}
-                disabledReason="En eventos con costo la categoría define el precio: siempre se muestra."
-              />
-              <Check
-                label='Habilitar opción "Otros" (categoría libre)'
-                hint="El participante puede escribir una categoría no prevista."
-                checked={cfg.permitir_categoria_otros}
-                onChange={(v) => set('permitir_categoria_otros', v)}
-              />
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Extras del evento">
-            <div className="space-y-4">
-              <Check
-                label="Mostrar Transporte"
-                checked={cfg.mostrar_transporte}
-                onChange={(v) => set('mostrar_transporte', v)}
-                disabled={!evento?.transporte_disponible}
-                disabledReason="Este evento no tiene transporte configurado en el desktop."
-              />
-              <Check
-                label="Mostrar Alimentación"
-                checked={cfg.mostrar_alimentacion}
-                onChange={(v) => set('mostrar_alimentacion', v)}
-                disabled={!evento?.alimentacion_disponible}
-                disabledReason="Este evento no tiene alimentación configurada en el desktop."
-              />
-              <Check
-                label="Mostrar Sorteo"
-                hint="El participante marca si quiere entrar al sorteo y recibe su número por correo."
-                checked={cfg.mostrar_sorteo}
-                onChange={(v) => set('mostrar_sorteo', v)}
-                disabled={!evento?.sorteo_disponible}
-                disabledReason="Este evento no tiene sorteo configurado en el desktop."
-              />
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Pago y Total">
-            <div className="space-y-4">
-              <Check
-                label="Mostrar Total"
-                checked={cfg.mostrar_total}
-                onChange={(v) => set('mostrar_total', v)}
-              />
-              <Check
-                label="Permitir pago por transferencia"
-                checked={cfg.permitir_pago_transferencia}
-                onChange={(v) => set('permitir_pago_transferencia', v)}
-                disabled={!evento?.datos_deposito}
-                disabledReason="Este evento no tiene datos de depósito cargados en el desktop."
-              />
-            </div>
-          </Seccion>
-
-          <Seccion titulo="HTML de la página pública">
-            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
-              <Info size={14} className="mt-0.5 shrink-0" />
-              Vienen con un texto de ejemplo para que lo uses de referencia: editalo a
-              gusto. Si borrás el campo, la sección no se muestra. Acá el HTML sale tal
-              cual, sin variables.
-            </p>
-            <div className="space-y-5">
-              <div>
-                <LabelPlantilla
-                  label="Encabezado (arriba del formulario)"
-                  actual={cfg.pagina_html_encabezado}
-                  ejemplo={PLANTILLAS_EJEMPLO.pagina_html_encabezado}
-                  onRestaurar={() =>
-                    setHtml('pagina_html_encabezado', PLANTILLAS_EJEMPLO.pagina_html_encabezado)
-                  }
-                />
-                <HtmlArea
-                  value={cfg.pagina_html_encabezado}
-                  onChange={(v) => setHtml('pagina_html_encabezado', v)}
-                  placeholder="<p>Bienvenidos…</p>"
-                />
-              </div>
-              <div>
-                <LabelPlantilla
-                  label="Pie (debajo del formulario)"
-                  actual={cfg.pagina_html_pie}
-                  ejemplo={PLANTILLAS_EJEMPLO.pagina_html_pie}
-                  onRestaurar={() => setHtml('pagina_html_pie', PLANTILLAS_EJEMPLO.pagina_html_pie)}
-                />
-                <HtmlArea
-                  value={cfg.pagina_html_pie}
-                  onChange={(v) => setHtml('pagina_html_pie', v)}
-                  placeholder="<p>Consultas: …</p>"
-                />
-              </div>
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Mail de acuse — Preinscripción (reserva)">
-            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
-              <Info size={14} className="mt-0.5 shrink-0" />
-              Se envía cuando la persona reserva el cupo para pagar después. Si lo dejás
-              vacío, sale el recibo con diseño por defecto.
-            </p>
-            <div className="space-y-5">
-              <div>
-                <LabelPlantilla
-                  label="Asunto"
-                  actual={cfg.mail_acuse_asunto}
-                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_asunto}
-                  onRestaurar={() =>
-                    setHtml('mail_acuse_asunto', PLANTILLAS_EJEMPLO.mail_acuse_asunto)
-                  }
-                />
-                <input
-                  className="field"
-                  placeholder="Preinscripción registrada — {evento}"
-                  value={cfg.mail_acuse_asunto ?? ''}
-                  onChange={(e) => setHtml('mail_acuse_asunto', e.target.value)}
-                  maxLength={200}
-                />
-              </div>
-              <div>
-                <LabelPlantilla
-                  label="Cuerpo (HTML)"
-                  actual={cfg.mail_acuse_html}
-                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_html}
-                  onRestaurar={() => setHtml('mail_acuse_html', PLANTILLAS_EJEMPLO.mail_acuse_html)}
-                />
-                <HtmlArea
-                  value={cfg.mail_acuse_html}
-                  onChange={(v) => setHtml('mail_acuse_html', v)}
-                  rows={8}
-                  placeholder="<p>Hola {nombre}…</p>"
-                />
-                <p className="mt-2 text-[11px] font-mono text-ink-3">
-                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
-                </p>
-              </div>
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Mail de acuse — Pago declarado (transferencia)">
-            <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
-              <Info size={14} className="mt-0.5 shrink-0" />
-              Se envía cuando la persona declara que ya transfirió (queda a verificar).
-              Ideal para avisar que la transferencia se va a confirmar. Si lo dejás vacío,
-              sale el recibo con diseño por defecto.
-            </p>
-            <div className="space-y-5">
-              <div>
-                <LabelPlantilla
-                  label="Asunto"
-                  actual={cfg.mail_acuse_pago_asunto}
-                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto}
-                  onRestaurar={() =>
-                    setHtml('mail_acuse_pago_asunto', PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto)
-                  }
-                />
-                <input
-                  className="field"
-                  placeholder="Inscripción con pago declarado — {evento}"
-                  value={cfg.mail_acuse_pago_asunto ?? ''}
-                  onChange={(e) => setHtml('mail_acuse_pago_asunto', e.target.value)}
-                  maxLength={200}
-                />
-              </div>
-              <div>
-                <LabelPlantilla
-                  label="Cuerpo (HTML)"
-                  actual={cfg.mail_acuse_pago_html}
-                  ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_html}
-                  onRestaurar={() =>
-                    setHtml('mail_acuse_pago_html', PLANTILLAS_EJEMPLO.mail_acuse_pago_html)
-                  }
-                />
-                <HtmlArea
-                  value={cfg.mail_acuse_pago_html}
-                  onChange={(v) => setHtml('mail_acuse_pago_html', v)}
-                  rows={8}
-                  placeholder="<p>Hola {nombre}… vamos a verificar tu transferencia.</p>"
-                />
-                <p className="mt-2 text-[11px] font-mono text-ink-3">
-                  Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
-                </p>
-              </div>
-            </div>
-          </Seccion>
-
-          <Seccion titulo="Página de certificado">
-            <div>
-              <LabelPlantilla
-                label="HTML de /c/[token]"
-                actual={cfg.certificado_html}
-                ejemplo={PLANTILLAS_EJEMPLO.certificado_html}
-                onRestaurar={() => setHtml('certificado_html', PLANTILLAS_EJEMPLO.certificado_html)}
-              />
-              <HtmlArea
-                value={cfg.certificado_html}
-                onChange={(v) => setHtml('certificado_html', v)}
-                placeholder="<p>Certificado válido…</p>"
-              />
-              <p className="mt-2 text-[11px] text-ink-3">
-                Se agrega debajo de la tarjeta de validación. No admite variables.
-              </p>
-            </div>
-          </Seccion>
-
-          {/* Textos que manda el desktop — solo lectura */}
-          <Seccion titulo="Textos del evento (los define el desktop)">
-            <p className="text-[12px] text-ink-2 mb-3 flex items-start gap-2">
-              <Info size={14} className="mt-0.5 shrink-0" />
-              Se editan en ContaSystem. Cada sincronización los sobreescribe, por eso no se
-              pueden editar acá.
-            </p>
-            <dl className="space-y-3 font-mono text-[13px]">
-              <div>
-                <dt className="text-ink-3">Texto antes</dt>
-                <dd className="whitespace-pre-line">{evento?.texto_antes || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-ink-3">Texto después</dt>
-                <dd className="whitespace-pre-line">{evento?.texto_despues || '—'}</dd>
-              </div>
-            </dl>
-          </Seccion>
-
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={guardar}
-            disabled={guardando || !eventoId}
+          {/* Pestañas. Sólo cambian lo que se ve: el guardado persiste todas. */}
+          <div
+            role="tablist"
+            aria-label="Secciones de configuración"
+            className="flex gap-1 overflow-x-auto border-b border-line -mx-6 lg:-mx-8 px-6 lg:px-8"
           >
-            {guardando ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-            {guardando ? 'Guardando…' : 'Guardar configuración'}
-          </button>
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`shrink-0 -mb-px border-b-2 px-3 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                  tab === t.id
+                    ? 'border-amber-deep text-ink-1'
+                    : 'border-transparent text-ink-3 hover:text-ink-1'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Pestaña: Formulario ─────────────────────────────────── */}
+          {tab === 'formulario' && (
+            <>
+              <Seccion titulo="Campos de datos">
+                <div className="space-y-4">
+                  <Check
+                    label="Mostrar Apellido"
+                    checked={cfg.mostrar_apellido}
+                    onChange={(v) => set('mostrar_apellido', v)}
+                  />
+                  <Check
+                    label="Apellido obligatorio"
+                    checked={cfg.apellido_obligatorio}
+                    onChange={(v) => set('apellido_obligatorio', v)}
+                    disabled={!cfg.mostrar_apellido}
+                    disabledReason="Requiere mostrar el campo"
+                  />
+                  <Check
+                    label="Mostrar Email"
+                    checked={cfg.mostrar_email}
+                    onChange={(v) => set('mostrar_email', v)}
+                    hint="Sin email no se puede enviar el acuse de inscripción."
+                  />
+                  <Check
+                    label="Email obligatorio"
+                    checked={cfg.email_obligatorio}
+                    onChange={(v) => set('email_obligatorio', v)}
+                    disabled={!cfg.mostrar_email}
+                    disabledReason="Requiere mostrar el campo"
+                  />
+                  <Check
+                    label="Mostrar Teléfono"
+                    checked={cfg.mostrar_telefono}
+                    onChange={(v) => set('mostrar_telefono', v)}
+                  />
+                  <Check
+                    label="Teléfono obligatorio"
+                    checked={cfg.telefono_obligatorio}
+                    onChange={(v) => set('telefono_obligatorio', v)}
+                    disabled={!cfg.mostrar_telefono}
+                    disabledReason="Requiere mostrar el campo"
+                  />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Categoría">
+                <div className="space-y-4">
+                  <Check
+                    label="Mostrar Categoría"
+                    checked={conCosto ? true : cfg.mostrar_categoria}
+                    onChange={(v) => set('mostrar_categoria', v)}
+                    disabled={conCosto}
+                    disabledReason="En eventos con costo la categoría define el precio: siempre se muestra."
+                  />
+                  <Check
+                    label='Habilitar opción "Otros" (categoría libre)'
+                    hint="El participante puede escribir una categoría no prevista."
+                    checked={cfg.permitir_categoria_otros}
+                    onChange={(v) => set('permitir_categoria_otros', v)}
+                  />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Extras del evento">
+                <div className="space-y-4">
+                  <Check
+                    label="Mostrar Transporte"
+                    checked={cfg.mostrar_transporte}
+                    onChange={(v) => set('mostrar_transporte', v)}
+                    disabled={!evento?.transporte_disponible}
+                    disabledReason="Este evento no tiene transporte configurado en el desktop."
+                  />
+                  <Check
+                    label="Mostrar Alimentación"
+                    checked={cfg.mostrar_alimentacion}
+                    onChange={(v) => set('mostrar_alimentacion', v)}
+                    disabled={!evento?.alimentacion_disponible}
+                    disabledReason="Este evento no tiene alimentación configurada en el desktop."
+                  />
+                  <Check
+                    label="Mostrar Sorteo"
+                    hint="El participante marca si quiere entrar al sorteo y recibe su número por correo."
+                    checked={cfg.mostrar_sorteo}
+                    onChange={(v) => set('mostrar_sorteo', v)}
+                    disabled={!evento?.sorteo_disponible}
+                    disabledReason="Este evento no tiene sorteo configurado en el desktop."
+                  />
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Pago y Total">
+                <div className="space-y-4">
+                  <Check
+                    label="Mostrar Total"
+                    checked={cfg.mostrar_total}
+                    onChange={(v) => set('mostrar_total', v)}
+                  />
+                  <Check
+                    label="Permitir pago por transferencia"
+                    checked={cfg.permitir_pago_transferencia}
+                    onChange={(v) => set('permitir_pago_transferencia', v)}
+                    disabled={!evento?.datos_deposito}
+                    disabledReason="Este evento no tiene datos de depósito cargados en el desktop."
+                  />
+                </div>
+              </Seccion>
+            </>
+          )}
+
+          {/* ── Pestaña: Página pública ─────────────────────────────── */}
+          {tab === 'pagina' && (
+            <>
+              <Seccion titulo="HTML de la página pública">
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Vienen con un texto de ejemplo para que lo uses de referencia: editalo a
+                  gusto. Si borrás el campo, la sección no se muestra. Acá el HTML sale tal
+                  cual, sin variables.
+                </p>
+                <div className="space-y-5">
+                  <div>
+                    <LabelPlantilla
+                      label="Encabezado (arriba del formulario)"
+                      actual={cfg.pagina_html_encabezado}
+                      ejemplo={PLANTILLAS_EJEMPLO.pagina_html_encabezado}
+                      onRestaurar={() =>
+                        setHtml('pagina_html_encabezado', PLANTILLAS_EJEMPLO.pagina_html_encabezado)
+                      }
+                    />
+                    <HtmlArea
+                      value={cfg.pagina_html_encabezado}
+                      onChange={(v) => setHtml('pagina_html_encabezado', v)}
+                      placeholder="<p>Bienvenidos…</p>"
+                    />
+                  </div>
+                  <div>
+                    <LabelPlantilla
+                      label="Pie (debajo del formulario)"
+                      actual={cfg.pagina_html_pie}
+                      ejemplo={PLANTILLAS_EJEMPLO.pagina_html_pie}
+                      onRestaurar={() => setHtml('pagina_html_pie', PLANTILLAS_EJEMPLO.pagina_html_pie)}
+                    />
+                    <HtmlArea
+                      value={cfg.pagina_html_pie}
+                      onChange={(v) => setHtml('pagina_html_pie', v)}
+                      placeholder="<p>Consultas: …</p>"
+                    />
+                  </div>
+                </div>
+              </Seccion>
+
+              {/* Textos que manda el desktop — solo lectura */}
+              <Seccion titulo="Textos del evento (los define el desktop)">
+                <p className="text-[12px] text-ink-2 mb-3 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Se editan en ContaSystem. Cada sincronización los sobreescribe, por eso no se
+                  pueden editar acá.
+                </p>
+                <dl className="space-y-3 font-mono text-[13px]">
+                  <div>
+                    <dt className="text-ink-3">Texto antes</dt>
+                    <dd className="whitespace-pre-line">{evento?.texto_antes || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-3">Texto después</dt>
+                    <dd className="whitespace-pre-line">{evento?.texto_despues || '—'}</dd>
+                  </div>
+                </dl>
+              </Seccion>
+            </>
+          )}
+
+          {/* ── Pestaña: Mails ──────────────────────────────────────── */}
+          {tab === 'mails' && (
+            <>
+              <Seccion titulo="Mail de acuse — Preinscripción (reserva)">
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Se envía cuando la persona reserva el cupo para pagar después. Si lo dejás
+                  vacío, sale el recibo con diseño por defecto.
+                </p>
+                <div className="space-y-5">
+                  <div>
+                    <LabelPlantilla
+                      label="Asunto"
+                      actual={cfg.mail_acuse_asunto}
+                      ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_asunto}
+                      onRestaurar={() =>
+                        setHtml('mail_acuse_asunto', PLANTILLAS_EJEMPLO.mail_acuse_asunto)
+                      }
+                    />
+                    <input
+                      className="field"
+                      placeholder="Preinscripción registrada — {evento}"
+                      value={cfg.mail_acuse_asunto ?? ''}
+                      onChange={(e) => setHtml('mail_acuse_asunto', e.target.value)}
+                      maxLength={200}
+                    />
+                  </div>
+                  <div>
+                    <LabelPlantilla
+                      label="Cuerpo (HTML)"
+                      actual={cfg.mail_acuse_html}
+                      ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_html}
+                      onRestaurar={() => setHtml('mail_acuse_html', PLANTILLAS_EJEMPLO.mail_acuse_html)}
+                    />
+                    <HtmlArea
+                      value={cfg.mail_acuse_html}
+                      onChange={(v) => setHtml('mail_acuse_html', v)}
+                      rows={8}
+                      placeholder="<p>Hola {nombre}…</p>"
+                    />
+                    <p className="mt-2 text-[11px] font-mono text-ink-3">
+                      Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
+                    </p>
+                  </div>
+                </div>
+              </Seccion>
+
+              <Seccion titulo="Mail de acuse — Pago declarado (transferencia)">
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Se envía cuando la persona declara que ya transfirió (queda a verificar).
+                  Ideal para avisar que la transferencia se va a confirmar. Si lo dejás vacío,
+                  sale el recibo con diseño por defecto.
+                </p>
+                <div className="space-y-5">
+                  <div>
+                    <LabelPlantilla
+                      label="Asunto"
+                      actual={cfg.mail_acuse_pago_asunto}
+                      ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto}
+                      onRestaurar={() =>
+                        setHtml('mail_acuse_pago_asunto', PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto)
+                      }
+                    />
+                    <input
+                      className="field"
+                      placeholder="Inscripción con pago declarado — {evento}"
+                      value={cfg.mail_acuse_pago_asunto ?? ''}
+                      onChange={(e) => setHtml('mail_acuse_pago_asunto', e.target.value)}
+                      maxLength={200}
+                    />
+                  </div>
+                  <div>
+                    <LabelPlantilla
+                      label="Cuerpo (HTML)"
+                      actual={cfg.mail_acuse_pago_html}
+                      ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_html}
+                      onRestaurar={() =>
+                        setHtml('mail_acuse_pago_html', PLANTILLAS_EJEMPLO.mail_acuse_pago_html)
+                      }
+                    />
+                    <HtmlArea
+                      value={cfg.mail_acuse_pago_html}
+                      onChange={(v) => setHtml('mail_acuse_pago_html', v)}
+                      rows={8}
+                      placeholder="<p>Hola {nombre}… vamos a verificar tu transferencia.</p>"
+                    />
+                    <p className="mt-2 text-[11px] font-mono text-ink-3">
+                      Variables: {'{nombre}'} {'{evento}'} {'{numero}'} {'{numero_sorteo}'} {'{total}'}
+                    </p>
+                  </div>
+                </div>
+              </Seccion>
+            </>
+          )}
+
+          {/* ── Pestaña: Certificado ────────────────────────────────── */}
+          {tab === 'certificado' && (
+            <Seccion titulo="Página de certificado">
+              <div>
+                <LabelPlantilla
+                  label="HTML de /c/[token]"
+                  actual={cfg.certificado_html}
+                  ejemplo={PLANTILLAS_EJEMPLO.certificado_html}
+                  onRestaurar={() => setHtml('certificado_html', PLANTILLAS_EJEMPLO.certificado_html)}
+                />
+                <HtmlArea
+                  value={cfg.certificado_html}
+                  onChange={(v) => setHtml('certificado_html', v)}
+                  placeholder="<p>Certificado válido…</p>"
+                />
+                <p className="mt-2 text-[11px] text-ink-3">
+                  Se agrega debajo de la tarjeta de validación. No admite variables.
+                </p>
+              </div>
+            </Seccion>
+          )}
+
+          <div className="border-t border-line pt-6">
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={guardar}
+              disabled={guardando || !eventoId}
+            >
+              {guardando ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              {guardando ? 'Guardando…' : 'Guardar configuración'}
+            </button>
+            <p className="mt-2 text-center text-[11px] text-ink-3">
+              Guarda las cuatro pestañas a la vez: lo que edites en otra no se pierde.
+            </p>
+          </div>
         </div>
       )}
     </main>
