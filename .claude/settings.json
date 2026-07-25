@@ -133,7 +133,12 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '64,74p' src/routes/eventos/index.tsx && echo \"..... defaults .....\" && sed -n '124,133p' src/routes/eventos/index.tsx && echo \"..... load .....\" && sed -n '443,451p' src/routes/eventos/index.tsx && echo \"..... save .....\" && sed -n '515,523p' src/routes/eventos/index.tsx)",
       "Bash(npx vite *)",
       "Bash(ls \"c:/Users/benta/Documentos/Programas/contasystem-web/supabase\" 2>/dev/null; echo \"---\"; ls \"c:/Users/benta/Documentos/Programas/\" 2>/dev/null)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/baeb43f6-ca28-44b5-87b3-bf64776a3314/scratchpad/q-empresas.mjs\")",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/baeb43f6-ca28-44b5-87b3-bf64776a3314/scratchpad/q2.mjs\")",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/baeb43f6-ca28-44b5-87b3-bf64776a3314/scratchpad/q3.mjs\")",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/baeb43f6-ca28-44b5-87b3-bf64776a3314/scratchpad/q4.mjs\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,1\\)\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",

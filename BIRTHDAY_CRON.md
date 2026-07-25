@@ -32,8 +32,13 @@ cuando llega la hora configurada.
 > ej. "Estimado/a"), color del texto y del panel, y un switch **Activo**.
 > Trae preview en vivo.
 
-- **Empresas:** la lista sale del registro `empresas_api_keys` (id →
-  nombre). Una empresa nueva ahí aparece sola en la UI, sin tocar código.
+- **Empresas:** la lista sale de los dos registros — `empresas_api_keys`
+  (las del desktop, id → nombre) y `empresas_online_remoto` con
+  `habilitada = 1` (las que operan online y son dueñas de los eventos).
+  Una empresa nueva en cualquiera de las dos aparece sola en la UI, sin
+  tocar código. Se incluyen las online porque la casilla Gmail que se carga
+  ahí también es la remitente de los **acuses de inscripción a eventos**
+  (`lib/evento-acuse.ts`), y esas empresas no tienen API key.
 - **Activo:** el cron solo le manda saludos a las empresas cuya plantilla
   tiene el switch **Activo** en ON. Si está en OFF (o no hay plantilla),
   esa empresa no recibe nada. Es el control de "quién envía".

@@ -26,6 +26,14 @@ export const TEMPLATE_TABLE = 'birthday_email_templates'
  */
 export const EMPRESAS_TABLE = 'empresas_api_keys'
 
+/**
+ * Registro de empresas ONLINE: las que tienen login en la web y son dueñas
+ * de los eventos. Es un conjunto distinto de `empresas_api_keys` (que son
+ * las que sincronizan socios desde el desktop) y en la práctica disjunto:
+ * una empresa puede estar en una tabla y no en la otra.
+ */
+export const EMPRESAS_ONLINE_TABLE = 'empresas_online_remoto'
+
 /** Tabla de ajustes generales (fila única). */
 export const SETTINGS_TABLE = 'birthday_settings'
 
@@ -165,6 +173,48 @@ export async function loadEmpresasRegistro(
     })
   }
   return [...porId.values()]
+}
+
+/**
+ * Empresas que pueden tener casilla de mail configurada: la unión del
+ * registro de API keys (empresas del desktop → saludos de cumpleaños) y las
+ * empresas online habilitadas (las dueñas de los eventos).
+ *
+ * La casilla vive por empresa en `birthday_email_templates` y la usan las
+ * DOS features (cumpleaños y acuse de inscripción a eventos), así que la
+ * pantalla de mails tiene que ofrecer ambas listas: una empresa que solo
+ * hace eventos no está en `empresas_api_keys` y, si no, no habría forma de
+ * configurarle el remitente desde la app.
+ *
+ * Ordenadas por nombre y deduplicadas por empresa_id (gana la fila del
+ * registro de API keys, que además trae el slug).
+ */
+export async function loadEmpresasParaMails(
+  supabase: SupabaseClient,
+): Promise<EmpresaRegistro[]> {
+  const porId = new Map<string, EmpresaRegistro>()
+  for (const e of await loadEmpresasRegistro(supabase)) {
+    porId.set(e.empresaId, e)
+  }
+
+  const { data } = await supabase
+    .from(EMPRESAS_ONLINE_TABLE)
+    .select('empresa_id, nombre')
+    .eq('habilitada', 1)
+
+  for (const r of (data ?? []) as {
+    empresa_id: string
+    nombre: string | null
+  }[]) {
+    if (!r.empresa_id || porId.has(r.empresa_id)) continue
+    porId.set(r.empresa_id, {
+      empresaId: r.empresa_id,
+      nombre: r.nombre?.trim() || r.empresa_id,
+      slug: null,
+    })
+  }
+
+  return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
 /**

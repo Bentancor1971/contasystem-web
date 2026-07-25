@@ -5,9 +5,14 @@
  * cumpleaños (una por empresa): imagen de fondo + texto con variables
  * {nombre} y {denominacion}, con preview en vivo del mail real.
  *
- * La lista de empresas sale del registro (empresas_api_keys), así una
- * empresa nueva aparece sola. Cada empresa tiene un switch "Activo" que
- * controla si el cron le manda saludos.
+ * La lista de empresas sale de los dos registros (empresas_api_keys +
+ * empresas_online_remoto), así una empresa nueva aparece sola. Cada empresa
+ * tiene un switch "Activo" que controla si el cron le manda saludos.
+ *
+ * La tarjeta "Casilla Gmail" de esta pantalla es el remitente de la empresa
+ * para TODOS los mails de la web: los saludos de cumpleaños y también el
+ * acuse de inscripción a eventos (ver lib/evento-acuse.ts). El switch
+ * "Activo" solo afecta a los cumpleaños.
  */
 
 import {
@@ -320,8 +325,9 @@ export default function PlantillaMailPage() {
         </div>
       ) : empresas.length === 0 ? (
         <div className="card p-6 text-sm text-ink-2">
-          No se encontraron empresas en el registro{' '}
-          <code className="font-mono text-xs">empresas_api_keys</code>.
+          No se encontraron empresas en los registros{' '}
+          <code className="font-mono text-xs">empresas_api_keys</code> ni{' '}
+          <code className="font-mono text-xs">empresas_online_remoto</code>.
         </div>
       ) : (
         <>
@@ -412,7 +418,9 @@ export default function PlantillaMailPage() {
                       Casilla Gmail
                     </h2>
                     <p className="text-sm text-ink-2 mt-0.5">
-                      La cuenta desde la que sale el saludo de esta empresa.
+                      La cuenta desde la que salen los mails de esta empresa:
+                      los saludos de cumpleaños y los acuses de inscripción a
+                      sus eventos.
                     </p>
                   </div>
 

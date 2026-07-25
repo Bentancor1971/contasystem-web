@@ -4,7 +4,8 @@
  * Devuelve el estado de la configuración del cron de saludos de cumpleaños
  * para mostrarlo en /configuracion/mails. Solo lectura.
  *
- * La lista de empresas sale del registro (empresas_api_keys), así una
+ * La lista de empresas sale de los dos registros — empresas_api_keys (las
+ * del desktop) y empresas_online_remoto (las de los eventos) — así una
  * empresa nueva aparece sola. Para cada una se informa: nombre, estado de
  * la casilla Gmail (variables de entorno), si tiene plantilla y si está
  * activa para el envío.
@@ -19,7 +20,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { assertPuedeVerConfig } from '@/lib/birthday-auth'
 import {
   TEMPLATE_TABLE,
-  loadEmpresasRegistro,
+  loadEmpresasParaMails,
   esTablaInexistente,
 } from '@/lib/birthday-template-store'
 
@@ -57,7 +58,10 @@ export async function GET(req: NextRequest) {
     const horaEnvio = HORA_ENVIO_MONTEVIDEO
 
     // ── Empresas: registro (nombre) + plantilla / activo / casilla Gmail ──
-    const registro = await loadEmpresasRegistro(admin)
+    // Incluye las empresas online (dueñas de los eventos), no solo las que
+    // tienen API key: la casilla configurada acá también manda los acuses de
+    // inscripción a eventos.
+    const registro = await loadEmpresasParaMails(admin)
 
     interface DatosEmpresa {
       activo: boolean

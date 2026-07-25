@@ -4,8 +4,10 @@
  * /configuracion/mails — Estado del cron de saludos de cumpleaños
  * (solo lectura). Lee /api/admin/birthday-config.
  *
- * La lista de empresas sale del registro (empresas_api_keys). Cada
- * empresa tiene un flag "Activo" (de su plantilla) que controla el envío.
+ * La lista de empresas sale de los dos registros (empresas_api_keys +
+ * empresas_online_remoto). Cada empresa tiene un flag "Activo" (de su
+ * plantilla) que controla el envío de los saludos — su casilla Gmail, en
+ * cambio, se usa igual para los acuses de inscripción a eventos.
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
