@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FileText, Settings, X } from 'lucide-react'
+import { FileText, QrCode, Settings, X } from 'lucide-react'
 import { canSeeConfig, type PermisosRol } from '@/lib/roles'
 
 interface NavItem {
@@ -14,6 +14,15 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/carga', label: 'Carga', icon: FileText, visible: (p) => p.puede_cargar },
+  {
+    href: '/checkin',
+    label: 'Check-in',
+    icon: QrCode,
+    // Visible para cualquier miembro de la empresa: quien controla la puerta
+    // suele tener el rol `usuario`, el que menos permisos tiene. Ver el
+    // racional en lib/checkin-auth.ts.
+    visible: () => true,
+  },
   {
     href: '/configuracion',
     label: 'Configuración',

@@ -15,6 +15,10 @@ const PUBLIC_PATHS = [
   '/api/eventos/',
   '/c/', // validación pública de certificados (QR)
   '/api/certificados/',
+  // Vista de la entrada de un evento (destino del QR del recibo). Es pública a
+  // propósito y de sólo lectura: la asistencia la marca /checkin, con sesión.
+  // Ojo: `/api/checkin/` NO empieza con `/a/`, así que no queda expuesta.
+  '/a/',
 ]
 
 // Rutas realmente SIN sesión (inscripción / certificados públicos): acá nunca
@@ -26,6 +30,7 @@ const PUBLIC_SIN_SESION = [
   '/api/eventos/',
   '/c/',
   '/api/certificados/',
+  '/a/',
 ]
 
 // Auto-login SÓLO en desarrollo: con estas credenciales seteadas, el middleware

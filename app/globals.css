@@ -259,6 +259,21 @@ html, body {
 }
 
 /* ============================================================
+   QR — el SVG viene con viewBox y sin width/height, así escala al box
+   ============================================================ */
+
+.qr-box {
+  width: 210px;
+  max-width: 100%;
+}
+.qr-box svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+/* ============================================================
    Empresa card
    ============================================================ */
 
@@ -343,6 +358,13 @@ html, body {
   background: var(--color-ink);
   color: var(--color-paper);
   font-weight: 600;
+}
+
+/* Variante para cuando los pills no entran en una línea (filtros de rol). */
+.pill-group-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
 }
 
 /* ============================================================

@@ -175,6 +175,41 @@ export function hoyISO(): string {
   return `${yyyy}-${mm}-${dd}`
 }
 
+/**
+ * Zona del negocio. Se pasa explícita a Intl porque el server corre en UTC:
+ * sin esto, un ingreso de las 19:30 se mostraría como 22:30.
+ */
+export const TZ_UY = 'America/Montevideo'
+
+/** Timestamptz ISO → "HH:MM" en hora de Montevideo. '' si no hay valor. */
+export function formatHoraUY(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: TZ_UY,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
+/** Timestamptz ISO → "dd/mm/yyyy HH:MM" en hora de Montevideo. '' si no hay valor. */
+export function formatFechaHoraUY(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('es-UY', {
+    timeZone: TZ_UY,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
 /** Símbolo de moneda. */
 export function simboloMoneda(codigo: string): string {
   switch (codigo.toUpperCase()) {
