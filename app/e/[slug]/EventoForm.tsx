@@ -125,6 +125,12 @@ function DatoDeFicha({ id, valor }: { id: string; valor: string }) {
   )
 }
 
+/** Enumeración en castellano: "A", "A y B", "A, B y C". */
+function enumerar(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
+}
+
 /** Valor de `categoriaId` cuando el participante elige la opción de categoría libre. */
 const OTROS = '__otros__'
 /** Valor del select de tipo de alimentación cuando elige "Otros". */
@@ -804,21 +810,22 @@ export function EventoForm({
     }
   }
 
-  async function enviar(modalidad: ModalidadInscripcion) {
-    // Tipo de alimentación: nunca vacío si el evento ofrece opciones (el select
-    // arranca en "Sin restricción"). Sólo hay que exigir el texto de "Otros".
-    const alimTipoFinal = llevaAlimentacion
-      ? alimentacionTipo === ALIM_OTROS
-        ? alimentacionOtros.trim()
-        : alimentacionTipo
-      : ''
-
-    // Se evalúan TODAS las reglas en una pasada, sin cortar en la primera: la
-    // persona ve de entrada todo lo que le falta, resaltado en el campo, en vez
-    // de irlo descubriendo de a un toast por intento.
-    //
-    // Para un socio verificado, un campo vacío se completa desde su ficha: sólo
-    // se exige lo que no está en la ficha.
+  /**
+   * Todo lo obligatorio que sigue sin completar, en el orden en que aparece en el
+   * formulario. Se evalúan TODAS las reglas en una pasada, sin cortar en la
+   * primera: la persona ve de una vez todo lo que le falta en vez de irlo
+   * descubriendo de a un intento.
+   *
+   * Una sola definición de las reglas para los dos usos: el aviso que aparece
+   * recién verificada la cédula (ver `pendientes`) y la validación al enviar. Si
+   * se separaran, el aviso podría pedir algo distinto de lo que exige el envío.
+   *
+   * Para quien está en el padrón, un campo vacío lo completa el server desde su
+   * ficha: sólo se exige lo que NO está en la ficha.
+   */
+  function camposFaltantes(
+    modalidad: ModalidadInscripcion,
+  ): { campo: CampoObligatorio; label: string }[] {
     const faltan: { campo: CampoObligatorio; label: string }[] = []
     if (!nombre.trim() && !nombreEnFicha) {
       faltan.push({ campo: 'nombre', label: 'Nombre' })
@@ -851,13 +858,25 @@ export function EventoForm({
     if (modalidad === 'pago_transferencia' && !referenciaTransferencia.trim()) {
       faltan.push({ campo: 'referencia', label: 'Referencia de la transferencia' })
     }
+    return faltan
+  }
 
+  async function enviar(modalidad: ModalidadInscripcion) {
+    // Tipo de alimentación: nunca vacío si el evento ofrece opciones (el select
+    // arranca en "Sin restricción"). Sólo hay que exigir el texto de "Otros".
+    const alimTipoFinal = llevaAlimentacion
+      ? alimentacionTipo === ALIM_OTROS
+        ? alimentacionOtros.trim()
+        : alimentacionTipo
+      : ''
+
+    const faltan = camposFaltantes(modalidad)
     if (faltan.length > 0) {
       setFaltantes(new Set(faltan.map((f) => f.campo)))
       toast.error(
         faltan.length === 1
           ? `Falta completar: ${faltan[0].label}`
-          : `Faltan completar: ${faltan.map((f) => f.label).join(', ')}`,
+          : `Faltan completar: ${enumerar(faltan.map((f) => f.label))}`,
       )
       // Al primero que falta, para que el resaltado se vea aunque haya quedado
       // fuera de pantalla. El foco va sin scroll propio: ya lo hizo el anterior.
@@ -981,6 +1000,14 @@ export function EventoForm({
 
   const esPagoRealizado = modalidadElegida === 'pago_realizado'
 
+  // Lo que le queda por completar, recalculado en cada render: aparece como aviso
+  // en cuanto se verifica la cédula (antes sólo se enteraba al intentar enviar) y
+  // se va achicando a medida que completa, hasta desaparecer. Es una guía, no un
+  // error: el resaltado rojo de los campos sigue saliendo sólo si intenta enviar.
+  const pendientes = resuelto
+    ? camposFaltantes(esPagoRealizado ? 'pago_transferencia' : 'reserva')
+    : []
+
   return (
     <div className="rise space-y-8">
       {/* Modalidad elegida (con opción de cambiar si hay más de una) */}
@@ -1103,6 +1130,19 @@ export function EventoForm({
                 </span>
               </p>
             </Leyenda>
+          )}
+
+          {/* Lo que le falta, desde la verificación misma: así sabe de entrada qué
+              tiene que tener a mano y no se lo descubre recién al enviar. Se
+              recalcula solo (ver `pendientes`) y desaparece cuando está completo. */}
+          {pendientes.length > 0 && (
+            <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-status-warn rounded-lg bg-paper-2 px-4 py-3">
+              <AlertCircle size={15} className="mt-0.5 shrink-0 text-status-warn" />
+              <span>
+                {pendientes.length === 1 ? 'Falta completar: ' : 'Faltan completar: '}
+                <strong>{enumerar(pendientes.map((p) => p.label))}</strong>.
+              </span>
+            </p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

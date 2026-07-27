@@ -203,7 +203,32 @@
       "Bash(ls /c/Users/benta/Documentos/Programas/ 2>/dev/null)",
       "Read(//c/Users/benta/Documentos/Programas//**)",
       "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/1b98f886-ee50-4135-a439-6d103210c417/scratchpad/probe.mjs\" 1000002)",
-      "Read(//c/Users/benta/Documentos/Programas/contasystem-desktop/src/utils/**)"
+      "Read(//c/Users/benta/Documentos/Programas/contasystem-desktop/src/utils/**)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(taskkill /PID 23464 /F)",
+      "PowerShell(taskkill /PID 20456 /F)",
+      "PowerShell(taskkill /PID 10732 /F)",
+      "PowerShell(taskkill /PID 26116 /F)",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/3a43f8e7-b2aa-4bac-83ee-3aaceaae1c08/scratchpad/check-socio.mjs\")",
+      "PowerShell(foreach \\($id in 992,2768,15416,27932\\) { try { Stop-Process -Id $id -Force -ErrorAction Stop; \"detenido $id\" } catch { \"ya no estaba: $id\" } })",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/3a43f8e7-b2aa-4bac-83ee-3aaceaae1c08/scratchpad/check2.mjs\")",
+      "Bash(grep -rln \"set_socios_cuotas_empresa\" \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" --include=*.sql | head)",
+      "Bash(grep -n \"replace\\(/\\\\[\" lib/eventos-types.ts)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"badge-neutral\\\\|badge-gray\\\\|\\\\.badge-\" src/index.css src/styles/*.css 2>/dev/null | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"^import\\\\|estadosRegistroModule\\\\|hashDocumento\" src/lib/sync/eventos-online.ts | head -12)",
+      "Bash(ls -la /c/Users/benta/AppData/Roaming/com.contasystem.app/ 2>/dev/null | head; which sqlite3 2>/dev/null || echo \"no sqlite3\")",
+      "Read(//c/Users/benta/AppData/Roaming/com.contasystem.app//**)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -A6 '\"scripts\"' package.json)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"^export async function\\\\|^async function\" src/lib/db.ts | head -12 && echo \"=== callers de initializeDatabase ===\" && grep -rn \"initializeDatabase\" src --include=*.tsx --include=*.ts | grep -v \"db.ts\" | head)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"get_dev_db_name\" -A 12 src-tauri/src/*.rs | head -30)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"fn get_db_filename\" -A 10 src-tauri/src/lib.rs)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"set_empresa_estados_socio\\\\|empresa_estados_socio_remoto\\\\|cuenta_como_socio\" --include=*.ts --include=*.tsx --include=*.sql --include=*.md . 2>/dev/null | grep -v node_modules | head -40)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"PASOS\\\\|totalPasos\\\\|progreso\\\\|onProgress\" src/lib/sync/eventos-online.ts | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"onProgress\\\\|setProgreso\\\\|total\" src/routes/sincronizacion.tsx | grep -in \"evento\" | head -10)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -n \"enqueue\" src/lib/modules/estados-registro.ts && echo \"=== payload/tablas sincronizadas ===\" && grep -rn \"estados_registro\" src/lib/sync/*.ts | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '38,66p' src/lib/modules/estados-registro.ts)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && echo \"=== INSERT INTO estados_registro ===\" && grep -rn \"INSERT INTO estados_registro\\\\|INSERT OR IGNORE INTO estados_registro\" src/ | head && echo \"=== entity types del outbox ===\" && grep -rn \"entity_type\" src/lib/sync/types.ts src/lib/sync/outbox.ts 2>/dev/null | head -10)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && echo \"=== empresas.ts 88-108 ===\" && sed -n '88,108p' src/lib/modules/empresas.ts && echo \"=== routes/empresas.tsx 612,632 ===\" && sed -n '612,632p' src/routes/empresas.tsx)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
@@ -216,7 +241,8 @@
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\docs\\supabase",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\types",
       "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\lib\\sync",
-      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\routes"
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\routes",
+      "c:\\Users\\benta\\Documentos\\Programas\\contasystem-desktop\\src\\routes\\personas"
     ]
   }
 }

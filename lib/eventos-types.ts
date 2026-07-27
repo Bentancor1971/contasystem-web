@@ -37,10 +37,56 @@ export function puedeInscribirse(
   return true
 }
 
+/**
+ * Estados de registro que cuentan como socio cuando la empresa NO configuró su
+ * lista (ver supabase/empresa_estados_socio_remoto.sql). Se comparan por
+ * PREFIJO y normalizados, así que cubren 'Activo', 'Activa', 'ACTIVOS'.
+ *
+ * El default no es "todos los estados": el caso conservador es no regalar la
+ * tarifa de socio a quien está de baja. Cada empresa tiene su propio catálogo
+ * (hay padrones con 'Eventos', 'Honorario', 'Pendiente'…), por eso lo que va
+ * más allá de "Activo" lo define el desktop y no una lista fija acá.
+ */
+export const PREFIJOS_ESTADO_SOCIO_POR_DEFECTO = ['activ']
+
+/** Minúsculas, sin tildes y sin espacios en los bordes: 'Activó ' → 'activo'. */
+function normalizarEstadoRegistro(v: string | null | undefined): string {
+  if (!v) return ''
+  return v
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+/**
+ * ¿Este `socios_datos.estado_registro_nombre` cuenta como socio?
+ *
+ * `configurados` es la lista que pushea el desktop para la empresa:
+ *   - `null`  → la empresa no la configuró: se aplica el default ('Activo*').
+ *   - `[]`    → configurada vacía: NINGÚN estado es socio (es un valor válido,
+ *               distinto de `null`; todo el padrón paga tarifa no socio).
+ *   - lista   → match exacto, sin distinguir mayúsculas ni tildes.
+ *
+ * Un estado ausente (null o vacío) nunca es socio: no hay forma de afirmar la
+ * membresía, y el default seguro es la tarifa no socio.
+ */
+export function esEstadoSocio(
+  estado: string | null | undefined,
+  configurados: string[] | null,
+): boolean {
+  const e = normalizarEstadoRegistro(estado)
+  if (!e) return false
+  if (configurados === null) {
+    return PREFIJOS_ESTADO_SOCIO_POR_DEFECTO.some((p) => e.startsWith(p))
+  }
+  return configurados.some((c) => normalizarEstadoRegistro(c) === e)
+}
+
 /** Texto que ve quien queda excluido por la política del evento. */
 export function motivoNoPuedeInscribirse(politica: RegistroPermitido): string {
   if (politica === 'socios_al_dia') {
-    return 'Este evento es sólo para socios al día. Si sos socio y tenés cuotas pendientes, regularizá tu situación o consultá con la organización.'
+    return 'Este evento es sólo para socios al día. Si sos socio y tenés cuotas pendientes, o tu registro figura dado de baja, regularizá tu situación o consultá con la organización.'
   }
   if (politica === 'padron') {
     return 'Este evento es sólo para personas registradas en nuestra base. Si creés que deberías estarlo, consultá con la organización.'
@@ -488,6 +534,12 @@ export interface ResolucionParticipante {
   mail: string
   telefono: string
   cuotas_pendientes: number | null
+  /**
+   * Estado de registro de la ficha ('Activo', 'Baja', 'Eventos'…). Junto con las
+   * cuotas decide `tipo_participante` (ver esEstadoSocio). Es dato INTERNO: no
+   * se serializa al navegador, ver ResolucionPublica.
+   */
+  estado_registro_nombre: string | null
   tipo_participante: TipoParticipante
   /** Categoría del socio definida en la BD (para pre-seleccionar y sugerir tarifa). */
   categoria_id: string | null

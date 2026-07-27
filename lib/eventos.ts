@@ -2,7 +2,8 @@
  * Helpers server-only del módulo de eventos (modelo PUENTE con el desktop).
  *
  * Lee las tablas *_remoto que el desktop pushea (eventos_remoto,
- * evento_categorias_remoto, categorias_socio_remoto, socios_cuotas_remoto) y
+ * evento_categorias_remoto, categorias_socio_remoto, socios_cuotas_remoto,
+ * empresa_estados_socio_remoto) y
  * escribe/lee inscripciones_evento_remoto. Reciben el admin client por parámetro.
  * NO importar desde Client Components (usar lib/eventos-types.ts).
  */
@@ -19,7 +20,7 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { opcionesConSinRestriccion, puedeInscribirse } from '@/lib/eventos-types'
+import { esEstadoSocio, opcionesConSinRestriccion, puedeInscribirse } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -341,11 +342,46 @@ export function parseOpcionesAlimentacion(raw: string | null | undefined): strin
 }
 
 /**
+ * Estados de registro que cuentan como socio en esta empresa, o `null` si no lo
+ * configuró (ahí manda el default de esEstadoSocio: sólo 'Activo*').
+ * La tabla la escribe el desktop; ver supabase/empresa_estados_socio_remoto.sql.
+ *
+ * Si la tabla todavía no existe (migración sin aplicar) devolvemos `null` en vez
+ * de romper: el formulario público sigue funcionando con el default.
+ */
+async function estadosSocioDeEmpresa(
+  admin: SupabaseClient,
+  empresaId: string,
+): Promise<string[] | null> {
+  const { data, error } = await admin
+    .from('empresa_estados_socio_remoto')
+    .select('estados')
+    .eq('empresa_id', empresaId)
+    .maybeSingle()
+  if (error) {
+    console.warn(
+      `[estadosSocioDeEmpresa] no se pudo leer la config (${error.message}); se aplica el default`,
+    )
+    return null
+  }
+  const estados = data?.estados
+  return Array.isArray(estados) ? estados.map((e) => String(e)) : null
+}
+
+/**
  * Resuelve la cédula contra el registro del evento y decide el tipo de
- * participante aplicando la regla de cuotas:
- *   - socio con cuotas_pendientes < umbral → 'socio'
- *   - socio con cuotas_pendientes >= umbral → 'no_socio'
- *   - no encontrado → 'no_socio'
+ * participante. Se exigen DOS condiciones para la tarifa de socio:
+ *   1. el estado de registro de la ficha cuenta como socio (ver esEstadoSocio)
+ *   2. cuotas_pendientes < umbral_cuotas_no_socio
+ * Si falla cualquiera de las dos → 'no_socio'. No encontrado → 'no_socio'.
+ *
+ * POR QUÉ EL ESTADO: el push de socios_cuotas_remoto manda SÓLO a los deudores,
+ * así que "sin fila" significa "sin cuotas pendientes". Un socio dado de baja y
+ * sin deuda no tiene fila, y mirando sólo las cuotas daba "✓ Socio al día".
+ *
+ * Quien no pasa el filtro SIGUE ESTANDO en el padrón (`encontrado: true`):
+ * conserva sus datos enmascarados y puede inscribirse como no socio; lo único
+ * que pierde es la tarifa/bonificación de socio.
  *
  * `documento` en socios_datos está en texto plano (dígitos); se matchea directo.
  * Las cuotas salen de socios_cuotas_remoto, keyed por el documento_hash del socio.
@@ -364,6 +400,7 @@ export async function resolverParticipante(
     mail: '',
     telefono: '',
     cuotas_pendientes: null,
+    estado_registro_nombre: null,
     tipo_participante: 'no_socio',
     categoria_id: null,
     categoria_nombre: null,
@@ -372,7 +409,9 @@ export async function resolverParticipante(
 
   const { data: socio, error } = await admin
     .from('socios_datos')
-    .select('id, nombre, apellido, mail, telefono, celular, documento_hash')
+    .select(
+      'id, nombre, apellido, mail, telefono, celular, documento_hash, estado_registro_nombre',
+    )
     .eq('empresa_id', evento.empresa_id)
     .eq('documento', doc)
     .is('deleted_at', null)
@@ -384,8 +423,9 @@ export async function resolverParticipante(
 
   const docHash = (socio.documento_hash as string) ?? ''
 
-  // Cuotas pendientes + categoría del socio (ambas keyed por empresa + documento_hash).
-  const [{ data: cuotasRow }, { data: catRow }] = await Promise.all([
+  // Cuotas pendientes + categoría del socio (ambas keyed por empresa +
+  // documento_hash) + qué estados de registro cuentan como socio en la empresa.
+  const [{ data: cuotasRow }, { data: catRow }, estadosSocio] = await Promise.all([
     admin
       .from('socios_cuotas_remoto')
       .select('cuotas_pendientes')
@@ -398,11 +438,14 @@ export async function resolverParticipante(
       .eq('empresa_id', evento.empresa_id)
       .eq('documento_hash', docHash)
       .maybeSingle(),
+    estadosSocioDeEmpresa(admin, evento.empresa_id),
   ])
 
   const cuotas = Number(cuotasRow?.cuotas_pendientes ?? 0)
+  const estadoRegistro = (socio.estado_registro_nombre as string | null) ?? null
+  const alDia = cuotas < evento.umbral_cuotas_no_socio
   const tipo: TipoParticipante =
-    cuotas >= evento.umbral_cuotas_no_socio ? 'no_socio' : 'socio'
+    esEstadoSocio(estadoRegistro, estadosSocio) && alDia ? 'socio' : 'no_socio'
 
   return {
     encontrado: true,
@@ -414,6 +457,7 @@ export async function resolverParticipante(
     telefono:
       ((socio.celular as string | null) || (socio.telefono as string | null)) ?? '',
     cuotas_pendientes: cuotas,
+    estado_registro_nombre: estadoRegistro,
     tipo_participante: tipo,
     categoria_id: (catRow?.categoria_id as string | null) ?? null,
     categoria_nombre: (catRow?.categoria_nombre as string | null) ?? null,
