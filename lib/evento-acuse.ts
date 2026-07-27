@@ -21,7 +21,13 @@ export interface InscripcionAcuse {
   categoria_nombre: string | null
   tipo_participante: 'socio' | 'no_socio'
   importe: number
+  /**
+   * Extras reservados. Van aparte del importe porque pueden ser sin costo
+   * (importe 0) y el comprobante los tiene que listar igual.
+   */
+  lleva_transporte: boolean
   transporte_importe: number
+  lleva_alimentacion: boolean
   alimentacion_importe: number
   alimentacion_tipo: string | null
   moneda_codigo: string
@@ -136,7 +142,9 @@ export async function enviarAcuseInscripcion(
         categoriaNombre: inscripcion.categoria_nombre,
         tipoParticipante: inscripcion.tipo_participante,
         importe: Number(inscripcion.importe),
+        llevaTransporte: !!inscripcion.lleva_transporte,
         transporteImporte: Number(inscripcion.transporte_importe),
+        llevaAlimentacion: !!inscripcion.lleva_alimentacion,
         alimentacionImporte: Number(inscripcion.alimentacion_importe),
         alimentacionTipo: inscripcion.alimentacion_tipo,
         total,

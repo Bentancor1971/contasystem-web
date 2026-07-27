@@ -130,6 +130,27 @@ const OTROS = '__otros__'
 /** Valor del select de tipo de alimentación cuando elige "Otros". */
 const ALIM_OTROS = '__otros_alim__'
 
+/** Campos que se pueden marcar como obligatorios sin completar. */
+type CampoObligatorio =
+  | 'nombre' | 'apellido' | 'mail' | 'telefono'
+  | 'categoria' | 'categoria_otros' | 'alimentacion_otros' | 'referencia'
+
+/**
+ * id del elemento al que se salta cuando ese campo falta. Tiene que existir en
+ * el DOM: si se renombra un id acá o en el JSX, el scroll deja de encontrarlo
+ * (el resaltado igual funciona, pero la persona tiene que buscarlo a mano).
+ */
+const ANCLA: Record<CampoObligatorio, string> = {
+  nombre: 'nombre',
+  apellido: 'apellido',
+  mail: 'mail',
+  telefono: 'telefono',
+  categoria: 'categoria-bloque',
+  categoria_otros: 'categoria-otros',
+  alimentacion_otros: 'alimentacion-otros',
+  referencia: 'referencia',
+}
+
 interface Resultado {
   numero: string | null
   categoria_nombre: string | null
@@ -238,6 +259,22 @@ export function EventoForm({
   const [alimentacionOtros, setAlimentacionOtros] = useState('')
   const [referenciaTransferencia, setReferenciaTransferencia] = useState('')
 
+  // Obligatorios que quedaron vacíos al intentar continuar. Se marcan todos de
+  // una vez (antes salía un toast con el primero nomás, así que había que
+  // reintentar para descubrir el siguiente) y cada uno se apaga al escribirlo.
+  const [faltantes, setFaltantes] = useState<Set<CampoObligatorio>>(new Set())
+  const falta = (campo: CampoObligatorio) => faltantes.has(campo)
+  const claseField = (campo: CampoObligatorio, extra = '') =>
+    ['field', falta(campo) ? 'field-error' : '', extra].filter(Boolean).join(' ')
+  function limpiarFalta(campo: CampoObligatorio) {
+    setFaltantes((prev) => {
+      if (!prev.has(campo)) return prev
+      const next = new Set(prev)
+      next.delete(campo)
+      return next
+    })
+  }
+
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<Resultado | null>(null)
   // Inscripción que esta cédula YA tiene en el evento (detectada al verificar,
@@ -290,6 +327,9 @@ export function EventoForm({
     setAlimentacionTipo(ALIMENTACION_SIN_RESTRICCION)
     setAlimentacionOtros('')
     setReferenciaTransferencia('')
+    // Los campos quedan vacíos de nuevo: arrastrar el resaltado del inscripto
+    // anterior sería marcarle errores a alguien que todavía no intentó nada.
+    setFaltantes(new Set())
   }
 
   // Vuelve el formulario al estado inicial (útil en modo kiosco, para el siguiente inscripto).
@@ -760,33 +800,6 @@ export function EventoForm({
   }
 
   async function enviar(modalidad: ModalidadInscripcion) {
-    // Para un socio verificado, un campo vacío se completa desde su ficha: sólo
-    // se exige lo que no está en la ficha.
-    if (!nombre.trim() && !nombreEnFicha) {
-      toast.error('El nombre es obligatorio')
-      return
-    }
-    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido.trim() && !apellidoEnFicha) {
-      toast.error('El apellido es obligatorio')
-      return
-    }
-    if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim() && !mailEnFicha) {
-      toast.error('El email es obligatorio')
-      return
-    }
-    // Teléfono obligatorio para todos (salvo que ya esté en la ficha del socio).
-    if (cfg.mostrar_telefono && !telefono.trim() && !telefonoEnFicha) {
-      toast.error('El teléfono es obligatorio')
-      return
-    }
-    if (categoriaVisible && !categoriaId) {
-      toast.error('Elegí una categoría')
-      return
-    }
-    if (esOtros && !categoriaOtros.trim()) {
-      toast.error('Escribí tu categoría')
-      return
-    }
     // Tipo de alimentación: nunca vacío si el evento ofrece opciones (el select
     // arranca en "Sin restricción"). Sólo hay que exigir el texto de "Otros".
     const alimTipoFinal = llevaAlimentacion
@@ -794,20 +807,62 @@ export function EventoForm({
         ? alimentacionOtros.trim()
         : alimentacionTipo
       : ''
+
+    // Se evalúan TODAS las reglas en una pasada, sin cortar en la primera: la
+    // persona ve de entrada todo lo que le falta, resaltado en el campo, en vez
+    // de irlo descubriendo de a un toast por intento.
+    //
+    // Para un socio verificado, un campo vacío se completa desde su ficha: sólo
+    // se exige lo que no está en la ficha.
+    const faltan: { campo: CampoObligatorio; label: string }[] = []
+    if (!nombre.trim() && !nombreEnFicha) {
+      faltan.push({ campo: 'nombre', label: 'Nombre' })
+    }
+    if (cfg.mostrar_apellido && cfg.apellido_obligatorio && !apellido.trim() && !apellidoEnFicha) {
+      faltan.push({ campo: 'apellido', label: 'Apellido' })
+    }
+    if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim() && !mailEnFicha) {
+      faltan.push({ campo: 'mail', label: 'Email' })
+    }
+    // Teléfono obligatorio para todos (salvo que ya esté en la ficha del socio).
+    if (cfg.mostrar_telefono && !telefono.trim() && !telefonoEnFicha) {
+      faltan.push({ campo: 'telefono', label: 'Teléfono' })
+    }
+    if (categoriaVisible && !categoriaId) {
+      faltan.push({ campo: 'categoria', label: 'Categoría' })
+    }
+    if (esOtros && !categoriaOtros.trim()) {
+      faltan.push({ campo: 'categoria_otros', label: 'Tu categoría' })
+    }
     if (
       alimentacionVisible &&
       llevaAlimentacion &&
       alimentacionTipo === ALIM_OTROS &&
       !alimentacionOtros.trim()
     ) {
-      toast.error('Escribí el tipo de alimentación')
-      return
+      faltan.push({ campo: 'alimentacion_otros', label: 'Tipo de alimentación' })
     }
     // "Pago realizado": la referencia de la transferencia es obligatoria.
     if (modalidad === 'pago_transferencia' && !referenciaTransferencia.trim()) {
-      toast.error('Ingresá la referencia de la transferencia')
+      faltan.push({ campo: 'referencia', label: 'Referencia de la transferencia' })
+    }
+
+    if (faltan.length > 0) {
+      setFaltantes(new Set(faltan.map((f) => f.campo)))
+      toast.error(
+        faltan.length === 1
+          ? `Falta completar: ${faltan[0].label}`
+          : `Faltan completar: ${faltan.map((f) => f.label).join(', ')}`,
+      )
+      // Al primero que falta, para que el resaltado se vea aunque haya quedado
+      // fuera de pantalla. El foco va sin scroll propio: ya lo hizo el anterior.
+      const ancla = document.getElementById(ANCLA[faltan[0].campo])
+      ancla?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      if (ancla instanceof HTMLInputElement) ancla.focus({ preventScroll: true })
       return
     }
+    setFaltantes(new Set())
+
     setEnviando(true)
     try {
       const res = await fetch(`/api/eventos/${evento.slug}/inscribir`, {
@@ -1050,8 +1105,16 @@ export function EventoForm({
               {nombreEnFicha ? (
                 <DatoDeFicha id="nombre" valor={resuelto!.nombre_mask!} />
               ) : (
-                <input id="nombre" className="field" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+                <input
+                  id="nombre"
+                  className={claseField('nombre')}
+                  aria-invalid={falta('nombre')}
+                  value={nombre}
+                  onChange={(e) => { setNombre(e.target.value); limpiarFalta('nombre') }}
+                  required
+                />
               )}
+              {falta('nombre') && <p className="msg-error">Completá tu nombre</p>}
             </div>
             {cfg.mostrar_apellido && (
               <div>
@@ -1061,8 +1124,16 @@ export function EventoForm({
                 {apellidoEnFicha ? (
                   <DatoDeFicha id="apellido" valor={resuelto!.apellido_mask!} />
                 ) : (
-                  <input id="apellido" className="field" value={apellido} onChange={(e) => setApellido(e.target.value)} required={cfg.apellido_obligatorio} />
+                  <input
+                    id="apellido"
+                    className={claseField('apellido')}
+                    aria-invalid={falta('apellido')}
+                    value={apellido}
+                    onChange={(e) => { setApellido(e.target.value); limpiarFalta('apellido') }}
+                    required={cfg.apellido_obligatorio}
+                  />
                 )}
+                {falta('apellido') && <p className="msg-error">Completá tu apellido</p>}
               </div>
             )}
             {cfg.mostrar_email && (
@@ -1073,8 +1144,18 @@ export function EventoForm({
                 {mailEnFicha ? (
                   <DatoDeFicha id="mail" valor={resuelto!.mail_mask!} />
                 ) : (
-                  <input id="mail" type="email" className="field" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="tu@correo.com" required={cfg.email_obligatorio} />
+                  <input
+                    id="mail"
+                    type="email"
+                    className={claseField('mail')}
+                    aria-invalid={falta('mail')}
+                    value={mail}
+                    onChange={(e) => { setMail(e.target.value); limpiarFalta('mail') }}
+                    placeholder="tu@correo.com"
+                    required={cfg.email_obligatorio}
+                  />
                 )}
+                {falta('mail') && <p className="msg-error">Completá tu email</p>}
               </div>
             )}
             {cfg.mostrar_telefono && (
@@ -1085,8 +1166,18 @@ export function EventoForm({
                 {telefonoEnFicha ? (
                   <DatoDeFicha id="telefono" valor={resuelto!.telefono_mask!} />
                 ) : (
-                  <input id="telefono" inputMode="tel" className="field" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="099 123 456" required />
+                  <input
+                    id="telefono"
+                    inputMode="tel"
+                    className={claseField('telefono')}
+                    aria-invalid={falta('telefono')}
+                    value={telefono}
+                    onChange={(e) => { setTelefono(e.target.value); limpiarFalta('telefono') }}
+                    placeholder="099 123 456"
+                    required
+                  />
                 )}
+                {falta('telefono') && <p className="msg-error">Completá tu teléfono</p>}
               </div>
             )}
           </div>
@@ -1096,7 +1187,10 @@ export function EventoForm({
             <legend className="label-mono mb-3">
               Categoría{conCosto ? ` · tarifa ${tipo === 'socio' ? 'Socio' : 'No socio'}` : ''}
             </legend>
-            <div className="space-y-3">
+            <div
+              id="categoria-bloque"
+              className={['space-y-3', falta('categoria') ? 'bloque-error' : ''].filter(Boolean).join(' ')}
+            >
               {opcionesCategoria.map((c) => {
                 // Sólo se deshabilita por falta de precio en eventos con costo.
                 const disabled = conCosto && c.precio == null
@@ -1121,7 +1215,7 @@ export function EventoForm({
                         value={c.id}
                         checked={selected}
                         disabled={disabled}
-                        onChange={() => setCategoriaId(c.id)}
+                        onChange={() => { setCategoriaId(c.id); limpiarFalta('categoria') }}
                       />
                       <span className="font-medium">{c.nombre}</span>
                     </div>
@@ -1151,7 +1245,7 @@ export function EventoForm({
                       className="accent-amber-deep"
                       value={OTROS}
                       checked={esOtros}
-                      onChange={() => setCategoriaId(OTROS)}
+                      onChange={() => { setCategoriaId(OTROS); limpiarFalta('categoria') }}
                     />
                     <span className="font-medium">Otros</span>
                   </div>
@@ -1166,13 +1260,16 @@ export function EventoForm({
               {permitirOtros && esOtros && (
                 <div className="pl-4">
                   <input
-                    className="field"
+                    id="categoria-otros"
+                    className={claseField('categoria_otros')}
+                    aria-invalid={falta('categoria_otros')}
                     placeholder="Escribí tu categoría"
                     value={categoriaOtros}
-                    onChange={(e) => setCategoriaOtros(e.target.value)}
+                    onChange={(e) => { setCategoriaOtros(e.target.value); limpiarFalta('categoria_otros') }}
                     maxLength={60}
                     autoFocus
                   />
+                  {falta('categoria_otros') && <p className="msg-error">Escribí tu categoría</p>}
                   {conCosto && precioMaxOtros != null && (
                     <p className="mt-2 text-[11px] font-mono text-ink-3">
                       Se aplica la tarifa {tipo === 'socio' ? 'Socio' : 'No socio'} más alta del evento
@@ -1289,14 +1386,21 @@ export function EventoForm({
                     <option value={ALIM_OTROS}>Otros</option>
                   </select>
                   {alimentacionTipo === ALIM_OTROS && (
-                    <input
-                      className="field mt-2"
-                      placeholder="Especificá tu preferencia"
-                      value={alimentacionOtros}
-                      onChange={(e) => setAlimentacionOtros(e.target.value)}
-                      maxLength={60}
-                      autoFocus
-                    />
+                    <>
+                      <input
+                        id="alimentacion-otros"
+                        className={claseField('alimentacion_otros', 'mt-2')}
+                        aria-invalid={falta('alimentacion_otros')}
+                        placeholder="Especificá tu preferencia"
+                        value={alimentacionOtros}
+                        onChange={(e) => { setAlimentacionOtros(e.target.value); limpiarFalta('alimentacion_otros') }}
+                        maxLength={60}
+                        autoFocus
+                      />
+                      {falta('alimentacion_otros') && (
+                        <p className="msg-error">Especificá tu preferencia</p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1406,13 +1510,17 @@ export function EventoForm({
                 </label>
                 <input
                   id="referencia"
-                  className="field"
+                  className={claseField('referencia')}
+                  aria-invalid={falta('referencia')}
                   placeholder="N° de comprobante de la transferencia que hiciste"
                   value={referenciaTransferencia}
-                  onChange={(e) => setReferenciaTransferencia(e.target.value)}
+                  onChange={(e) => { setReferenciaTransferencia(e.target.value); limpiarFalta('referencia') }}
                   maxLength={80}
                   disabled={enviando}
                 />
+                {falta('referencia') && (
+                  <p className="msg-error">Ingresá la referencia de la transferencia</p>
+                )}
               </div>
 
               <button

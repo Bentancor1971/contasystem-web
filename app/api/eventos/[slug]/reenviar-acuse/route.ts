@@ -60,7 +60,7 @@ export async function POST(
 
     const { data: ins, error } = await admin
       .from('inscripciones_evento_remoto')
-      .select('numero, estado, modalidad, categoria_nombre, tipo_participante, nombre, apellido, mail, importe, transporte_importe, alimentacion_importe, alimentacion_tipo, moneda_codigo, referencia_transferencia, numero_sorteo')
+      .select('numero, estado, modalidad, categoria_nombre, tipo_participante, nombre, apellido, mail, importe, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, moneda_codigo, referencia_transferencia, numero_sorteo')
       .eq('evento_id', evento.id)
       .eq('documento_hash', hashDocumento(documentoRaw))
       .neq('estado', 'anulado')
@@ -97,7 +97,9 @@ export async function POST(
         categoria_nombre: (ins.categoria_nombre as string | null) ?? null,
         tipo_participante: (ins.tipo_participante as 'socio' | 'no_socio') ?? 'no_socio',
         importe: Number(ins.importe ?? 0),
+        lleva_transporte: !!ins.lleva_transporte,
         transporte_importe: Number(ins.transporte_importe ?? 0),
+        lleva_alimentacion: !!ins.lleva_alimentacion,
         alimentacion_importe: Number(ins.alimentacion_importe ?? 0),
         alimentacion_tipo: (ins.alimentacion_tipo as string | null) ?? null,
         moneda_codigo: (ins.moneda_codigo as string | null) ?? evento.moneda_codigo,

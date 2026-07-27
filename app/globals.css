@@ -149,6 +149,30 @@ html, body {
 }
 .field::placeholder { color: var(--color-ink-3); }
 
+/* Obligatorio sin completar. Se marca recién al intentar continuar —nunca
+   mientras la persona todavía está escribiendo— y se apaga apenas escribe. */
+.field-error,
+.field-error:focus {
+  border-bottom-color: var(--color-status-no);
+  border-bottom-width: 2px;
+  padding-bottom: 11px;
+}
+
+/* Igual que .field-error pero para un bloque (radios de categoría), donde no
+   hay una línea inferior que teñir. Inset para no correr al vecino. */
+.bloque-error {
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: inset 0 0 0 2px var(--color-status-no);
+}
+
+.msg-error {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-status-no);
+}
+
 /* ============================================================
    Botón "estampado"
    ============================================================ */

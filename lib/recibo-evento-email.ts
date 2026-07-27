@@ -56,7 +56,14 @@ export interface ReciboEventoEmailData {
   categoriaNombre: string | null
   tipoParticipante: 'socio' | 'no_socio'
   importe: number
+  /**
+   * Reservó transporte / alimentación. Se pasa aparte del importe porque el
+   * extra puede ser SIN COSTO (importe 0) y hay que mostrarlo igual: es lo que
+   * la persona pidió, no un renglón de plata.
+   */
+  llevaTransporte?: boolean
   transporteImporte: number
+  llevaAlimentacion?: boolean
   alimentacionImporte: number
   alimentacionTipo: string | null
   total: number
@@ -231,8 +238,8 @@ export function renderReciboEventoEmail(
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Participante</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.socioNombre)}</td></tr>
                 ${b.mostrar_documento ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Documento</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.socioDocumento)}</td></tr>` : ''}
                 ${d.categoriaNombre ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Categoría</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.categoriaNombre)} · ${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'}</td></tr>` : ''}
-                ${d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${formatImporte(d.transporteImporte, d.monedaCodigo)}</td></tr>` : ''}
-                ${d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, d.monedaCodigo)}` : ''}</td></tr>` : ''}
+                ${d.llevaTransporte || d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.transporteImporte > 0 ? formatImporte(d.transporteImporte, d.monedaCodigo) : 'Sí · sin costo'}</td></tr>` : ''}
+                ${d.llevaAlimentacion || d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, d.monedaCodigo)}` : ''}</td></tr>` : ''}
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${registroSinCosto ? 'Registro sin costo' : esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}</td></tr>
                 ${registroSinCosto && d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">N.º de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
               </table>

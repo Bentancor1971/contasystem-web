@@ -13,7 +13,7 @@
  */
 
 import type { Metadata } from 'next'
-import { CheckCircle2, Clock3, XCircle, HelpCircle } from 'lucide-react'
+import { CheckCircle2, Clock3, Info, XCircle, HelpCircle } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarEntrada } from '@/lib/entradas'
 import { extraerToken } from '@/lib/checkin-token'
@@ -48,6 +48,15 @@ interface Presentacion {
   detalle: string
 }
 
+/**
+ * Los textos son deliberadamente explícitos sobre QUIÉN registra el ingreso.
+ *
+ * Con "Ya registrada" a secas, quien abre su propio enlace y ve eso concluye —
+ * razonablemente— que registrarse fue justamente abrirlo. Pasó en la primera
+ * prueba real: la marca venía de un check-in hecho a mano en el desktop diez
+ * minutos ANTES de que el QR se emitiera, y aun así la pantalla se leyó como si
+ * el enlace hubiera hecho el registro.
+ */
 function presentar(resultado: ResultadoEntrada, entrada: EntradaRemota | null): Presentacion {
   switch (resultado) {
     case 'valida':
@@ -55,17 +64,18 @@ function presentar(resultado: ResultadoEntrada, entrada: EntradaRemota | null): 
         Icono: CheckCircle2,
         color: 'text-status-ok',
         titulo: 'Entrada válida',
-        detalle: 'Mostrá este código en la entrada del evento.',
+        detalle:
+          'Todavía no tenés ingreso registrado. Se registra cuando la organización escanea este código en la puerta.',
       }
     case 'ya_presente': {
       const hora = formatFechaHoraUY(entrada?.asistio_at)
       return {
         Icono: Clock3,
         color: 'text-status-pending',
-        titulo: 'Ya registrada',
+        titulo: 'Ingreso ya registrado',
         detalle: hora
-          ? `El ingreso quedó registrado el ${hora} h.`
-          : 'El ingreso ya quedó registrado.',
+          ? `La organización registró tu ingreso el ${hora} h. No lo generó abrir esta página.`
+          : 'La organización ya registró tu ingreso. No lo generó abrir esta página.',
       }
     }
     case 'anulada':
@@ -126,6 +136,16 @@ export default async function EntradaPage({
 
           {e && (
             <>
+              {/* Dentro de la tarjeta y con marco: como nota al pie en gris se
+                  pasaba por alto, que es exactamente cuando importa leerla. */}
+              <div className="rounded-md border border-line bg-paper-2 px-4 py-3 mb-6 flex gap-3">
+                <Info size={16} className="text-ink-3 shrink-0 mt-0.5" />
+                <p className="text-[12.5px] text-ink-2 leading-snug">
+                  Esta página sólo <strong>muestra</strong> tu entrada. Abrirla no registra tu
+                  asistencia: eso lo hace la organización al escanear el código en el ingreso.
+                </p>
+              </div>
+
               <div className="perforated mb-6" />
 
               <h1 className="font-display text-2xl font-medium leading-tight text-center mb-1">
@@ -166,6 +186,16 @@ export default async function EntradaPage({
                     <dd className="text-right">{e.numero}</dd>
                   </div>
                 )}
+                {/* El estado de asistencia como dato duro, además del titular:
+                    "sin registrar" no deja lugar a interpretación. */}
+                <div className="flex justify-between gap-4">
+                  <dt className="text-ink-3">Ingreso</dt>
+                  <dd className="text-right">
+                    {e.asistio_at
+                      ? `Registrado ${formatFechaHoraUY(e.asistio_at)}`
+                      : 'Sin registrar'}
+                  </dd>
+                </div>
               </dl>
 
               {svg && (
@@ -182,12 +212,7 @@ export default async function EntradaPage({
           )}
         </div>
 
-        <p className="text-center text-[12px] text-ink-3 mt-5 leading-relaxed px-4">
-          Abrir esta página no registra tu ingreso: la asistencia la marca el
-          personal del evento al escanear el código.
-        </p>
-
-        <p className="text-center font-mono text-[11px] text-ink-3 mt-4">
+        <p className="text-center font-mono text-[11px] text-ink-3 mt-6">
           CONTASYSTEM · ENTRADA
         </p>
       </div>

@@ -195,7 +195,11 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"export function now\\\\|export const now\" --include=*.ts src | head -3)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1,15p' src/lib/helpers.ts)",
       "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/e34ad3b7-18b1-40e1-90b1-e66c0a2bd71e/scratchpad/verif-sql.mjs\")",
-      "PowerShell(Get-NetTCPConnection -LocalPort 3111 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue; \"killed $_\" })"
+      "PowerShell(Get-NetTCPConnection -LocalPort 3111 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue; \"killed $_\" })",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"asistio = 1\\\\|asistio=1\\\\|asistio: 1\\\\|SET asistio\" --include=*.ts --include=*.tsx src | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1100,1130p' src/lib/modules/eventos.ts && echo \"=== CALLERS ===\" && grep -rn \"marcarAsistencia\\\\|setAsistencia\\\\|toggleAsistencia\" --include=*.ts --include=*.tsx src | head -20)",
+      "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '660,700p;765,790p' src/routes/eventos/index.tsx)",
+      "PowerShell(npx tsc --noEmit)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
