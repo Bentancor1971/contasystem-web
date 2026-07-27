@@ -526,16 +526,19 @@ export function proyectarResolucionPublica(
     registroPermitido?: RegistroPermitido
   },
 ): ResolucionPublica {
-  const esSocioResuelto = r.encontrado && r.tipo_participante === 'socio'
+  // Los masks se entregan a TODO el padrón, no sólo al socio al día: quien tiene
+  // cuotas pendientes también tiene ficha y tampoco necesita re-escribir sus
+  // datos. El costo de privacidad está documentado en ResolucionPublica.
+  const enPadron = r.encontrado
   const politica = opts.registroPermitido ?? 'todos'
   return {
     tipo_participante: r.tipo_participante,
     puede_inscribirse: puedeInscribirse(politica, r.tipo_participante, r.encontrado),
     categoria_id: r.categoria_id,
-    nombre_mask: esSocioResuelto ? maskTexto(r.nombre) : null,
-    apellido_mask: esSocioResuelto ? maskTexto(r.apellido) : null,
-    mail_mask: esSocioResuelto ? maskMail(r.mail) : null,
-    telefono_mask: esSocioResuelto ? maskTelefono(r.telefono) : null,
+    nombre_mask: enPadron ? maskTexto(r.nombre) : null,
+    apellido_mask: enPadron ? maskTexto(r.apellido) : null,
+    mail_mask: enPadron ? maskMail(r.mail) : null,
+    telefono_mask: enPadron ? maskTelefono(r.telefono) : null,
     inscripcion_previa: opts.inscripcionPrevia ?? null,
     // El DV sólo se exige a quien no está en el padrón (ver lib/cedula). Se
     // avisa acá para que no complete todo el formulario y recién ahí se entere.

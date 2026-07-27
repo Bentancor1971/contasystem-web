@@ -292,14 +292,19 @@ export function EventoForm({
   const tipo: TipoParticipante = resuelto?.tipo_participante ?? 'no_socio'
   const conCosto = evento.tipo === 'con_costo'
 
-  // Un socio al día ya tiene sus datos en la ficha: se muestran enmascarados y
-  // no hace falta re-escribirlos (el server los completa al inscribir con los
-  // datos reales). Cada `*EnFicha` es true sólo si ese dato existe en la ficha.
-  const esSocioAlDia = resuelto?.tipo_participante === 'socio'
-  const nombreEnFicha = esSocioAlDia && !!resuelto?.nombre_mask
-  const apellidoEnFicha = esSocioAlDia && !!resuelto?.apellido_mask
-  const mailEnFicha = esSocioAlDia && !!resuelto?.mail_mask
-  const telefonoEnFicha = esSocioAlDia && !!resuelto?.telefono_mask
+  // Quien está en el padrón ya tiene sus datos en la ficha: se muestran
+  // enmascarados y no hace falta re-escribirlos (el server los completa al
+  // inscribir con los datos reales). Vale para todo el padrón, no sólo para el
+  // socio al día: el lookup entrega los `*_mask` a cualquiera que resuelva (ver
+  // ResolucionPublica), y el server completa por `part.encontrado`, no por tipo.
+  // Cada `*EnFicha` es true sólo si ese dato existe en la ficha.
+  const nombreEnFicha = !!resuelto?.nombre_mask
+  const apellidoEnFicha = !!resuelto?.apellido_mask
+  const mailEnFicha = !!resuelto?.mail_mask
+  const telefonoEnFicha = !!resuelto?.telefono_mask
+  // Hay al menos un dato traído de la ficha: habilita el aviso de "no se editan acá".
+  const hayDatosEnFicha =
+    nombreEnFicha || apellidoEnFicha || mailEnFicha || telefonoEnFicha
 
   // Config web del evento. Los flags `mostrar_*` sólo OCULTAN: nunca habilitan
   // algo que el desktop no configuró (transporte/alimentación disponibles).
@@ -1059,8 +1064,9 @@ export function EventoForm({
             </Leyenda>
           ) : (
             /* No socio. Cubre por igual a quien no está en el padrón y al socio con
-               cuotas pendientes: el texto no distingue los dos casos a propósito
-               (distinguirlos revelaría la deuda de cualquiera cuya cédula se tipee).
+               cuotas pendientes: el texto no nombra la deuda, sólo sugiere consultar.
+               (El bloque de datos de ficha que sigue sí distingue los dos casos —al
+               socio con deuda le muestra sus masks—; ver ResolucionPublica.)
                En un registro sin costo no se menciona tarifa —no la hay—, pero sí
                el aviso de cuotas: ser socio al día sigue gateando el sorteo. */
             <Leyenda html={leyendas.no_socio}>
@@ -1085,7 +1091,7 @@ export function EventoForm({
             </Leyenda>
           )}
 
-          {esSocioAlDia && (
+          {hayDatosEnFicha && (
             <Leyenda html={leyendas.datos_ficha}>
               <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-line rounded-lg bg-paper-2 px-4 py-3">
                 <Info size={15} className="mt-0.5 shrink-0" />

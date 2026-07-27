@@ -199,7 +199,11 @@
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && grep -rn \"asistio = 1\\\\|asistio=1\\\\|asistio: 1\\\\|SET asistio\" --include=*.ts --include=*.tsx src | head -20)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '1100,1130p' src/lib/modules/eventos.ts && echo \"=== CALLERS ===\" && grep -rn \"marcarAsistencia\\\\|setAsistencia\\\\|toggleAsistencia\" --include=*.ts --include=*.tsx src | head -20)",
       "Bash(cd \"c:/Users/benta/Documentos/Programas/contasystem-desktop\" && sed -n '660,700p;765,790p' src/routes/eventos/index.tsx)",
-      "PowerShell(npx tsc --noEmit)"
+      "PowerShell(npx tsc --noEmit)",
+      "Bash(ls /c/Users/benta/Documentos/Programas/ 2>/dev/null)",
+      "Read(//c/Users/benta/Documentos/Programas//**)",
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/1b98f886-ee50-4135-a439-6d103210c417/scratchpad/probe.mjs\" 1000002)",
+      "Read(//c/Users/benta/Documentos/Programas/contasystem-desktop/src/utils/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",

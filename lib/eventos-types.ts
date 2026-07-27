@@ -391,27 +391,32 @@ export interface CertificadoPublico {
  * pendientes: el endpoint no tiene autenticación, así que cualquiera podría
  * enumerar cédulas y cosechar esos datos.
  *
- * SÍ incluye versiones ENMASCARADAS (`*_mask`) para que el socio se reconozca al
+ * SÍ incluye versiones ENMASCARADAS (`*_mask`) para que la persona se reconozca al
  * verificar su cédula. Es un compromiso: filtra iniciales + dominio de mail a un
  * endpoint público. El dato en claro nunca baja; el front las usa sólo como
- * placeholder y, si el socio deja el campo vacío, el server lo completa desde la
- * ficha al inscribir.
+ * placeholder y, si deja el campo vacío, el server lo completa desde la ficha al
+ * inscribir.
  *
- * `tipo_participante` es inevitable (el precio depende de él), pero colapsa dos
- * casos —"no es socio" y "socio con cuotas pendientes"— en un mismo `no_socio`,
- * de modo que no revela el estado de deuda de nadie.
+ * Los masks se entregan a TODO el padrón, incluido el socio con cuotas
+ * pendientes: si no, tendría que re-escribir datos que la organización ya tiene.
+ * Consecuencia asumida: la PRESENCIA de masks es el bit de pertenencia al padrón,
+ * y combinada con `tipo_participante: 'no_socio'` permite inferir que esa cédula
+ * es de un socio con deuda. `tipo_participante` sigue colapsando "no es socio" y
+ * "socio con cuotas pendientes" en un mismo valor, pero ya no alcanza por sí solo
+ * para ocultar la deuda; lo que sigue protegiendo el endpoint es el tope por IP
+ * (ver lib/rate-limit) y que el número de cuotas nunca se serializa.
  */
 export interface ResolucionPublica {
   tipo_participante: TipoParticipante
   /** Categoría del socio, para pre-seleccionar la tarifa. null si no se resolvió. */
   categoria_id: string | null
-  /** Nombre enmascarado (ej. "PR•••"). null si no se resolvió el socio. */
+  /** Nombre enmascarado (ej. "PR•••"). null si la cédula no está en el padrón. */
   nombre_mask: string | null
-  /** Apellido enmascarado. null si no se resolvió o no tiene. */
+  /** Apellido enmascarado. null si no está en el padrón o no tiene. */
   apellido_mask: string | null
-  /** Mail enmascarado (ej. "b•••@gmail.com"). null si no se resolvió o no tiene. */
+  /** Mail enmascarado (ej. "b•••@gmail.com"). null si no está en el padrón o no tiene. */
   mail_mask: string | null
-  /** Teléfono enmascarado (ej. "•••456"). null si no se resolvió o no tiene. */
+  /** Teléfono enmascarado (ej. "•••456"). null si no está en el padrón o no tiene. */
   telefono_mask: string | null
   /**
    * Inscripción vigente de esta cédula en este evento, si ya se inscribió.
