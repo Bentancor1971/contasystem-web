@@ -414,6 +414,38 @@ export function EventoForm({
 
   const esOtros = categoriaId === OTROS
   const categoriaSel = evento.categorias.find((c) => c.categoria_id === categoriaId)
+
+  /**
+   * Categoría que la persona tiene en su ficha, cuando el evento la ofrece: es
+   * la que quedó preseleccionada al verificar la cédula (ver el lookup).
+   *
+   * Se resuelve con la MISMA condición que la preselección. Si el evento no la
+   * ofrece —o, con costo, no tiene tarifa para su tipo y la opción está
+   * deshabilitada—, elegir otra no es una decisión de la persona sino la única
+   * salida, y avisarle de un "cambio" sería mentirle.
+   */
+  const categoriaFicha = (() => {
+    if (!resuelto?.categoria_id) return null
+    const c = opcionesCategoria.find((x) => x.id === resuelto.categoria_id)
+    if (!c) return null
+    if (conCosto && c.precio == null) return null
+    return c
+  })()
+
+  /**
+   * Eligió una categoría distinta a la de su ficha.
+   *
+   * La categoría del evento y la de la ficha comparten catálogo, así que este
+   * cambio le llega al operador como una propuesta de actualización de ficha —y
+   * en un socio activo la categoría define la cuota social—. Acá NO se aplica
+   * nada: sólo se avisa en el momento de elegir, para que no sea un clic al
+   * pasar y para que la persona pueda corregirse antes de enviar.
+   */
+  const categoriaElegidaNombre = esOtros
+    ? categoriaOtros.trim() || 'Otros'
+    : (opcionesCategoria.find((c) => c.id === categoriaId)?.nombre ?? '')
+  const categoriaCambiada =
+    !!categoriaFicha && !!categoriaId && categoriaId !== categoriaFicha.id
   const categoriaImporte = !conCosto
     ? 0
     : esOtros
@@ -1347,6 +1379,19 @@ export function EventoForm({
                     </p>
                   )}
                 </div>
+              )}
+
+              {/* Cambio de categoría respecto de la ficha (ver `categoriaCambiada`). */}
+              {categoriaCambiada && (
+                <p className="flex items-start gap-2 rounded-lg border border-status-warn bg-status-warn-bg px-4 py-3 text-sm text-status-warn">
+                  <AlertCircle size={17} className="mt-0.5 shrink-0" />
+                  <span>
+                    En tu ficha figurás como <strong>{categoriaFicha!.nombre}</strong> y elegiste{' '}
+                    <strong>{categoriaElegidaNombre || 'otra categoría'}</strong>. Tu ficha no se
+                    cambia sola: la organización revisa el cambio antes de aplicarlo. Si fue un
+                    error, volvé a marcar {categoriaFicha!.nombre}.
+                  </span>
+                </p>
               )}
             </div>
           </fieldset>

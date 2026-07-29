@@ -464,6 +464,15 @@ export async function POST(
       dif('Nombre', part.nombre, nombre)
       dif('Apellido', part.apellido, apellido)
       dif('Email', part.mail, mail)
+      // Teléfono: el desktop lo propone aplicar a la ficha (es el cambio más
+      // frecuente), así que el acuse tiene que nombrarlo igual que a los otros.
+      dif('Teléfono', part.telefono, telefono)
+      // Categoría: sólo si la ficha YA tenía una. Sin categoría previa no hay
+      // cambio que avisar —es un dato que se da por primera vez—, y el aviso
+      // saldría en cada inscripción de un socio sin categoría en el puente.
+      if (part.categoria_nombre && categoriaNombre) {
+        dif('Categoría', part.categoria_nombre, categoriaNombre)
+      }
     }
     const acuse = await enviarAcuseInscripcion(admin, {
       evento,
