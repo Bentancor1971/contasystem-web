@@ -12,23 +12,33 @@
  * (verde / ámbar / rojo) y la traza en `asistio_por` son idénticos.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2, Search, Undo2, UserCheck, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatHoraUY } from '@/lib/format'
 import {
+  grupoEntrada,
   nombreMostrado,
   ROL_ASISTENTE,
   ROL_TODOS,
+  type AgrupacionLista,
   type ConteoCheckin,
   type DesmarcarResponse,
   type EntradaListada,
+  type GrupoEntrada,
   type OrdenLista,
   type RolEvento,
 } from '@/lib/entradas-types'
 
 /** Espera entre tecla y consulta: escribir un apellido no dispara 8 requests. */
 const DEBOUNCE_MS = 300
+
+/** Título del separador de cada bloque cuando hay agrupación. */
+const TITULO_GRUPO: Record<GrupoEntrada, string> = {
+  pendiente: 'Pendientes de marcar',
+  presente: 'Presentes',
+  anulada: 'Anuladas',
+}
 
 interface ModoListaProps {
   empresaId: string
@@ -64,6 +74,13 @@ export function ModoLista({
   const [q, setQ] = useState('')
   const [rol, setRol] = useState(rolInicial)
   const [orden, setOrden] = useState<OrdenLista>('apellido')
+  /**
+   * Agrupador aparte del alfabético: en un evento grande, buscar a mano quién
+   * falta marcar entre presentes y ausentes mezclados es el trabajo lento de la
+   * puerta. Arranca en 'ninguno' para no cambiarle la lista a quien ya la
+   * conoce (ver AgrupacionLista).
+   */
+  const [agrupar, setAgrupar] = useState<AgrupacionLista>('ninguno')
   const [entradas, setEntradas] = useState<EntradaListada[]>([])
   const [total, setTotal] = useState(0)
   const [limit, setLimit] = useState(0)
@@ -75,7 +92,12 @@ export function ModoLista({
   const abortRef = useRef<AbortController | null>(null)
 
   const cargar = useCallback(
-    async (termino: string, rolFiltro: string, ordenActual: OrdenLista) => {
+    async (
+      termino: string,
+      rolFiltro: string,
+      ordenActual: OrdenLista,
+      agruparActual: AgrupacionLista,
+    ) => {
       abortRef.current?.abort()
       const ac = new AbortController()
       abortRef.current = ac
@@ -89,6 +111,9 @@ export function ModoLista({
           q: termino,
           rol: rolFiltro,
           orden: ordenActual,
+          // Se agrupa en el server: la respuesta viene recortada y agrupar acá
+          // dejaría fuera a los pendientes del final del abecedario.
+          agrupar: agruparActual,
         })
         const res = await fetch(`/api/checkin/entradas?${params}`, { signal: ac.signal })
         const json = await res.json()
@@ -108,9 +133,9 @@ export function ModoLista({
   )
 
   useEffect(() => {
-    const t = setTimeout(() => void cargar(q.trim(), rol, orden), DEBOUNCE_MS)
+    const t = setTimeout(() => void cargar(q.trim(), rol, orden, agrupar), DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [q, rol, orden, cargar, refrescarClave])
+  }, [q, rol, orden, agrupar, cargar, refrescarClave])
 
   /**
    * Da de baja una asistencia marcada por error.
@@ -147,14 +172,14 @@ export function ModoLista({
         }
 
         setConfirmando(null)
-        await cargar(q.trim(), rol, orden)
+        await cargar(q.trim(), rol, orden, agrupar)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'No se pudo desmarcar')
       } finally {
         setDesmarcando(null)
       }
     },
-    [cargar, empresaId, eventoId, onConteo, orden, q, rol],
+    [agrupar, cargar, empresaId, eventoId, onConteo, orden, q, rol],
   )
 
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -162,6 +187,14 @@ export function ModoLista({
   const truncada = limit > 0 && total > entradas.length
   // Con un solo rol los chips no aportan nada: es toda la gente del evento.
   const mostrarRoles = roles.length > 1
+
+  // Cuántos hay de cada grupo entre los que se están mostrando. Si la lista
+  // vino recortada no es el total del evento — el aviso de abajo lo dice.
+  const porGrupo = useMemo(() => {
+    const acc: Record<GrupoEntrada, number> = { pendiente: 0, presente: 0, anulada: 0 }
+    for (const e of entradas) acc[grupoEntrada(e)] += 1
+    return acc
+  }, [entradas])
 
   return (
     <div className="flex flex-col gap-4">
@@ -200,6 +233,38 @@ export function ModoLista({
             onClick={() => setOrden('nombre')}
           >
             Nombre
+          </button>
+        </div>
+      </div>
+
+      {/* Agrupador, aparte del alfabético: elige QUÉ bloque va arriba. El orden
+          por apellido/nombre de acá arriba sigue mandando dentro de cada uno. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="label-mono shrink-0">Primero</span>
+        <div className="pill-group flex-wrap" role="group" aria-label="Qué grupo va primero">
+          <button
+            type="button"
+            className="pill"
+            aria-pressed={agrupar === 'ninguno'}
+            onClick={() => setAgrupar('ninguno')}
+          >
+            Mezclados
+          </button>
+          <button
+            type="button"
+            className="pill"
+            aria-pressed={agrupar === 'pendientes'}
+            onClick={() => setAgrupar('pendientes')}
+          >
+            Pendientes
+          </button>
+          <button
+            type="button"
+            className="pill"
+            aria-pressed={agrupar === 'presentes'}
+            onClick={() => setAgrupar('presentes')}
+          >
+            Presentes
           </button>
         </div>
       </div>
@@ -243,101 +308,115 @@ export function ModoLista({
       )}
 
       <ul className="divide-y divide-line">
-        {entradas.map((e) => {
+        {entradas.map((e, i) => {
           const presente = Boolean(e.asistio_at)
           const anulada = e.estado === 'anulada'
           const enConfirmacion = confirmando === e.token
           const enVuelo = desmarcando === e.token
+          // Cabecera al empezar cada bloque: sin ella, "por qué esta gente está
+          // arriba" se adivina. Con la lista mezclada no va ninguna.
+          const grupo = grupoEntrada(e)
+          const abreGrupo =
+            agrupar !== 'ninguno' && (i === 0 || grupoEntrada(entradas[i - 1]) !== grupo)
           return (
-            <li key={e.token} className="py-3">
-              <div className="flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`font-medium leading-tight truncate ${
-                      anulada ? 'line-through text-ink-3' : ''
-                    }`}
-                  >
-                    {nombreMostrado(e, orden)}
-                  </p>
-                  <p className="font-mono text-[11px] text-ink-3 truncate mt-0.5">
-                    {[
-                      e.documento,
-                      e.categoria_nombre,
-                      // El rol sólo se repite en cada fila cuando la lista mezcla
-                      // varios: con el filtro puesto ya está arriba.
-                      rol === ROL_TODOS ? (e.rol_nombre ?? ROL_ASISTENTE) : null,
-                      e.numero && `N° ${e.numero}`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
-                  </p>
-                </div>
-
-                {anulada ? (
-                  <span className="badge badge-rejected shrink-0">Anulada</span>
-                ) : presente ? (
-                  // El badge de presente ES el botón de deshacer: si está mal
-                  // marcado, se toca justo donde se ve el error.
-                  <button
-                    type="button"
-                    onClick={() => setConfirmando(enConfirmacion ? null : e.token)}
-                    aria-expanded={enConfirmacion}
-                    className="badge badge-imported shrink-0 cursor-pointer"
-                  >
-                    Presente {formatHoraUY(e.asistio_at)}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onMarcar(e.token)}
-                    className="btn-primary shrink-0 !px-4 !py-2 !min-h-0 !text-sm"
-                  >
-                    <Check size={16} />
-                    Marcar
-                  </button>
-                )}
-              </div>
-
-              {/* Confirmación en dos toques: desmarcar borra un ingreso real,
-                  no puede pasar por un roce con el pulgar. */}
-              {presente && enConfirmacion && (
-                <div className="mt-3 rounded-md bg-paper-2 border border-line p-3">
-                  <p className="text-[12px] text-ink-2 leading-snug mb-3">
-                    Se registra el ingreso como no ocurrido.
-                    {e.asistio_por && (
-                      <>
-                        {' '}
-                        Lo marcó <span className="font-mono">{e.asistio_por}</span>.
-                      </>
-                    )}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void desmarcar(e)}
-                      disabled={enVuelo}
-                      className="btn-secondary !px-4 !py-2 !min-h-0 !text-sm"
-                    >
-                      {enVuelo ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Undo2 size={16} />
-                      )}
-                      Desmarcar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmando(null)}
-                      disabled={enVuelo}
-                      className="btn-ghost px-2"
-                    >
-                      <X size={16} />
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
+            <Fragment key={e.token}>
+              {abreGrupo && (
+                <li className="pt-4 pb-1 first:pt-0">
+                  <span className="label-mono">
+                    {TITULO_GRUPO[grupo]} · {porGrupo[grupo]}
+                  </span>
+                </li>
               )}
-            </li>
+              <li className="py-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`font-medium leading-tight truncate ${
+                        anulada ? 'line-through text-ink-3' : ''
+                      }`}
+                    >
+                      {nombreMostrado(e, orden)}
+                    </p>
+                    <p className="font-mono text-[11px] text-ink-3 truncate mt-0.5">
+                      {[
+                        e.documento,
+                        e.categoria_nombre,
+                        // El rol sólo se repite en cada fila cuando la lista mezcla
+                        // varios: con el filtro puesto ya está arriba.
+                        rol === ROL_TODOS ? (e.rol_nombre ?? ROL_ASISTENTE) : null,
+                        e.numero && `N° ${e.numero}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </p>
+                  </div>
+
+                  {anulada ? (
+                    <span className="badge badge-rejected shrink-0">Anulada</span>
+                  ) : presente ? (
+                    // El badge de presente ES el botón de deshacer: si está mal
+                    // marcado, se toca justo donde se ve el error.
+                    <button
+                      type="button"
+                      onClick={() => setConfirmando(enConfirmacion ? null : e.token)}
+                      aria-expanded={enConfirmacion}
+                      className="badge badge-imported shrink-0 cursor-pointer"
+                    >
+                      Presente {formatHoraUY(e.asistio_at)}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onMarcar(e.token)}
+                      className="btn-primary shrink-0 !px-4 !py-2 !min-h-0 !text-sm"
+                    >
+                      <Check size={16} />
+                      Marcar
+                    </button>
+                  )}
+                </div>
+
+                {/* Confirmación en dos toques: desmarcar borra un ingreso real,
+                    no puede pasar por un roce con el pulgar. */}
+                {presente && enConfirmacion && (
+                  <div className="mt-3 rounded-md bg-paper-2 border border-line p-3">
+                    <p className="text-[12px] text-ink-2 leading-snug mb-3">
+                      Se registra el ingreso como no ocurrido.
+                      {e.asistio_por && (
+                        <>
+                          {' '}
+                          Lo marcó <span className="font-mono">{e.asistio_por}</span>.
+                        </>
+                      )}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void desmarcar(e)}
+                        disabled={enVuelo}
+                        className="btn-secondary !px-4 !py-2 !min-h-0 !text-sm"
+                      >
+                        {enVuelo ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Undo2 size={16} />
+                        )}
+                        Desmarcar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmando(null)}
+                        disabled={enVuelo}
+                        className="btn-ghost px-2"
+                      >
+                        <X size={16} />
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            </Fragment>
           )
         })}
       </ul>

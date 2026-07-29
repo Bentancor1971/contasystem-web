@@ -110,6 +110,36 @@ export interface EventoCheckin {
 /** Cómo se ordena y se muestra el nombre en el control manual. */
 export type OrdenLista = 'nombre' | 'apellido'
 
+/**
+ * Agrupador del control manual: sube un estado arriba de todo SIN tocar el
+ * orden alfabético, que sigue mandando dentro de cada grupo.
+ *
+ *   'ninguno'     una sola lista alfabética (el default de siempre)
+ *   'pendientes'  primero los que faltan marcar — pasar lista buscando ausentes
+ *   'presentes'   primero los ya marcados — repasar o corregir lo controlado
+ */
+export type AgrupacionLista = 'ninguno' | 'pendientes' | 'presentes'
+
+/** Grupo de una fila del control manual. */
+export type GrupoEntrada = 'pendiente' | 'presente' | 'anulada'
+
+export function grupoEntrada(e: Pick<EntradaListada, 'estado' | 'asistio_at'>): GrupoEntrada {
+  if (e.estado === 'anulada') return 'anulada'
+  return e.asistio_at ? 'presente' : 'pendiente'
+}
+
+/**
+ * Posición del grupo (menor = más arriba). Las anuladas van siempre últimas
+ * cuando hay agrupación: no se pueden marcar, así que no compiten por el tope
+ * ni con los pendientes ni con los presentes.
+ */
+export function rangoGrupo(g: GrupoEntrada, agrupar: AgrupacionLista): number {
+  if (agrupar === 'ninguno') return 0
+  if (g === 'anulada') return 2
+  if (agrupar === 'pendientes') return g === 'pendiente' ? 0 : 1
+  return g === 'presente' ? 0 : 1
+}
+
 /** Contador que devuelve el endpoint de marcado, para refrescar el header. */
 export interface ConteoCheckin {
   total: number

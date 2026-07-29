@@ -838,7 +838,7 @@ export function EventoForm({
     }
     // Teléfono obligatorio para todos (salvo que ya esté en la ficha del socio).
     if (cfg.mostrar_telefono && !telefono.trim() && !telefonoEnFicha) {
-      faltan.push({ campo: 'telefono', label: 'Teléfono' })
+      faltan.push({ campo: 'telefono', label: 'Celular' })
     }
     if (categoriaVisible && !categoriaId) {
       faltan.push({ campo: 'categoria', label: 'Categoría' })
@@ -1008,6 +1008,22 @@ export function EventoForm({
     ? camposFaltantes(esPagoRealizado ? 'pago_transferencia' : 'reserva')
     : []
 
+  // Verbo de la acción según el evento: en un registro sin costo nadie "se
+  // inscribe", sólo se registra.
+  const accion = registroSinCosto ? 'registrarte' : 'inscribirte'
+
+  // Título del bloque "no socio". Pedir datos sólo si de verdad falta alguno:
+  // quien está en el padrón (típicamente el socio con cuotas pendientes) los
+  // tiene todos en la ficha y no tiene nada que completar —ahí "Completá tus
+  // datos" contradice lo que está viendo—. El resto del bloque (tarifa y aviso
+  // de cuotas) sigue aplicando en los dos casos.
+  const tituloNoSocio =
+    pendientes.length === 0
+      ? `Ya podés ${accion}`
+      : hayDatosEnFicha
+        ? `Completá lo que falta para ${accion}`
+        : `Completá tus datos para ${accion}`
+
   return (
     <div className="rise space-y-8">
       {/* Modalidad elegida (con opción de cambiar si hay más de una) */}
@@ -1098,11 +1114,7 @@ export function EventoForm({
                el aviso de cuotas: ser socio al día sigue gateando el sorteo. */
             <Leyenda html={leyendas.no_socio}>
               <div className="rounded-lg border border-line bg-paper-2 px-4 py-3">
-                <p className="font-medium">
-                  {registroSinCosto
-                    ? 'Completá tus datos para registrarte'
-                    : 'Completá tus datos para inscribirte'}
-                </p>
+                <p className="font-medium">{tituloNoSocio}</p>
                 <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
                   <Info size={15} className="mt-0.5 shrink-0" />
                   <span>
@@ -1136,13 +1148,25 @@ export function EventoForm({
               tiene que tener a mano y no se lo descubre recién al enviar. Se
               recalcula solo (ver `pendientes`) y desaparece cuando está completo. */}
           {pendientes.length > 0 && (
-            <p className="flex items-start gap-2 text-[13px] text-ink-2 border border-status-warn rounded-lg bg-paper-2 px-4 py-3">
-              <AlertCircle size={15} className="mt-0.5 shrink-0 text-status-warn" />
-              <span>
-                {pendientes.length === 1 ? 'Falta completar: ' : 'Faltan completar: '}
-                <strong>{enumerar(pendientes.map((p) => p.label))}</strong>.
-              </span>
-            </p>
+            <div className="flex items-start gap-3 rounded-lg border border-status-warn border-l-4 bg-status-warn-bg px-4 py-3.5">
+              <AlertCircle size={19} className="mt-px shrink-0 text-status-warn" />
+              <div>
+                {/* El mono en mayúsculas se escribe con utilidades y no con
+                    .label-mono: esa clase va sin capa y le ganaría al color. */}
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-status-warn">
+                  {pendientes.length === 1
+                    ? 'Falta un dato'
+                    : `Faltan ${pendientes.length} datos`}
+                </p>
+                <p className="mt-1 text-sm font-medium text-status-warn">
+                  Completá{' '}
+                  <strong className="font-semibold underline decoration-status-warn/40 underline-offset-2">
+                    {enumerar(pendientes.map((p) => p.label))}
+                  </strong>{' '}
+                  para poder {accion}.
+                </p>
+              </div>
+            </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1207,7 +1231,7 @@ export function EventoForm({
             {cfg.mostrar_telefono && (
               <div>
                 <label htmlFor="telefono" className="label-mono block mb-1">
-                  Teléfono{!telefonoEnFicha ? ' *' : ''}
+                  Celular{!telefonoEnFicha ? ' *' : ''}
                 </label>
                 {telefonoEnFicha ? (
                   <DatoDeFicha id="telefono" valor={resuelto!.telefono_mask!} />
@@ -1223,7 +1247,7 @@ export function EventoForm({
                     required
                   />
                 )}
-                {falta('telefono') && <p className="msg-error">Completá tu teléfono</p>}
+                {falta('telefono') && <p className="msg-error">Completá tu celular</p>}
               </div>
             )}
           </div>

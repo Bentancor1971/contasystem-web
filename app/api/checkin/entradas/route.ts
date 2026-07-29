@@ -1,5 +1,5 @@
 /**
- * GET /api/checkin/entradas?empresa_id=&evento_id=&q=&rol=&orden=
+ * GET /api/checkin/entradas?empresa_id=&evento_id=&q=&rol=&orden=&agrupar=
  *
  * Listado de entradas de un evento para el CONTROL MANUAL de /checkin — el
  * respaldo cuando el QR no se puede leer (pantalla rota, brillo al mínimo, mail
@@ -14,6 +14,11 @@
  *            puerta); `__todos__` = sin filtrar; cualquier otro = exacto.
  *            El bucket de asistentes incluye las entradas sin rol asignado.
  *   orden  · 'nombre' (como lo guardó el desktop) | 'apellido' (pasar lista).
+ *   agrupar· sube un estado al tope sin romper el orden alfabético:
+ *            'ninguno' (default) | 'pendientes' | 'presentes'. Se resuelve acá
+ *            y no en el navegador porque la respuesta viene recortada a LIMIT:
+ *            agrupar sobre lo ya recortado dejaría afuera pendientes del final
+ *            del abecedario, que son justo los que se están buscando.
  *
  * Autorización: caller miembro de `empresa_id` (ver lib/checkin-auth).
  */
@@ -23,8 +28,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAccesoEmpresa } from '@/lib/checkin-auth'
 import { contarEvento, resolverNombres } from '@/lib/entradas'
 import {
+  grupoEntrada,
+  rangoGrupo,
   ROL_ASISTENTE,
   ROL_TODOS,
+  type AgrupacionLista,
   type EntradaListada,
   type OrdenLista,
 } from '@/lib/entradas-types'
@@ -61,6 +69,9 @@ export async function GET(req: NextRequest) {
     const q = (sp.get('q') ?? '').trim()
     const rol = sp.get('rol') ?? ROL_ASISTENTE
     const orden: OrdenLista = sp.get('orden') === 'apellido' ? 'apellido' : 'nombre'
+    const agruparRaw = sp.get('agrupar')
+    const agrupar: AgrupacionLista =
+      agruparRaw === 'pendientes' || agruparRaw === 'presentes' ? agruparRaw : 'ninguno'
 
     const auth = await assertAccesoEmpresa(empresaId)
     if (!auth.ok) {
@@ -132,13 +143,20 @@ export async function GET(req: NextRequest) {
       orden === 'apellido' && e.apellido
         ? `${e.apellido} ${e.nombre ?? ''}`.trim()
         : e.nombre_completo
-    entradas.sort((a, b) => clave(a).localeCompare(clave(b), 'es', { sensitivity: 'base' }))
+    // El grupo sólo decide el bloque; adentro sigue mandando el alfabético. Con
+    // 'ninguno' todos rankean 0 y el orden queda exactamente como antes.
+    entradas.sort((a, b) => {
+      const dif = rangoGrupo(grupoEntrada(a), agrupar) - rangoGrupo(grupoEntrada(b), agrupar)
+      if (dif !== 0) return dif
+      return clave(a).localeCompare(clave(b), 'es', { sensitivity: 'base' })
+    })
 
     return NextResponse.json({
       entradas: entradas.slice(0, LIMIT),
       total: count ?? entradas.length,
       limit: LIMIT,
       orden,
+      agrupar,
       rol,
       conteo,
     })

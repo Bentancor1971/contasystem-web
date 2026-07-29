@@ -400,12 +400,12 @@ export default function ConfiguracionEventosPage() {
                     disabledReason="Requiere mostrar el campo"
                   />
                   <Check
-                    label="Mostrar Teléfono"
+                    label="Mostrar Celular"
                     checked={cfg.mostrar_telefono}
                     onChange={(v) => set('mostrar_telefono', v)}
                   />
                   <Check
-                    label="Teléfono obligatorio"
+                    label="Celular obligatorio"
                     checked={cfg.telefono_obligatorio}
                     onChange={(v) => set('telefono_obligatorio', v)}
                     disabled={!cfg.mostrar_telefono}
