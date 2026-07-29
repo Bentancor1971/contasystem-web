@@ -1522,10 +1522,11 @@ export function EventoForm({
             </div>
           )}
 
-          {/* Sorteo: opt-in, no cambia el total. A quien no es elegible se le
-              informa que existe, sin ofrecerle el checkbox: el motivo ("socios al
-              día") no revela nada que el precio de su categoría no diga ya. */}
-          {sorteoVisible && (
+          {/* Sorteo: opt-in, no cambia el total. Se ofrece SÓLO a quien puede
+              participar; al resto se le informa o se le oculta según el caso (ver
+              el bloque siguiente). Si el sorteo es para todos, todos son
+              elegibles y lo ven igual. */}
+          {sorteoElegible && (
             <div className="border-t border-line pt-5 space-y-3">
               {sorteo.completo ? (
                 <div className="mb-4 max-w-[16rem]">
@@ -1554,54 +1555,73 @@ export function EventoForm({
                 )
               )}
 
-              {sorteoElegible ? (
-                <label
-                  className={`flex items-start gap-3 ${sorteo.completo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                >
-                  <input
-                    type="checkbox"
-                    className="accent-amber-deep w-4 h-4 mt-1"
-                    checked={participaSorteoEfectivo}
-                    disabled={sorteo.completo}
-                    onChange={(e) => setParticipaSorteo(e.target.checked)}
-                  />
-                  <span>
-                    <span className="font-medium">Quiero participar del sorteo</span>
-                    {sorteo.completo ? (
-                      /* Mensaje de estado, no se puede personalizar: informa que el
-                         rango se agotó. */
-                      <span className="block text-sm text-status-no mt-0.5">
-                        Se agotaron los números del sorteo. Podés inscribirte al evento igual.
-                      </span>
-                    ) : leyendas.sorteo ? (
-                      <span
-                        className="block text-sm text-ink-2 mt-0.5 evento-html"
-                        dangerouslySetInnerHTML={{ __html: leyendas.sorteo }}
-                      />
-                    ) : (
-                      <span className="block text-sm text-ink-2 mt-0.5">
-                        Te asignamos un número y te lo enviamos por correo. Sin costo.
-                      </span>
-                    )}
-                    {sorteo.descripcion && (
-                      <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
-                    )}
-                  </span>
-                </label>
-              ) : (
-                <div className="flex items-start gap-3 text-ink-2">
-                  <Gift className="w-4 h-4 mt-1 shrink-0" />
-                  <span>
-                    <span className="font-medium">Este evento incluye un sorteo</span>
-                    <span className="block text-sm mt-0.5">
-                      La participación está reservada a los socios al día.
+              <label
+                className={`flex items-start gap-3 ${sorteo.completo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-amber-deep w-4 h-4 mt-1"
+                  checked={participaSorteoEfectivo}
+                  disabled={sorteo.completo}
+                  onChange={(e) => setParticipaSorteo(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">Quiero participar del sorteo</span>
+                  {sorteo.completo ? (
+                    /* Mensaje de estado, no se puede personalizar: informa que el
+                       rango se agotó. */
+                    <span className="block text-sm text-status-no mt-0.5">
+                      Se agotaron los números del sorteo. Podés inscribirte al evento igual.
                     </span>
-                    {sorteo.descripcion && (
-                      <span className="block text-sm mt-0.5">{sorteo.descripcion}</span>
-                    )}
+                  ) : leyendas.sorteo ? (
+                    <span
+                      className="block text-sm text-ink-2 mt-0.5 evento-html"
+                      dangerouslySetInnerHTML={{ __html: leyendas.sorteo }}
+                    />
+                  ) : (
+                    <span className="block text-sm text-ink-2 mt-0.5">
+                      Te asignamos un número y te lo enviamos por correo. Sin costo.
+                    </span>
+                  )}
+                  {sorteo.descripcion && (
+                    <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
+                  )}
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* No elegible pero SÍ en el padrón (el caso típico: socio con cuotas
+              pendientes). Se le anuncia el sorteo sin ofrecerle el opt-in: es el
+              único caso en que informar sirve para algo —estando al día
+              participaría— y funciona como recordatorio de ponerse al día. A quien
+              se registra por primera vez no se le muestra nada: no hay nada que
+              pueda hacer con esa información.
+
+              La pertenencia al padrón se infiere de `hayDatosEnFicha` porque el
+              lookup público no expone un bit de padrón (ver ResolucionPublica); no
+              agrega superficie, ya que quien ve sus datos enmascarados en el
+              formulario ya sabe que la cédula está en la base.
+
+              Sin barra de ocupación ni aviso de "sorteo completo": a quien no
+              puede pedir número no le importa cuántos quedan, y la barra sería un
+              oráculo gratis. El texto no afirma que tenga deuda, sólo sugiere
+              consultar (mismo criterio que la leyenda de no socio). */}
+          {sorteoVisible && !sorteoElegible && hayDatosEnFicha && (
+            <div className="border-t border-line pt-5">
+              <div className="flex items-start gap-3 text-ink-2">
+                <Gift className="w-4 h-4 mt-1 shrink-0" />
+                <span>
+                  <span className="font-medium">Este evento incluye un sorteo</span>
+                  <span className="block text-sm mt-0.5">
+                    La participación está reservada a los socios al día. Si tenés cuotas
+                    pendientes, consultá con la organización.
                   </span>
-                </div>
-              )}
+                  {sorteo.descripcion && (
+                    <span className="block text-sm mt-0.5">{sorteo.descripcion}</span>
+                  )}
+                </span>
+              </div>
             </div>
           )}
 
