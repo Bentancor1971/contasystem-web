@@ -236,7 +236,21 @@
       "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/2f485e82-ff0c-43d2-ba29-0d02dafc4b5a/scratchpad/counts.mjs\" \".env.local\")",
       "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/2f485e82-ff0c-43d2-ba29-0d02dafc4b5a/scratchpad/socio.mjs\" \".env.local\")",
       "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/2f485e82-ff0c-43d2-ba29-0d02dafc4b5a/scratchpad/socio2.mjs\" \".env.local\")",
-      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/2f485e82-ff0c-43d2-ba29-0d02dafc4b5a/scratchpad/hash.mjs\" \".env.local\")"
+      "Bash(node \"C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/2f485e82-ff0c-43d2-ba29-0d02dafc4b5a/scratchpad/hash.mjs\" \".env.local\")",
+      "PowerShell(Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model; Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -eq 'Camera' -or $_.PNPClass -eq 'Image' } | Select-Object Name, Status, ConfigManagerErrorCode)",
+      "PowerShell(Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match 'cam|webcam|imaging|IR ' } | Select-Object Name, PNPClass, Status, ConfigManagerErrorCode | Format-Table -AutoSize -Wrap)",
+      "PowerShell(Get-PnpDevice -Class Camera,Image,MEDIA -ErrorAction SilentlyContinue)",
+      "PowerShell(Write-Output '--- Camera devices \\(incl. hidden/disabled\\) ---'; Get-PnpDevice -Class Camera -ErrorAction SilentlyContinue | Select-Object FriendlyName, Status, Present, InstanceId | Format-List; Write-Output '--- Dell / privacy related ---'; Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'Dell|Privacy|Shutter|IPU|MIPI|Sensor Collect' } | Select-Object FriendlyName, Class, Status, Present | Format-Table -AutoSize -Wrap)",
+      "PowerShell(Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'VID_0BDA&PID_557A' } | Select-Object FriendlyName, Class, Status, InstanceId | Format-List)",
+      "PowerShell(npx next lint --file \"app/\\(app\\)/checkin/Scanner.tsx\" 2>&1)",
+      "PowerShell(npx eslint \"app/\\(app\\)/checkin/Scanner.tsx\" 2>&1)",
+      "PowerShell(npx next build 2>&1)",
+      "Bash(python -m json.tool)",
+      "Bash(ls \"c:/Users/benta/Documentos/Programas\")",
+      "Bash(python -c \"import json,sys; print\\(json.load\\(sys.stdin\\)['scripts']\\)\")",
+      "Bash(grep -rn 'importe\\\\|\\\\$ \\\\|precio' \"app/\\(app\\)/configuracion/eventos/page.tsx\")",
+      "Bash(curl -s http://localhost:3000/e/evento-prueba-imagenologia-fe5fe68f)",
+      "Bash(grep -oE \"En qué moneda|\\\\$ [0-9.,]+|Categoría\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",

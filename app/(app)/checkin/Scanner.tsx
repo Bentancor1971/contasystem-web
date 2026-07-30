@@ -17,15 +17,38 @@
  * La cámara exige contexto seguro: HTTPS o localhost. En HTTP no hay visor y se
  * dice explícitamente, porque el síntoma sin explicación (pantalla negra) manda
  * a cualquiera a buscar el problema donde no está.
+ *
+ * Por la misma razón se vigila la luminancia del frame: el obturador de
+ * privacidad de muchas laptops (y una cámara tapada con cinta) no hace fallar
+ * `getUserMedia` — el stream queda vivo y entrega negro o ruido de sensor. Sin
+ * ese chequeo el visor se ve idéntico a uno que funciona pero no encuentra QR.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, CameraOff, Flashlight, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, CameraOff, EyeOff, Flashlight, Loader2, RefreshCw } from 'lucide-react'
 
 /** Cada cuánto se intenta decodificar. ~8 lecturas/s alcanza y de sobra. */
 const INTERVALO_MS = 120
 /** Ancho al que se reduce el frame para jsQR: más que esto no mejora la lectura. */
 const ANCHO_ANALISIS = 640
+
+/** Cada cuánto se mide la luminancia. Es un problema estable: no urge detectarlo. */
+const INTERVALO_LUZ_MS = 700
+/** Lado del muestreo de luminancia. 32px de ancho alcanza y cuesta nada. */
+const ANCHO_LUZ = 32
+/**
+ * Luminancia media (0-255) por debajo de la cual el frame no tiene imagen
+ * aprovechable. Bien abajo a propósito: una puerta de noche mal iluminada da
+ * ~30-50 y ahí el QR todavía se lee. El obturador cerrado da <5, y el ruido de
+ * sensor con la ganancia al máximo ronda 8-10.
+ */
+const LUZ_MINIMA = 12
+/**
+ * Mediciones ciegas seguidas antes de avisar (~2s). El auto-exposición tarda
+ * un momento en abrir al arrancar y sin esta espera el aviso parpadearía en
+ * cada encendido.
+ */
+const MEDICIONES_CIEGAS = 3
 
 interface CodigoDetectado {
   rawValue: string
@@ -54,6 +77,10 @@ interface ScannerProps {
 export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  /** Canvas propio del medidor de luz: es de 32px y no conviene mezclarlo. */
+  const canvasLuzRef = useRef<HTMLCanvasElement | null>(null)
+  const ultimaLuzRef = useRef(0)
+  const ciegasRef = useRef(0)
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
   const detectorRef = useRef<DetectorLike | null>(null)
@@ -85,6 +112,8 @@ export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }:
   const [error, setError] = useState<string>('')
   const [torchDisponible, setTorchDisponible] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
+  /** El stream vive pero los frames no traen imagen (obturador, cinta, oscuridad). */
+  const [sinImagen, setSinImagen] = useState(false)
 
   const detener = useCallback(() => {
     if (rafRef.current !== null) {
@@ -95,12 +124,56 @@ export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }:
     streamRef.current = null
     setTorchDisponible(false)
     setTorchOn(false)
+    ciegasRef.current = 0
+    setSinImagen(false)
+  }, [])
+
+  /**
+   * Luminancia media del frame sobre una miniatura. Distingue "no hay QR
+   * enfrente" de "la cámara no entrega imagen", que a ojo son el mismo
+   * rectángulo negro. No decide nada sobre el escaneo: seguir intentando es
+   * gratis y si el obturador se abre el visor se recupera solo.
+   */
+  const medirLuz = useCallback((video: HTMLVideoElement) => {
+    if (!canvasLuzRef.current) canvasLuzRef.current = document.createElement('canvas')
+    const canvas = canvasLuzRef.current
+    const alto = Math.max(1, Math.round((ANCHO_LUZ * video.videoHeight) / video.videoWidth))
+    if (canvas.width !== ANCHO_LUZ || canvas.height !== alto) {
+      canvas.width = ANCHO_LUZ
+      canvas.height = alto
+    }
+    const g = canvas.getContext('2d', { willReadFrequently: true })
+    if (!g) return
+    g.drawImage(video, 0, 0, ANCHO_LUZ, alto)
+    const { data } = g.getImageData(0, 0, ANCHO_LUZ, alto)
+
+    let suma = 0
+    for (let i = 0; i < data.length; i += 4) {
+      suma += (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000
+    }
+    const media = suma / (data.length / 4)
+
+    if (media >= LUZ_MINIMA) {
+      ciegasRef.current = 0
+      setSinImagen(false)
+      return
+    }
+    ciegasRef.current += 1
+    if (ciegasRef.current >= MEDICIONES_CIEGAS) setSinImagen(true)
   }, [])
 
   /** Un frame: decodifica y avisa al padre si encontró algo. */
   const analizar = useCallback(async () => {
     const video = videoRef.current
     if (!video || video.readyState < 2 || !video.videoWidth) return
+
+    // Antes de decodificar, y a su propio ritmo: el camino nativo no pasa por
+    // canvas, así que este es el único lugar por el que pasan los dos motores.
+    const ahora = performance.now()
+    if (ahora - ultimaLuzRef.current >= INTERVALO_LUZ_MS) {
+      ultimaLuzRef.current = ahora
+      medirLuz(video)
+    }
 
     // Camino nativo.
     if (detectorRef.current) {
@@ -128,7 +201,7 @@ export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }:
     const img = g.getImageData(0, 0, w, h)
     const res = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' })
     if (res?.data) onDetectarRef.current(res.data)
-  }, [])
+  }, [medirLuz])
 
   const loop = useCallback(() => {
     rafRef.current = requestAnimationFrame(loop)
@@ -162,6 +235,10 @@ export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }:
       falloRef.current = false
       setError('')
       setEstado('iniciando')
+      // Reintentar después de destapar el lente tiene que empezar de cero.
+      ciegasRef.current = 0
+      ultimaLuzRef.current = 0
+      setSinImagen(false)
 
       const fallar = (msg: string) => {
         falloRef.current = true
@@ -308,6 +385,25 @@ export function Scanner({ activo, autoIniciar = false, onDetectar, onEncender }:
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/*
+        Aviso de frame ciego. Banda arriba y no overlay completo: el visor tiene
+        que seguir viéndose para notar la recuperación en cuanto se destape el
+        lente, y el botón de linterna queda accesible abajo.
+      */}
+      {estado === 'activa' && sinImagen && (
+        <div className="absolute inset-x-0 top-0 px-3 py-2.5 bg-ink/85 backdrop-blur-sm border-b border-amber/40">
+          <p className="flex items-start gap-2 text-[12px] leading-snug text-paper text-left">
+            <EyeOff size={16} className="shrink-0 mt-0.5 text-amber" />
+            <span>
+              La cámara está prendida pero no llega imagen. Revisá el obturador de privacidad
+              (la tapita sobre la pantalla o la tecla con ícono de cámara) y la luz del lugar.
+              {torchDisponible && ' Probá la linterna.'} Mientras tanto podés usar el modo
+              lista.
+            </span>
+          </p>
         </div>
       )}
 

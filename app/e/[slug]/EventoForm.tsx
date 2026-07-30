@@ -17,20 +17,28 @@ import type {
   InscripcionPrevia,
   ModalidadElegida,
   ModalidadInscripcion,
+  MonedaEvento,
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
 import {
   ALIMENTACION_SIN_RESTRICCION,
+  datosDepositoDe,
   elegibleParaSorteo,
   motivoNoPuedeInscribirse,
+  precioExtra,
+  simboloDe,
 } from '@/lib/eventos-types'
-import { simboloMoneda } from '@/lib/format'
 import { RegistrarPago } from './RegistrarPago'
 
-function formatImporte(n: number, moneda: string): string {
+/**
+ * Importe con el símbolo de SU moneda. El símbolo sale de las monedas del
+ * evento (`$`, `U$S`…), nunca fijo: un importe en dólares rotulado con `$` es
+ * el error más caro que puede cometer esta pantalla.
+ */
+function formatImporte(n: number, codigo: string, monedas: MonedaEvento[]): string {
   const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${simboloMoneda(moneda)} ${nf.format(n)}`
+  return `${simboloDe(monedas, codigo)} ${nf.format(n)}`
 }
 
 /**
@@ -208,9 +216,28 @@ export function EventoForm({
     !(evento.transporte.disponible && evento.config.mostrar_transporte && evento.transporte.con_costo) &&
     !(evento.alimentacion.disponible && evento.config.mostrar_alimentacion && evento.alimentacion.con_costo)
 
+  // ── Moneda elegida ──────────────────────────────────────────────
+  // Con una sola moneda no hay nada que elegir: no se muestra el selector y todo
+  // funciona como antes. Con más de una, la persona elige y TODA su inscripción
+  // queda en esa moneda (categoría, locomoción y alimentación). Nunca se
+  // convierte un importe: cada moneda tiene su propio precio cargado a mano.
+  const monedas = evento.monedas
+  // En un registro sin costo no hay precio ni pago: la moneda no cambia nada y
+  // preguntarla sería ruido. Se usa la base y listo.
+  const eligeMoneda = monedas.length > 1 && !registroSinCosto
+  // Preseleccionada: la primera de la lista (la base del evento).
+  const [moneda, setMoneda] = useState(monedas[0]?.codigo ?? evento.moneda_codigo)
+  /** Importe con el símbolo de su moneda; por defecto, la elegida. */
+  const fmt = (n: number, codigo: string = moneda) => formatImporte(n, codigo, monedas)
+
+  // Cuenta donde transferir en la moneda elegida. Si el evento no cargó una
+  // propia para esa moneda cae a la única de siempre (ver `datosDepositoDe`).
+  const datosDeposito = datosDepositoDe(evento, moneda)
+
   // Modalidades ofrecidas antes de pedir la cédula. "Pago realizado" sólo tiene
   // sentido si la config web lo permite y hay dónde transferir (datos de
-  // depósito cargados). Misma condición que el servidor en /inscribir.
+  // depósito cargados PARA ESA MONEDA). Misma condición que el servidor en
+  // /inscribir, así que lo que se ofrece acá es lo que el server va a aceptar.
   //
   // En un registro sin costo esas dos modalidades no aplican (no hay pago): si
   // la organización habilitó CUALQUIERA de las dos, se ofrece una única acción
@@ -220,7 +247,7 @@ export function EventoForm({
     !registroSinCosto &&
     evento.permitir_pago_realizado &&
     evento.config.permitir_pago_transferencia &&
-    !!evento.datos_deposito
+    !!datosDeposito
   const preinscripcionDisponible = registroSinCosto
     ? evento.permitir_preinscripcion || evento.permitir_pago_realizado
     : evento.permitir_preinscripcion
@@ -233,7 +260,7 @@ export function EventoForm({
   // que "pago realizado" salvo la modalidad del evento (ver RegistrarPago). En un
   // registro sin costo no hay pago que declarar, así que no se ofrece.
   const registrarPagoDisponible =
-    !registroSinCosto && evento.config.permitir_pago_transferencia && !!evento.datos_deposito
+    !registroSinCosto && evento.config.permitir_pago_transferencia && !!datosDeposito
   // Se saltea la pantalla de elección sólo si hay UNA sola cosa para elegir. Con
   // el registro de pago disponible siempre hay al menos dos.
   const modalidadUnica =
@@ -359,30 +386,94 @@ export function EventoForm({
     setModalidadElegida(modalidadUnica)
   }
 
+  /**
+   * Cambia la moneda de la inscripción. No convierte nada: cada moneda tiene sus
+   * propios precios, así que lo único que hay que hacer es soltar lo que dejó de
+   * ser válido con la moneda nueva.
+   */
+  function cambiarMoneda(codigo: string) {
+    if (codigo === moneda) return
+    setMoneda(codigo)
+    // La categoría marcada puede no tener tarifa en la moneda nueva. No debería
+    // pasar —el desktop no deja publicar un evento con precios faltantes—, pero
+    // si pasa es mejor deseleccionarla que dejarla marcada sin precio.
+    if (conCosto && categoriaId && categoriaId !== OTROS) {
+      const c = evento.categorias.find(
+        (x) => x.categoria_id === categoriaId && x.moneda_codigo === codigo,
+      )
+      const precio = c ? (tipo === 'socio' ? c.precio_socio : c.precio_no_socio) : null
+      if (precio == null) setCategoriaId('')
+    }
+    // Sin datos de cuenta en la moneda nueva no hay dónde transferir: se vuelve
+    // a la elección de modalidad en vez de pedir una referencia que no se puede
+    // pagar (es la misma condición que aplica el servidor).
+    if (modalidadElegida === 'pago_realizado' && !datosDepositoDe(evento, codigo)) {
+      setModalidadElegida(null)
+    }
+  }
+
+  /**
+   * Elección de moneda. Va SIEMPRE antes de que se vean precios: es lo que
+   * determina cuáles se muestran. Con una sola moneda no se renderiza nada.
+   */
+  const selectorMoneda = !eligeMoneda ? null : (
+    <div>
+      <p className="label-mono mb-2">¿En qué moneda querés pagar?</p>
+      <div className="flex flex-wrap gap-3">
+        {monedas.map((m) => {
+          const sel = m.codigo === moneda
+          return (
+            <button
+              key={m.codigo}
+              type="button"
+              onClick={() => cambiarMoneda(m.codigo)}
+              aria-pressed={sel}
+              className={[
+                'flex items-baseline gap-2 rounded-xl border px-4 py-3 transition',
+                sel
+                  ? 'border-ink bg-paper-2 shadow-[2px_2px_0_var(--color-ink)]'
+                  : 'border-line hover:border-ink',
+              ].join(' ')}
+            >
+              <span className="font-mono font-semibold">{m.simbolo}</span>
+              <span className="text-sm">{m.nombre}</span>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[12px] text-ink-3 mt-2">
+        Los precios se muestran en la moneda que elijas, y el pago se hace en esa misma moneda.
+      </p>
+    </div>
+  )
+
+  // Categorías de la MONEDA ELEGIDA. La misma categoría llega una vez por cada
+  // moneda del evento: sin este filtro la grilla la mostraría repetida.
+  const categoriasMoneda = evento.categorias.filter((c) => c.moneda_codigo === moneda)
+
   // Precio visible por categoría según el tipo de participante resuelto.
   const precioDe = (c: EventoPublico['categorias'][number]): number | null =>
     tipo === 'socio' ? c.precio_socio : c.precio_no_socio
 
-  // Transporte: costo según tipo de participante (0 si sin costo, oculto o no lo pide).
+  // Transporte: costo según tipo de participante y moneda elegida (0 si sin
+  // costo, oculto o no lo pide). Sin precio cargado en esa moneda vale 0: no se
+  // convierte desde otra.
   const transp = evento.transporte
   const transporteVisible = transp.disponible && cfg.mostrar_transporte
   // Si el cupo de transporte está lleno, la opción se bloquea: nunca cuenta.
   const llevaTransporteEfectivo = transporteVisible && llevaTransporte && !transp.completo
-  const transporteImporte =
-    llevaTransporteEfectivo && transp.con_costo
-      ? tipo === 'socio'
-        ? transp.importe_socio
-        : transp.importe_no_socio
-      : 0
+  const precioTransporte = transp.con_costo
+    ? (precioExtra(evento.extras_precio, 'transporte', tipo, moneda) ?? 0)
+    : 0
+  const transporteImporte = llevaTransporteEfectivo ? precioTransporte : 0
   // Alimentación: espejo de transporte. El tipo es una preferencia (no cambia precio).
   const alim = evento.alimentacion
   const alimentacionVisible = alim.disponible && cfg.mostrar_alimentacion
+  const precioAlimentacion = alim.con_costo
+    ? (precioExtra(evento.extras_precio, 'alimentacion', tipo, moneda) ?? 0)
+    : 0
   const alimentacionImporte =
-    alimentacionVisible && llevaAlimentacion && alim.con_costo
-      ? tipo === 'socio'
-        ? alim.importe_socio
-        : alim.importe_no_socio
-      : 0
+    alimentacionVisible && llevaAlimentacion ? precioAlimentacion : 0
   // Sorteo: opt-in. `mostrar_sorteo` sólo oculta; habilitarlo es del desktop.
   // La elegibilidad usa el MISMO predicado que /inscribir, que la re-aplica
   // server-side. Sale de `tipo`, que ya trae aplicada la tolerancia de cuotas.
@@ -402,18 +493,20 @@ export function EventoForm({
   //   - sin costo: el catálogo de categorías de socio, como clasificación.
   const opcionesCategoria: { id: string; nombre: string; precio: number | null }[] =
     conCosto
-      ? evento.categorias.map((c) => ({ id: c.categoria_id, nombre: c.nombre, precio: precioDe(c) }))
+      ? categoriasMoneda.map((c) => ({ id: c.categoria_id, nombre: c.nombre, precio: precioDe(c) }))
       : evento.categorias_socio.map((c) => ({ id: c.id, nombre: c.nombre, precio: null }))
 
   // Tarifa de referencia para "Otros" (con costo): la más alta disponible para
-  // el tipo de participante. null si el evento no tiene ninguna tarifa cargada.
-  const preciosDisponibles = evento.categorias
+  // el tipo de participante EN LA MONEDA ELEGIDA. null si el evento no tiene
+  // ninguna tarifa cargada. El máximo se busca dentro de la moneda: comparar
+  // importes de monedas distintas no significa nada.
+  const preciosDisponibles = categoriasMoneda
     .map((c) => precioDe(c))
     .filter((p): p is number => p != null)
   const precioMaxOtros = preciosDisponibles.length ? Math.max(...preciosDisponibles) : null
 
   const esOtros = categoriaId === OTROS
-  const categoriaSel = evento.categorias.find((c) => c.categoria_id === categoriaId)
+  const categoriaSel = categoriasMoneda.find((c) => c.categoria_id === categoriaId)
 
   /**
    * Categoría que la persona tiene en su ficha, cuando el evento la ofrece: es
@@ -518,7 +611,7 @@ export function EventoForm({
           {!registroSinCosto && (
             <div className="flex justify-between">
               <dt className="text-ink-3">Inscripción</dt>
-              <dd>{formatImporte(resultado.importe, resultado.moneda_codigo)}</dd>
+              <dd>{fmt(resultado.importe, resultado.moneda_codigo)}</dd>
             </div>
           )}
           {resultado.lleva_transporte && (
@@ -526,7 +619,7 @@ export function EventoForm({
               <dt className="text-ink-3">Transporte</dt>
               <dd>
                 {resultado.transporte_importe > 0
-                  ? formatImporte(resultado.transporte_importe, resultado.moneda_codigo)
+                  ? fmt(resultado.transporte_importe, resultado.moneda_codigo)
                   : 'Sin costo'}
               </dd>
             </div>
@@ -537,7 +630,7 @@ export function EventoForm({
               <dd>
                 {resultado.alimentacion_tipo ? `${resultado.alimentacion_tipo} · ` : ''}
                 {resultado.alimentacion_importe > 0
-                  ? formatImporte(resultado.alimentacion_importe, resultado.moneda_codigo)
+                  ? fmt(resultado.alimentacion_importe, resultado.moneda_codigo)
                   : 'Sin costo'}
               </dd>
             </div>
@@ -545,7 +638,7 @@ export function EventoForm({
           {!registroSinCosto && (
             <div className="flex justify-between border-t border-line pt-2 mt-1">
               <dt className="text-ink-3 font-semibold">Total</dt>
-              <dd className="font-semibold">{formatImporte(resultado.total, resultado.moneda_codigo)}</dd>
+              <dd className="font-semibold">{fmt(resultado.total, resultado.moneda_codigo)}</dd>
             </div>
           )}
         </dl>
@@ -569,6 +662,9 @@ export function EventoForm({
   if (yaInscripto) {
     const info = describirInscripcionPrevia(yaInscripto, registroSinCosto)
     const debeAbonar = info.pendientePago && yaInscripto.total > 0
+    // La cuenta es la de la moneda de SU inscripción —no la del selector—: es en
+    // esa moneda en la que quedó registrada y en la que tiene que pagar.
+    const depositoPrevia = datosDepositoDe(evento, yaInscripto.moneda_codigo)
     return (
       <div className="card p-8 rise">
         <div className="flex items-center gap-3 mb-4">
@@ -630,20 +726,20 @@ export function EventoForm({
             <div className="flex justify-between border-t border-line pt-2 mt-1">
               <dt className="text-ink-3 font-semibold">{debeAbonar ? 'Falta abonar' : 'Total'}</dt>
               <dd className="font-semibold">
-                {formatImporte(yaInscripto.total, yaInscripto.moneda_codigo)}
+                {fmt(yaInscripto.total, yaInscripto.moneda_codigo)}
               </dd>
             </div>
           )}
         </dl>
 
         {debeAbonar && (
-          evento.datos_deposito ? (
+          depositoPrevia ? (
             <div className="mt-6 rounded-xl border border-ink bg-paper-2 p-5">
               <p className="flex items-center gap-2 label-mono mb-3">
                 <Landmark size={15} /> Datos para la transferencia
               </p>
               <p className="font-mono text-sm text-ink-1 whitespace-pre-line">
-                {evento.datos_deposito}
+                {depositoPrevia}
               </p>
               {yaInscripto.numero && (
                 <p className="text-[12px] text-ink-3 mt-3">
@@ -662,7 +758,7 @@ export function EventoForm({
         {/* Declarar la transferencia: SÓLO para la preinscripción impaga. Quien ya
             declaró el pago al inscribirse no tiene nada que registrar acá. */}
         {debeAbonar && cfg.permitir_pago_transferencia && (
-          <RegistrarPago slug={evento.slug} documento={documento.trim()} />
+          <RegistrarPago slug={evento.slug} documento={documento.trim()} monedas={monedas} />
         )}
 
         {/* Copia del comprobante: se envía al mail que ya está guardado en la
@@ -793,7 +889,11 @@ export function EventoForm({
       let preseleccion = ''
       if (data.categoria_id) {
         if (conCosto) {
-          const c = evento.categorias.find((x) => x.categoria_id === data.categoria_id)
+          // La tarifa se busca en la moneda elegida: es la única en la que esta
+          // inscripción puede quedar.
+          const c = evento.categorias.find(
+            (x) => x.categoria_id === data.categoria_id && x.moneda_codigo === moneda,
+          )
           const precio = c
             ? data.tipo_participante === 'socio'
               ? c.precio_socio
@@ -938,6 +1038,9 @@ export function EventoForm({
           participa_sorteo: participaSorteoEfectivo,
           referencia_transferencia: referenciaTransferencia.trim(),
           modalidad,
+          // Moneda de toda la inscripción. El server la re-valida contra las
+          // monedas del evento y recalcula los importes: acá sólo se declara.
+          moneda_codigo: moneda,
         }),
       })
       const data = await res.json()
@@ -995,6 +1098,8 @@ export function EventoForm({
     )
     return (
       <div className="rise space-y-5">
+        {/* La moneda va primero: define los precios de todo lo que sigue. */}
+        {selectorMoneda}
         <p className="label-mono">¿Qué querés hacer?</p>
         {pagoRealizadoDisponible &&
           opcion(
@@ -1026,7 +1131,11 @@ export function EventoForm({
   // inscripción, sólo pide cédula + referencia.
   if (modalidadElegida === 'registrar_pago') {
     return (
-      <RegistrarPago slug={evento.slug} onVolver={() => setModalidadElegida(modalidadUnica)} />
+      <RegistrarPago
+        slug={evento.slug}
+        monedas={monedas}
+        onVolver={() => setModalidadElegida(modalidadUnica)}
+      />
     )
   }
 
@@ -1080,6 +1189,11 @@ export function EventoForm({
           </button>
         )}
       </div>
+
+      {/* La moneda sigue eligible acá: cuando hay una sola modalidad no existe
+          la pantalla de elección, y aun habiéndola los precios recién aparecen
+          después de verificar la cédula. */}
+      {selectorMoneda}
 
       {/* Paso 1 — Cédula */}
       <div>
@@ -1323,7 +1437,7 @@ export function EventoForm({
                     </div>
                     {conCosto && (
                       <span className="font-mono font-semibold">
-                        {c.precio != null ? formatImporte(c.precio, evento.moneda_codigo) : '—'}
+                        {c.precio != null ? fmt(c.precio) : '—'}
                       </span>
                     )}
                   </label>
@@ -1353,7 +1467,7 @@ export function EventoForm({
                   </div>
                   {conCosto && precioMaxOtros != null && (
                     <span className="font-mono font-semibold">
-                      {formatImporte(precioMaxOtros, evento.moneda_codigo)}
+                      {fmt(precioMaxOtros)}
                     </span>
                   )}
                 </label>
@@ -1375,7 +1489,7 @@ export function EventoForm({
                   {conCosto && precioMaxOtros != null && (
                     <p className="mt-2 text-[11px] font-mono text-ink-3">
                       Se aplica la tarifa {tipo === 'socio' ? 'Socio' : 'No socio'} más alta del evento
-                      ({formatImporte(precioMaxOtros, evento.moneda_codigo)}).
+                      ({fmt(precioMaxOtros)}).
                     </p>
                   )}
                 </div>
@@ -1447,12 +1561,7 @@ export function EventoForm({
                     <span className="block text-sm text-ink-2 mt-0.5">{transp.descripcion}</span>
                   )}
                   <span className="block text-sm font-mono text-ink-2 mt-0.5">
-                    {transp.con_costo
-                      ? formatImporte(
-                          tipo === 'socio' ? transp.importe_socio : transp.importe_no_socio,
-                          evento.moneda_codigo,
-                        )
-                      : 'Sin costo'}
+                    {transp.con_costo ? fmt(precioTransporte) : 'Sin costo'}
                   </span>
                 </span>
               </label>
@@ -1474,12 +1583,7 @@ export function EventoForm({
                     <span className="block text-sm text-ink-2 mt-0.5">{alim.descripcion}</span>
                   )}
                   <span className="block text-sm font-mono text-ink-2 mt-0.5">
-                    {alim.con_costo
-                      ? formatImporte(
-                          tipo === 'socio' ? alim.importe_socio : alim.importe_no_socio,
-                          evento.moneda_codigo,
-                        )
-                      : 'Sin costo'}
+                    {alim.con_costo ? fmt(precioAlimentacion) : 'Sin costo'}
                   </span>
                 </span>
               </label>
@@ -1629,7 +1733,7 @@ export function EventoForm({
             <div className="flex justify-between items-baseline border-t border-line pt-4">
               <span className="label-mono">Total</span>
               <span className="font-mono text-xl font-semibold">
-                {formatImporte(total, evento.moneda_codigo)}
+                {fmt(total)}
               </span>
             </div>
           )}

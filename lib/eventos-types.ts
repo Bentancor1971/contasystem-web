@@ -4,7 +4,93 @@
  * Coinciden con docs/supabase/22_eventos_online.sql.
  */
 
+import { simboloMoneda } from '@/lib/format'
+
 export type TipoParticipante = 'socio' | 'no_socio'
+
+// ────────────────────────────────────────────────────────────────
+// Multimoneda — PRECIO ESPEJO (docs/supabase/38_eventos_multimoneda.sql)
+//
+// Un evento puede publicar precios en varias monedas. Cada ítem con costo tiene
+// un precio PROPIO E INDEPENDIENTE en cada una: el precio en dólares NO se
+// deriva del de pesos, lo carga a mano quien arma el evento. NO HAY COTIZACIÓN
+// EN NINGUNA PARTE DEL CIRCUITO, así que acá nunca se convierte ni se suman
+// importes de monedas distintas.
+//
+// La persona ELIGE la moneda y toda su inscripción queda en ella (categoría,
+// locomoción y alimentación). Se paga en la moneda del precio: el desktop
+// bloquea la conciliación si el pago declarado viene en otra.
+// ────────────────────────────────────────────────────────────────
+
+/** Moneda en la que el evento publica precios. La BASE viene primera en la lista. */
+export interface MonedaEvento {
+  codigo: string
+  /** Símbolo tal como lo cargó el desktop ('$', 'U$S'…). Es el que se muestra. */
+  simbolo: string
+  nombre: string
+}
+
+/** Extras con precio propio por moneda. */
+export type ConceptoExtra = 'transporte' | 'alimentacion'
+
+/**
+ * Precio de un extra para un tipo de participante en UNA moneda.
+ * Sólo existen entradas de los conceptos que el evento ofrece Y cobra: un
+ * concepto disponible sin costo no aparece (es gratis en todas las monedas).
+ */
+export interface ExtraPrecio {
+  concepto: ConceptoExtra
+  tipo_participante: TipoParticipante
+  moneda_codigo: string
+  importe: number
+}
+
+/**
+ * Precio de un extra en la moneda elegida, o null si no está definido (= gratis
+ * o no ofrecido). NUNCA cae a otra moneda: mostrar pesos a quien eligió dólares
+ * sería inventar un precio.
+ */
+export function precioExtra(
+  extras: ExtraPrecio[],
+  concepto: ConceptoExtra,
+  tipo: TipoParticipante,
+  moneda: string,
+): number | null {
+  const e = extras.find(
+    (x) => x.concepto === concepto && x.tipo_participante === tipo && x.moneda_codigo === moneda,
+  )
+  return e ? e.importe : null
+}
+
+/** ¿El evento publica precios en esta moneda? */
+export function esMonedaDelEvento(monedas: MonedaEvento[], codigo: string): boolean {
+  return monedas.some((m) => m.codigo === codigo)
+}
+
+/**
+ * Símbolo con el que mostrar un importe. Manda el que cargó el desktop; el
+ * default de `simboloMoneda` es sólo la red para una moneda que no esté en la
+ * lista (ej. la de una inscripción vieja).
+ */
+export function simboloDe(monedas: MonedaEvento[], codigo: string): string {
+  return monedas.find((m) => m.codigo === codigo)?.simbolo || simboloMoneda(codigo)
+}
+
+/**
+ * Datos de la cuenta donde transferir en la moneda elegida.
+ *
+ * El fallback a `datos_deposito` es deliberadamente literal: si el evento no
+ * cargó cuenta para esa moneda, se muestra la única de siempre —que puede ser
+ * la cuenta equivocada—. El desktop ya se lo avisa a quien arma el evento; acá
+ * no se inventa nada más.
+ */
+export function datosDepositoDe(
+  ev: { datos_deposito: string | null; datos_deposito_monedas?: Record<string, string> | null },
+  moneda: string,
+): string | null {
+  const propio = ev.datos_deposito_monedas?.[moneda]
+  return (propio && propio.trim()) || ev.datos_deposito
+}
 
 /**
  * Quién puede inscribirse al evento. La define el DESKTOP (ver
@@ -123,13 +209,33 @@ export interface EventoRemoto {
   tipo: 'con_costo' | 'sin_costo'
   estado: 'abierto' | 'cerrado' | 'anulado'
   cupo_maximo: number | null
+  /**
+   * Moneda BASE de la empresa. Se mantiene por compatibilidad y es el default
+   * del selector; las monedas ofrecidas están en `monedas`.
+   */
   moneda_codigo: string
+  /**
+   * Monedas en las que el evento publica precios, la base PRIMERO. JSONB.
+   * Puede venir vacía (evento pusheado por un desktop previo a la migración 38):
+   * ahí vale la moneda base — ver `normalizarMonedas`.
+   */
+  monedas: MonedaEvento[] | null
+  /** Precios de locomoción y alimentación por moneda (JSONB). Ver `ExtraPrecio`. */
+  extras_precio: ExtraPrecio[] | null
+  /** Datos de cuenta por moneda: { "UYU": "Banco X…", "USD": "Banco X…" } (JSONB). */
+  datos_deposito_monedas: Record<string, string> | null
   umbral_cuotas_no_socio: number
   texto_antes: string | null
   texto_despues: string | null
   email_contacto: string | null
   transporte_disponible: boolean
   transporte_con_costo: boolean
+  /**
+   * Importes de la MONEDA BASE. Se conservan como red de compatibilidad (un
+   * push previo a la migración 38 sólo manda estos), pero el precio que se cobra
+   * sale de `extras_precio`: leerlos directo le mostraría pesos a quien eligió
+   * dólares. Único consumidor legítimo: `normalizarExtrasPrecio`.
+   */
   transporte_importe_socio: number
   transporte_importe_no_socio: number
   transporte_descripcion: string | null
@@ -137,6 +243,7 @@ export interface EventoRemoto {
   transporte_cupo_maximo: number | null
   alimentacion_disponible: boolean
   alimentacion_con_costo: boolean
+  /** Importes de la MONEDA BASE — mismo criterio que los de transporte. */
   alimentacion_importe_socio: number
   alimentacion_importe_no_socio: number
   alimentacion_descripcion: string | null
@@ -163,12 +270,16 @@ export interface EventoRemoto {
   sorteo_numero_hasta: number
 }
 
-/** Config de transporte tal como la ve el formulario público. */
+/**
+ * Config de transporte tal como la ve el formulario público.
+ *
+ * NO lleva importes: con precio espejo cada moneda tiene el suyo, y todos viven
+ * en `EventoPublico.extras_precio` (ver `precioExtra`). Tener acá los de la
+ * moneda base sería la forma más fácil de mostrarle pesos a quien eligió dólares.
+ */
 export interface TransportePublico {
   disponible: boolean
   con_costo: boolean
-  importe_socio: number
-  importe_no_socio: number
   descripcion: string | null
   /**
    * Nivel de ocupación del cupo de transporte para la barra. `null` cuando el
@@ -205,8 +316,6 @@ export function opcionesConSinRestriccion(opciones: string[]): string[] {
 export interface AlimentacionPublica {
   disponible: boolean
   con_costo: boolean
-  importe_socio: number
-  importe_no_socio: number
   descripcion: string | null
   /**
    * Tipos ofrecidos, con "Sin restricción" primero (el default).
@@ -253,10 +362,18 @@ export function elegibleParaSorteo(
   return !sorteo.solo_socios || tipo === 'socio'
 }
 
-/** Categoría agrupada para el formulario público (una fila por categoría, con ambos precios). */
+/**
+ * Categoría agrupada para el formulario público: una fila por categoría Y
+ * MONEDA, con la tarifa socio y no socio de esa moneda.
+ *
+ * Con precio espejo la misma categoría aparece una vez por cada moneda del
+ * evento, así que TODA lectura tiene que filtrar por la moneda elegida o la
+ * grilla la muestra repetida.
+ */
 export interface CategoriaEvento {
   categoria_id: string
   nombre: string
+  moneda_codigo: string
   precio_socio: number | null
   precio_no_socio: number | null
 }
@@ -377,7 +494,19 @@ export interface EventoPublico {
   descripcion: string | null
   lugar: string | null
   fecha: string | null
+  /** Moneda base (= `monedas[0].codigo`). Es la preseleccionada en el selector. */
   moneda_codigo: string
+  /**
+   * Monedas que ofrece el evento, la base primero. SIEMPRE trae al menos una:
+   * con una sola no se muestra selector y todo funciona como antes.
+   */
+  monedas: MonedaEvento[]
+  /**
+   * Precios de locomoción y alimentación en TODAS las monedas del evento. Van
+   * completos al cliente para que cambiar de moneda no exija otra vuelta al
+   * servidor. El importe se lee con `precioExtra`.
+   */
+  extras_precio: ExtraPrecio[]
   tipo: 'con_costo' | 'sin_costo'
   umbral_cuotas_no_socio: number
   abierto: boolean
@@ -404,6 +533,11 @@ export interface EventoPublico {
   config: EventoWebConfig
   /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */
   datos_deposito: string | null
+  /**
+   * Datos de cuenta POR MONEDA. Nadie transfiere dólares a una cuenta en pesos:
+   * se muestran los de la moneda elegida (ver `datosDepositoDe`).
+   */
+  datos_deposito_monedas: Record<string, string>
   /** Modalidades ofrecidas antes de pedir la cédula (las setea el desktop). */
   permitir_pago_realizado: boolean
   permitir_preinscripcion: boolean

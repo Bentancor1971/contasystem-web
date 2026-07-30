@@ -23,8 +23,8 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { CheckCircle2, Landmark, Loader2, Search, X } from 'lucide-react'
-import type { InscripcionPrevia, ResolucionPublica } from '@/lib/eventos-types'
-import { simboloMoneda } from '@/lib/format'
+import type { InscripcionPrevia, MonedaEvento, ResolucionPublica } from '@/lib/eventos-types'
+import { simboloDe } from '@/lib/eventos-types'
 
 interface Resultado {
   numero: string | null
@@ -35,9 +35,13 @@ interface Resultado {
   mail_mask: string | null
 }
 
-function formatImporte(n: number, moneda: string): string {
+/**
+ * Importe con el símbolo de SU moneda. Acá no se elige moneda: la inscripción
+ * ya está hecha y su importe está en la moneda en que se registró.
+ */
+function formatImporte(n: number, codigo: string, monedas: MonedaEvento[]): string {
   const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${simboloMoneda(moneda)} ${nf.format(n)}`
+  return `${simboloDe(monedas, codigo)} ${nf.format(n)}`
 }
 
 /** Sólo la preinscripción impaga tiene un pago para declarar. */
@@ -59,9 +63,12 @@ function motivoSinPago(p: InscripcionPrevia): string {
 export function RegistrarPago({
   slug,
   documento: documentoFijo,
+  monedas,
   onVolver,
 }: {
   slug: string
+  /** Monedas del evento: sólo para saber con qué símbolo mostrar los importes. */
+  monedas: MonedaEvento[]
   /**
    * Cédula ya verificada. Si viene, no se pide ni se vuelve a verificar (entrada
    * desde el aviso de inscripción previa, que ya muestra el registro).
@@ -167,7 +174,7 @@ export function RegistrarPago({
           <div className="flex justify-between">
             <dt className="text-ink-3">Total de tu inscripción</dt>
             <dd className="font-semibold">
-              {formatImporte(resultado.total, resultado.moneda_codigo)}
+              {formatImporte(resultado.total, resultado.moneda_codigo, monedas)}
             </dd>
           </div>
         </dl>
@@ -327,7 +334,7 @@ export function RegistrarPago({
                 {tienePagoParaDeclarar(previa) ? 'Falta abonar' : 'Total'}
               </dt>
               <dd className="font-semibold">
-                {formatImporte(previa.total, previa.moneda_codigo)}
+                {formatImporte(previa.total, previa.moneda_codigo, monedas)}
               </dd>
             </div>
           </dl>

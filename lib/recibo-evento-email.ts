@@ -68,6 +68,11 @@ export interface ReciboEventoEmailData {
   alimentacionTipo: string | null
   total: number
   monedaCodigo: string
+  /**
+   * Símbolo de la moneda de la inscripción ('$', 'U$S'…), tal como lo cargó el
+   * desktop. Si no viene se muestra el código, que también es inequívoco.
+   */
+  monedaSimbolo?: string | null
   modalidad: ModalidadInscripcion
   /**
    * Registro sin costo: inscripción gratis sin pago posible. Adapta la leyenda
@@ -95,6 +100,7 @@ function esc(s: string): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/** `moneda` es lo que precede al número: el símbolo del evento o, si no hay, el código. */
 function formatImporte(n: number, moneda: string): string {
   return `${moneda} ${n.toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -167,6 +173,9 @@ export function renderReciboEventoEmail(
 ): { subject: string; html: string; text: string } {
   const b = { ...DEFAULT_BRANDING, ...branding }
   const C = getColors(b)
+  // Con qué se rotulan los importes. Todos los de este recibo están en la misma
+  // moneda —la de la inscripción—, así que se resuelve una sola vez.
+  const M = d.monedaSimbolo?.trim() || d.monedaCodigo
   const registroSinCosto = d.registroSinCosto === true
   const esTransferencia = d.modalidad === 'pago_transferencia'
   const fecha = fechaLarga(d.eventoFecha)
@@ -208,7 +217,7 @@ export function renderReciboEventoEmail(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:${C.primary};border-radius:8px;">
                 <tr><td style="padding:24px;text-align:center;">
                   <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:1px;">Importe Inscripción</p>
-                  <p style="margin:8px 0 0;font-size:32px;font-weight:bold;color:${C.white};">${formatImporte(d.total, d.monedaCodigo)}</p>
+                  <p style="margin:8px 0 0;font-size:32px;font-weight:bold;color:${C.white};">${formatImporte(d.total, M)}</p>
                 </td></tr>
               </table>
             </td>
@@ -238,8 +247,8 @@ export function renderReciboEventoEmail(
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Participante</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.socioNombre)}</td></tr>
                 ${b.mostrar_documento ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Documento</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.socioDocumento)}</td></tr>` : ''}
                 ${d.categoriaNombre ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Categoría</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.categoriaNombre)} · ${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'}</td></tr>` : ''}
-                ${d.llevaTransporte || d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.transporteImporte > 0 ? formatImporte(d.transporteImporte, d.monedaCodigo) : 'Sí · sin costo'}</td></tr>` : ''}
-                ${d.llevaAlimentacion || d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, d.monedaCodigo)}` : ''}</td></tr>` : ''}
+                ${d.llevaTransporte || d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.transporteImporte > 0 ? formatImporte(d.transporteImporte, M) : 'Sí · sin costo'}</td></tr>` : ''}
+                ${d.llevaAlimentacion || d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, M)}` : ''}</td></tr>` : ''}
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${registroSinCosto ? 'Registro sin costo' : esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}</td></tr>
                 ${registroSinCosto && d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">N.º de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
               </table>
@@ -252,7 +261,7 @@ export function renderReciboEventoEmail(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
                 <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Datos para el pago</td></tr>
                 ${d.datosDeposito ? `<tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>` : ''}
-                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:180px;">Importe a pagar</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, d.monedaCodigo)}</td></tr>
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:180px;">Importe a pagar</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, M)}</td></tr>
                 ${d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
               </table>
               <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Después de transferir, registrá el pago con el botón de arriba para que podamos verificarlo.</p>
@@ -265,7 +274,7 @@ export function renderReciboEventoEmail(
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
                 <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Pago declarado</td></tr>
                 <tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>
-                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Importe</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, d.monedaCodigo)}</td></tr>
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Importe</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, M)}</td></tr>
                 ${d.referenciaDeclarada ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia declarada</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.referenciaDeclarada)}</td></tr>` : ''}
               </table>
               <p style="margin:8px 0 0;font-size:12px;color:#94949b;">Vamos a verificar tu transferencia para confirmar la inscripción.</p>
@@ -304,19 +313,19 @@ export function renderReciboEventoEmail(
     fecha ? `Fecha: ${fecha}` : '',
     d.categoriaNombre ? `Categoría: ${d.categoriaNombre} (${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'})` : '',
     `Modalidad: ${registroSinCosto ? 'Registro sin costo' : esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}`,
-    registroSinCosto ? (d.numero ? `N.º de inscripción: ${d.numero}` : '') : `Total: ${formatImporte(d.total, d.monedaCodigo)}`,
+    registroSinCosto ? (d.numero ? `N.º de inscripción: ${d.numero}` : '') : `Total: ${formatImporte(d.total, M)}`,
   ].filter(Boolean)
   if (tieneSorteo) {
     lineas.push('', `TU NÚMERO PARA EL SORTEO: ${d.numeroSorteo}`, 'Guardá este número: es el que participa del sorteo.')
   }
   if (esTransferencia && d.datosDeposito) {
-    lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, d.monedaCodigo)}`)
+    lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, M)}`)
     if (d.referenciaDeclarada) lineas.push(`Referencia declarada: ${d.referenciaDeclarada}`)
   }
   if (!esTransferencia && !registroSinCosto && (d.datosDeposito || d.numero)) {
     lineas.push('', 'Datos para el pago:')
     if (d.datosDeposito) lineas.push(d.datosDeposito)
-    lineas.push(`Importe a pagar: ${formatImporte(d.total, d.monedaCodigo)}`)
+    lineas.push(`Importe a pagar: ${formatImporte(d.total, M)}`)
     if (d.numero) lineas.push(`Referencia de inscripción: ${d.numero}`)
     if (d.urlPago) lineas.push('', `Registrá tu pago acá: ${d.urlPago}`)
   }

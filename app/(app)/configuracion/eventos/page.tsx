@@ -41,6 +41,8 @@ interface EventoRow {
   alimentacion_disponible: boolean
   sorteo_disponible: boolean
   datos_deposito: string | null
+  /** Datos de cuenta por moneda (eventos multimoneda). Los define el desktop. */
+  datos_deposito_monedas: Record<string, string> | null
   /** Política de admisión. La define el desktop; acá sólo se muestra. */
   registro_permitido: 'todos' | 'padron' | 'socios_al_dia' | null
 }
@@ -470,7 +472,10 @@ export default function ConfiguracionEventosPage() {
                     label="Permitir pago por transferencia"
                     checked={cfg.permitir_pago_transferencia}
                     onChange={(v) => set('permitir_pago_transferencia', v)}
-                    disabled={!evento?.datos_deposito}
+                    disabled={
+                      !evento?.datos_deposito &&
+                      Object.keys(evento?.datos_deposito_monedas ?? {}).length === 0
+                    }
                     disabledReason="Este evento no tiene datos de depósito cargados en el desktop."
                   />
                 </div>

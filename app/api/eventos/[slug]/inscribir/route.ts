@@ -14,6 +14,9 @@ import {
   contarInscriptos,
   loadEventoRemotoBySlug,
   nombreCategoriaSocio,
+  normalizarDatosDepositoMonedas,
+  normalizarExtrasPrecio,
+  normalizarMonedas,
   normalizarRegistroPermitido,
   parseOpcionesAlimentacion,
   precioCategoria,
@@ -23,8 +26,11 @@ import {
 } from '@/lib/eventos'
 import {
   ALIMENTACION_SIN_RESTRICCION,
+  datosDepositoDe,
   elegibleParaSorteo,
+  esMonedaDelEvento,
   motivoNoPuedeInscribirse,
+  precioExtra,
   puedeInscribirse,
 } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
@@ -55,6 +61,12 @@ interface Body {
   /** Opt-in al sorteo del evento. La elegibilidad se re-decide server-side. */
   participa_sorteo?: unknown
   modalidad?: unknown
+  /**
+   * Moneda elegida en el formulario. Se valida contra las monedas del evento y,
+   * si no es una de ellas, se cae a la base: el importe lo fija el server y
+   * tiene que salir de una moneda que el evento realmente publique.
+   */
+  moneda_codigo?: unknown
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
@@ -108,6 +120,24 @@ export async function POST(
     if (evento.estado !== 'abierto') {
       return NextResponse.json({ error: 'Las inscripciones están cerradas' }, { status: 409 })
     }
+
+    // Moneda de la inscripción. La elige la persona, pero se re-valida acá igual
+    // que el importe: si viene una que el evento no publica, manda la base.
+    // TODA la inscripción queda en esta moneda —categoría, locomoción y
+    // alimentación—: nunca se mezclan, y no se convierte nada (no hay cotización).
+    const monedas = normalizarMonedas(evento)
+    const monedaBase = monedas[0].codigo
+    const monedaPedida = str(body.moneda_codigo)
+    const moneda =
+      monedaPedida && esMonedaDelEvento(monedas, monedaPedida) ? monedaPedida : monedaBase
+    const extrasPrecio = normalizarExtrasPrecio(evento)
+    const datosDeposito = datosDepositoDe(
+      {
+        datos_deposito: evento.datos_deposito,
+        datos_deposito_monedas: normalizarDatosDepositoMonedas(evento),
+      },
+      moneda,
+    )
 
     // Config web del evento. NO se confía en el cliente: los campos ocultos se
     // descartan y los obligatorios se exigen acá.
@@ -217,7 +247,13 @@ export async function POST(
       categoriaIdFinal = null
     } else if (evento.tipo === 'con_costo') {
       if (esOtros) {
-        const max = await precioMaximoCategoria(admin, evento.id, part.tipo_participante)
+        const max = await precioMaximoCategoria(
+          admin,
+          evento.id,
+          part.tipo_participante,
+          moneda,
+          monedaBase,
+        )
         if (max == null) {
           return NextResponse.json(
             { error: 'El evento no tiene tarifas definidas para tu tipo de participante' },
@@ -228,7 +264,14 @@ export async function POST(
         categoriaNombre = categoriaOtros
         categoriaIdFinal = null
       } else {
-        const precio = await precioCategoria(admin, evento.id, categoriaId, part.tipo_participante)
+        const precio = await precioCategoria(
+          admin,
+          evento.id,
+          categoriaId,
+          part.tipo_participante,
+          moneda,
+          monedaBase,
+        )
         if (!precio) {
           return NextResponse.json(
             { error: 'La categoría no tiene precio para tu tipo de participante' },
@@ -271,10 +314,10 @@ export async function POST(
       }
       llevaTransporte = true
       if (evento.transporte_con_costo) {
+        // Precio de la moneda elegida. Sin entrada para esa moneda el extra va
+        // en 0: nunca se cae al precio de otra moneda (no hay conversión).
         transporteImporte =
-          part.tipo_participante === 'socio'
-            ? Number(evento.transporte_importe_socio)
-            : Number(evento.transporte_importe_no_socio)
+          precioExtra(extrasPrecio, 'transporte', part.tipo_participante, moneda) ?? 0
       }
     }
 
@@ -292,9 +335,7 @@ export async function POST(
         tipoElegido || (opciones.length > 0 ? ALIMENTACION_SIN_RESTRICCION : null)
       if (evento.alimentacion_con_costo) {
         alimentacionImporte =
-          part.tipo_participante === 'socio'
-            ? Number(evento.alimentacion_importe_socio)
-            : Number(evento.alimentacion_importe_no_socio)
+          precioExtra(extrasPrecio, 'alimentacion', part.tipo_participante, moneda) ?? 0
       }
     }
 
@@ -318,14 +359,17 @@ export async function POST(
 
     // Modalidad efectiva: "pago_transferencia" (= "pago realizado") sólo si el
     // evento habilita esa modalidad, la config web la permite, publica datos de
-    // depósito y hay algo para pagar; si no, es una preinscripción (reserva de
-    // cupo).
+    // depósito PARA ESTA MONEDA y hay algo para pagar; si no, es una
+    // preinscripción (reserva de cupo).
+    //
+    // El total suma tres importes que ya están todos en la moneda elegida: acá
+    // nunca se suman monedas distintas.
     const totalAPagar = importe + transporteImporte + alimentacionImporte
     const modalidadFinal =
       modalidad === 'pago_transferencia' &&
       evento.permitir_pago_realizado &&
       cfg.permitir_pago_transferencia &&
-      !!evento.datos_deposito &&
+      !!datosDeposito &&
       totalAPagar > 0
         ? 'pago_transferencia'
         : 'reserva'
@@ -376,7 +420,9 @@ export async function POST(
       mail: mail || null,
       telefono: telefono || null,
       importe,
-      moneda_codigo: evento.moneda_codigo,
+      // La moneda ELEGIDA, no la del evento: es lo que hace que la inscripción
+      // llegue al desktop lista para contabilizar en la moneda correcta.
+      moneda_codigo: moneda,
       cuotas_pendientes: part.cuotas_pendientes,
       lleva_transporte: llevaTransporte,
       transporte_importe: transporteImporte,
@@ -528,7 +574,7 @@ export async function POST(
           Number(inserted.alimentacion_importe),
         modalidad: (inserted.modalidad as string) ?? 'reserva',
         datos_deposito:
-          inserted.modalidad === 'pago_transferencia' ? evento.datos_deposito : null,
+          inserted.modalidad === 'pago_transferencia' ? datosDeposito : null,
       },
     })
   } catch (err) {

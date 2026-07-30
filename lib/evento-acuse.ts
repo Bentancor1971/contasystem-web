@@ -10,6 +10,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { EventoRemoto, EventoWebConfig, ModalidadInscripcion } from '@/lib/eventos-types'
+import { datosDepositoDe, simboloDe } from '@/lib/eventos-types'
+import { normalizarDatosDepositoMonedas, normalizarMonedas } from '@/lib/eventos'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
 import { sendInscripcionEmail } from '@/lib/mailer'
 import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
@@ -95,6 +97,18 @@ export async function enviarAcuseInscripcion(
     // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
     const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
 
+    // Moneda de ESTA inscripción (la que eligió la persona, no la base del
+    // evento): define con qué símbolo se muestran los importes y a qué cuenta
+    // se le pide transferir. Nadie transfiere dólares a una cuenta en pesos.
+    const monedaSimbolo = simboloDe(normalizarMonedas(evento), inscripcion.moneda_codigo)
+    const datosDeposito = datosDepositoDe(
+      {
+        datos_deposito: evento.datos_deposito,
+        datos_deposito_monedas: normalizarDatosDepositoMonedas(evento),
+      },
+      inscripcion.moneda_codigo,
+    )
+
     // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
     // El asunto es texto plano; el cuerpo es HTML (variables escapadas y saneado).
     const varsTexto: Record<string, string> = {
@@ -105,7 +119,7 @@ export async function enviarAcuseInscripcion(
       // {numero_sorteo} en un evento sin sorteo no muestra nada, no "null".
       numero_sorteo:
         inscripcion.numero_sorteo == null ? '' : String(inscripcion.numero_sorteo),
-      total: `${inscripcion.moneda_codigo} ${total.toFixed(2)}`,
+      total: `${monedaSimbolo} ${total.toFixed(2)}`,
     }
     const varsHtml = Object.fromEntries(
       Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
@@ -122,7 +136,7 @@ export async function enviarAcuseInscripcion(
     // EventoForm/RegistrarPago: transferencia habilitada y datos de depósito
     // cargados). En un registro sin costo no hay pago que registrar.
     const urlPago =
-      !esPago && !registroSinCosto && origen && cfg.permitir_pago_transferencia && evento.datos_deposito
+      !esPago && !registroSinCosto && origen && cfg.permitir_pago_transferencia && datosDeposito
         ? `${origen}/e/${evento.slug}?pago=1`
         : null
 
@@ -149,9 +163,10 @@ export async function enviarAcuseInscripcion(
         alimentacionTipo: inscripcion.alimentacion_tipo,
         total,
         monedaCodigo: inscripcion.moneda_codigo,
+        monedaSimbolo,
         modalidad: inscripcion.modalidad,
         registroSinCosto,
-        datosDeposito: evento.datos_deposito,
+        datosDeposito,
         numero: inscripcion.numero,
         numeroSorteo: inscripcion.numero_sorteo,
         urlPago,

@@ -118,6 +118,11 @@ export async function POST(
       .limit(1)
       .maybeSingle()
 
+    // La moneda del pago es SIEMPRE la de la inscripción: acá no se elige nada.
+    // Se paga en la moneda del precio, y el desktop bloquea la conciliación si
+    // el pago declarado no coincide con la inscripción.
+    const monedaPago = (insc.moneda_codigo as string | null) ?? evento.moneda_codigo
+
     const fila = {
       inscripcion_id: insc.id as string,
       evento_id: evento.id,
@@ -125,13 +130,18 @@ export async function POST(
       documento_hash: documentoHash,
       referencia,
       importe_declarado: importeDeclarado,
+      moneda_codigo: monedaPago,
       estado: 'pendiente',
     }
 
     const { error: saveErr } = yaPendiente
       ? await admin
           .from('pagos_evento_remoto')
-          .update({ referencia, importe_declarado: importeDeclarado })
+          .update({
+            referencia,
+            importe_declarado: importeDeclarado,
+            moneda_codigo: monedaPago,
+          })
           .eq('id', yaPendiente.id)
       : await admin.from('pagos_evento_remoto').insert(fila)
 
@@ -179,7 +189,7 @@ export async function POST(
           lleva_alimentacion: !!insc.lleva_alimentacion,
           alimentacion_importe: Number(insc.alimentacion_importe ?? 0),
           alimentacion_tipo: (insc.alimentacion_tipo as string | null) ?? null,
-          moneda_codigo: (insc.moneda_codigo as string | null) ?? evento.moneda_codigo,
+          moneda_codigo: monedaPago,
           modalidad: 'pago_transferencia',
           referencia_transferencia: referencia,
           // El número se asignó al inscribirse; declarar el pago no lo cambia.
@@ -197,7 +207,7 @@ export async function POST(
       actualizado: !!yaPendiente,
       numero: (insc.numero as string | null) ?? null,
       total,
-      moneda_codigo: insc.moneda_codigo as string,
+      moneda_codigo: monedaPago,
       // Mail ENMASCARADO al que salió la copia. null si no se envió (sin casilla
       // configurada, sin mail en la inscripción o error): la UI no lo promete.
       mail_mask: mailMask,

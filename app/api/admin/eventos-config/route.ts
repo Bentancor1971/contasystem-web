@@ -28,7 +28,9 @@ const FALTA_TABLA =
 const EVENTO_COLS =
   'id, slug, nombre, tipo, estado, fecha_inicio, texto_antes, texto_despues, ' +
   'transporte_disponible, alimentacion_disponible, sorteo_disponible, datos_deposito, ' +
-  'registro_permitido'
+  // Cuentas por moneda: un evento multimoneda puede tener cargada sólo la de
+  // dólares y ninguna genérica, y aun así admitir transferencia.
+  'datos_deposito_monedas, registro_permitido'
 
 /** Verifica que el evento exista y pertenezca a la empresa. */
 async function eventoDeEmpresa(
