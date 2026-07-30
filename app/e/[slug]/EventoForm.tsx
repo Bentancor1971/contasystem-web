@@ -339,6 +339,13 @@ export function EventoForm({
   const hayDatosEnFicha =
     nombreEnFicha || apellidoEnFicha || mailEnFicha || telefonoEnFicha
 
+  // Socio por estado de registro (Activo) pero con cuotas pendientes. Es el
+  // ÚNICO que ve los avisos de cuotas: al resto del padrón —estados que no son
+  // de socio— hablarle de deuda no le aplica y confunde. Lo resuelve el server
+  // (la lista de estados que cuentan como socio es de la empresa); ver
+  // `socio_con_deuda` en ResolucionPublica.
+  const socioConDeuda = !!resuelto?.socio_con_deuda
+
   // Config web del evento. Los flags `mostrar_*` sólo OCULTAN: nunca habilitan
   // algo que el desktop no configuró (transporte/alimentación disponibles).
   const cfg = evento.config
@@ -1156,8 +1163,8 @@ export function EventoForm({
   // Título del bloque "no socio". Pedir datos sólo si de verdad falta alguno:
   // quien está en el padrón (típicamente el socio con cuotas pendientes) los
   // tiene todos en la ficha y no tiene nada que completar —ahí "Completá tus
-  // datos" contradice lo que está viendo—. El resto del bloque (tarifa y aviso
-  // de cuotas) sigue aplicando en los dos casos.
+  // datos" contradice lo que está viendo—. La tarifa sigue aplicando en los dos
+  // casos; el aviso de cuotas no (ver `socioConDeuda`).
   const tituloNoSocio =
     pendientes.length === 0
       ? `Ya podés ${accion}`
@@ -1252,26 +1259,31 @@ export function EventoForm({
               </p>
             </Leyenda>
           ) : (
-            /* No socio. Cubre por igual a quien no está en el padrón y al socio con
-               cuotas pendientes: el texto no nombra la deuda, sólo sugiere consultar.
-               (El bloque de datos de ficha que sigue sí distingue los dos casos —al
-               socio con deuda le muestra sus masks—; ver ResolucionPublica.)
-               En un registro sin costo no se menciona tarifa —no la hay—, pero sí
-               el aviso de cuotas: ser socio al día sigue gateando el sorteo. */
+            /* No socio. Cubre tres casos distintos: quien no está en el padrón,
+               quien está con un estado que no es de socio (nunca lo fue, o está de
+               baja) y el socio con cuotas pendientes. El aviso de cuotas es SÓLO
+               para el último: a los otros dos no les aplica y los confunde —"tenés
+               cuotas pendientes" a quien nunca fue socio no significa nada—. Ver
+               `socio_con_deuda`.
+               En un registro sin costo no se menciona tarifa —no la hay—, así que
+               al no socio sin deuda le queda sólo el título. */
             <Leyenda html={leyendas.no_socio}>
               <div className="rounded-lg border border-line bg-paper-2 px-4 py-3">
                 <p className="font-medium">{tituloNoSocio}</p>
-                <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
-                  <Info size={15} className="mt-0.5 shrink-0" />
-                  <span>
-                    {!registroSinCosto && (
-                      <>
-                        Se aplica la tarifa <strong>No socio</strong>.{' '}
-                      </>
-                    )}
-                    Si sos socio y tenés cuotas pendientes, consultá con la organización.
-                  </span>
-                </p>
+                {(!registroSinCosto || socioConDeuda) && (
+                  <p className="flex items-start gap-2 text-sm text-ink-2 mt-1">
+                    <Info size={15} className="mt-0.5 shrink-0" />
+                    <span>
+                      {!registroSinCosto && (
+                        <>
+                          Se aplica la tarifa <strong>No socio</strong>.{' '}
+                        </>
+                      )}
+                      {socioConDeuda &&
+                        'Si sos socio y tenés cuotas pendientes, consultá con la organización.'}
+                    </span>
+                  </p>
+                )}
               </div>
             </Leyenda>
           )}
@@ -1695,23 +1707,17 @@ export function EventoForm({
             </div>
           )}
 
-          {/* No elegible pero SÍ en el padrón (el caso típico: socio con cuotas
-              pendientes). Se le anuncia el sorteo sin ofrecerle el opt-in: es el
-              único caso en que informar sirve para algo —estando al día
-              participaría— y funciona como recordatorio de ponerse al día. A quien
-              se registra por primera vez no se le muestra nada: no hay nada que
-              pueda hacer con esa información.
-
-              La pertenencia al padrón se infiere de `hayDatosEnFicha` porque el
-              lookup público no expone un bit de padrón (ver ResolucionPublica); no
-              agrega superficie, ya que quien ve sus datos enmascarados en el
-              formulario ya sabe que la cédula está en la base.
+          {/* No elegible por tener cuotas pendientes. Se le anuncia el sorteo sin
+              ofrecerle el opt-in: es el único caso en que informar sirve para algo
+              —estando al día participaría— y funciona como recordatorio de ponerse
+              al día. A quien no es socio (no está en el padrón, o su estado de
+              registro no es de socio) no se le muestra nada: no hay nada que pueda
+              hacer con esa información y el aviso de cuotas no le aplica.
 
               Sin barra de ocupación ni aviso de "sorteo completo": a quien no
               puede pedir número no le importa cuántos quedan, y la barra sería un
-              oráculo gratis. El texto no afirma que tenga deuda, sólo sugiere
-              consultar (mismo criterio que la leyenda de no socio). */}
-          {sorteoVisible && !sorteoElegible && hayDatosEnFicha && (
+              oráculo gratis. */}
+          {sorteoVisible && !sorteoElegible && socioConDeuda && (
             <div className="border-t border-line pt-5">
               <div className="flex items-start gap-3 text-ink-2">
                 <Gift className="w-4 h-4 mt-1 shrink-0" />

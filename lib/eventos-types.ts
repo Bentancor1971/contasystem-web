@@ -478,9 +478,12 @@ export function leyendasPorDefecto(sinCosto: boolean): Record<ClaveLeyenda, stri
     socio: sinCosto
       ? '✓ Socio al día — Registro sin costo'
       : '✓ Socio al día — Evento con costo bonificado',
+    // La línea de cuotas no está acá porque no la ve todo el mundo: el
+    // formulario se la agrega SÓLO al socio con cuotas pendientes (ver
+    // `socio_con_deuda` en ResolucionPublica).
     no_socio: sinCosto
-      ? 'Completá tus datos para registrarte. Si sos socio y tenés cuotas pendientes, consultá con la organización.'
-      : 'Completá tus datos para inscribirte. Se aplica la tarifa No socio. Si sos socio y tenés cuotas pendientes, consultá con la organización.',
+      ? 'Completá tus datos para registrarte.'
+      : 'Completá tus datos para inscribirte. Se aplica la tarifa No socio.',
     datos_ficha:
       'Tus datos ya están registrados (los mostramos parcialmente para que los reconozcas) y no se pueden editar acá: usamos los de tu ficha, y el mail de confirmación llega con tus datos reales. Sólo tenés que completar lo que falte. Si alguno cambió, escribinos por correo y lo actualizamos.',
     sorteo: 'Te asignamos un número y te lo enviamos por correo. Sin costo.',
@@ -579,15 +582,24 @@ export interface CertificadoPublico {
  *
  * Los masks se entregan a TODO el padrón, incluido el socio con cuotas
  * pendientes: si no, tendría que re-escribir datos que la organización ya tiene.
- * Consecuencia asumida: la PRESENCIA de masks es el bit de pertenencia al padrón,
- * y combinada con `tipo_participante: 'no_socio'` permite inferir que esa cédula
- * es de un socio con deuda. `tipo_participante` sigue colapsando "no es socio" y
- * "socio con cuotas pendientes" en un mismo valor, pero ya no alcanza por sí solo
- * para ocultar la deuda; lo que sigue protegiendo el endpoint es el tope por IP
- * (ver lib/rate-limit) y que el número de cuotas nunca se serializa.
+ * Consecuencia asumida: la PRESENCIA de masks es el bit de pertenencia al padrón.
+ *
+ * `socio_con_deuda` va más lejos y dice directamente que esa cédula es de un
+ * socio que debe cuotas. Es una decisión de producto: los avisos de cuotas y de
+ * sorteo sólo le sirven a esa persona, y mostrárselos a quien nunca fue socio
+ * —el resto del padrón— lo confunde. Lo que sigue protegiendo el endpoint es el
+ * tope por IP (ver lib/rate-limit) y que el NÚMERO de cuotas nunca se serializa.
  */
 export interface ResolucionPublica {
   tipo_participante: TipoParticipante
+  /**
+   * Es socio por estado de registro pero NO está al día: el único caso en que
+   * hablarle de cuotas tiene sentido. Todo el resto de los `no_socio` (quien no
+   * está en el padrón y quien está con un estado que no es de socio) lo recibe
+   * en false y no ve ningún aviso de cuotas ni de sorteo. Ver el costo de
+   * privacidad en el comentario de esta interfaz.
+   */
+  socio_con_deuda: boolean
   /** Categoría del socio, para pre-seleccionar la tarifa. null si no se resolvió. */
   categoria_id: string | null
   /** Nombre enmascarado (ej. "PR•••"). null si la cédula no está en el padrón. */
@@ -674,6 +686,13 @@ export interface ResolucionParticipante {
    * se serializa al navegador, ver ResolucionPublica.
    */
   estado_registro_nombre: string | null
+  /**
+   * El estado de la ficha cuenta como socio (típicamente 'Activo'), sin mirar
+   * las cuotas. Se resuelve acá porque la lista de estados válidos es de la
+   * empresa y el navegador no la tiene. Junto con `tipo_participante` separa los
+   * dos motivos de "no socio": estado que no es de socio vs. deuda.
+   */
+  estado_es_socio: boolean
   tipo_participante: TipoParticipante
   /** Categoría del socio definida en la BD (para pre-seleccionar y sugerir tarifa). */
   categoria_id: string | null

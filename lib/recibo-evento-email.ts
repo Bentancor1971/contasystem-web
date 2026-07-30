@@ -188,7 +188,7 @@ export function renderReciboEventoEmail(
             <td style="padding:28px 32px 8px;">
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
               <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${registroSinCosto
-                ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos.'
+                ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'
                 : esTransferencia
                 ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
                 : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? ':' : ' el formulario de inscripción del evento.'}`}</p>
@@ -306,7 +306,7 @@ export function renderReciboEventoEmail(
     '',
     `Hola ${d.socioNombre},`,
     registroSinCosto
-      ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos.'
+      ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'
       : esTransferencia
       ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
       : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? `:\n${d.urlPago}` : ' el formulario de inscripción del evento.'}`,

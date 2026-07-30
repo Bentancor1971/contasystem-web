@@ -539,6 +539,7 @@ export async function resolverParticipante(
     telefono: '',
     cuotas_pendientes: null,
     estado_registro_nombre: null,
+    estado_es_socio: false,
     tipo_participante: 'no_socio',
     categoria_id: null,
     categoria_nombre: null,
@@ -582,8 +583,8 @@ export async function resolverParticipante(
   const cuotas = Number(cuotasRow?.cuotas_pendientes ?? 0)
   const estadoRegistro = (socio.estado_registro_nombre as string | null) ?? null
   const alDia = cuotas < evento.umbral_cuotas_no_socio
-  const tipo: TipoParticipante =
-    esEstadoSocio(estadoRegistro, estadosSocio) && alDia ? 'socio' : 'no_socio'
+  const estadoEsSocio = esEstadoSocio(estadoRegistro, estadosSocio)
+  const tipo: TipoParticipante = estadoEsSocio && alDia ? 'socio' : 'no_socio'
 
   return {
     encontrado: true,
@@ -596,6 +597,7 @@ export async function resolverParticipante(
       ((socio.celular as string | null) || (socio.telefono as string | null)) ?? '',
     cuotas_pendientes: cuotas,
     estado_registro_nombre: estadoRegistro,
+    estado_es_socio: estadoEsSocio,
     tipo_participante: tipo,
     categoria_id: (catRow?.categoria_id as string | null) ?? null,
     categoria_nombre: (catRow?.categoria_nombre as string | null) ?? null,
@@ -715,6 +717,9 @@ export function proyectarResolucionPublica(
   const politica = opts.registroPermitido ?? 'todos'
   return {
     tipo_participante: r.tipo_participante,
+    // Si el estado cuenta como socio y aun así quedó 'no_socio', el único motivo
+    // posible es la deuda: `tipo` sale de estado && cuotas (ver resolverParticipante).
+    socio_con_deuda: r.estado_es_socio && r.tipo_participante === 'no_socio',
     puede_inscribirse: puedeInscribirse(politica, r.tipo_participante, r.encontrado),
     categoria_id: r.categoria_id,
     nombre_mask: enPadron ? maskTexto(r.nombre) : null,

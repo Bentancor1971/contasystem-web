@@ -250,7 +250,8 @@
       "Bash(python -c \"import json,sys; print\\(json.load\\(sys.stdin\\)['scripts']\\)\")",
       "Bash(grep -rn 'importe\\\\|\\\\$ \\\\|precio' \"app/\\(app\\)/configuracion/eventos/page.tsx\")",
       "Bash(curl -s http://localhost:3000/e/evento-prueba-imagenologia-fe5fe68f)",
-      "Bash(grep -oE \"En qué moneda|\\\\$ [0-9.,]+|Categoría\")"
+      "Bash(grep -oE \"En qué moneda|\\\\$ [0-9.,]+|Categoría\")",
+      "PowerShell(npx eslint \"lib/eventos.ts\" \"lib/eventos-types.ts\" \"app/e/[slug]/EventoForm.tsx\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",
