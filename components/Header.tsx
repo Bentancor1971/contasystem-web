@@ -59,7 +59,7 @@ export function Header({ empresa, userEmail, onMenuClick }: HeaderProps) {
           )}
           <div className="flex items-baseline gap-2.5">
             <span className="font-display text-xl font-medium">ContaSystem</span>
-            <span className="label-mono">Carga</span>
+            <span className="label-mono">Gestión</span>
           </div>
           <div className="hidden md:block w-px h-6 bg-line" />
           <div className="hidden md:block">

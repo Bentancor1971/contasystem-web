@@ -69,7 +69,7 @@ export function Sidenav({ permisos, open, onClose }: SidenavProps) {
         <div className="md:hidden flex items-center justify-between px-5 h-16 border-b border-line">
           <div className="flex items-baseline gap-2">
             <span className="font-display text-lg font-medium">ContaSystem</span>
-            <span className="label-mono">Carga</span>
+            <span className="label-mono">Gestión</span>
           </div>
           <button
             onClick={onClose}

@@ -134,6 +134,34 @@
     margin: 6px 0;
   }
 
+  /* ── Comprobante decorativo del hero del login (ver components/Comprobante.tsx) ── */
+  .recibo {
+    width: 244px;
+    padding: 18px 20px 16px;
+    background: var(--paper);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    transform: rotate(1.5deg);
+    box-shadow: 0 1px 0 var(--paper-3), 0 10px 24px -18px rgba(26, 24, 20, 0.5);
+  }
+  .recibo__label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8.5px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .recibo__renglon { height: 5px; border-radius: 2px; background: var(--paper-3); }
+  .recibo__qr {
+    width: 34px; height: 34px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 1.5px;
+  }
+  .recibo__qr i { background: var(--ink); border-radius: 0.5px; }
+  .recibo__qr i.off { background: transparent; }
+
   /* ── Inputs: línea inferior estilo formulario impreso ── */
   .field {
     background: transparent;
@@ -421,17 +449,43 @@
     <header>
       <div class="flex items-baseline gap-3">
         <span class="font-display text-3xl lg:text-4xl font-medium">ContaSystem</span>
-        <span class="label-mono mt-2">Carga</span>
+        <span class="label-mono mt-2">Gestión</span>
       </div>
       <div class="perforated mt-5 max-w-[220px]"></div>
     </header>
 
-    <!-- Sello centro -->
+    <!-- Comprobante sellado (centro) -->
     <div class="flex-1 flex items-center justify-center my-8">
-      <div class="stamp">
-        <div class="stamp__top">Modalidad</div>
-        <div class="stamp__main">Directa</div>
-        <div class="stamp__bot">v 1 · 2026</div>
+      <div class="relative">
+        <div class="recibo" aria-hidden>
+          <div class="flex items-baseline justify-between">
+            <span class="recibo__label">Comprobante</span>
+            <span class="recibo__label">A 000-1204</span>
+          </div>
+          <div class="perforated mt-3 mb-4"></div>
+          <div class="space-y-2.5">
+            <div class="recibo__renglon" style="width:78%"></div>
+            <div class="recibo__renglon" style="width:54%"></div>
+            <div class="recibo__renglon" style="width:66%"></div>
+            <div class="recibo__renglon" style="width:46%"></div>
+            <div class="recibo__renglon" style="width:71%"></div>
+          </div>
+          <div class="perforated mt-4 mb-3.5"></div>
+          <div class="recibo__qr">
+            <i></i><i></i><i class="off"></i><i></i><i></i>
+            <i></i><i class="off"></i><i></i><i class="off"></i><i></i>
+            <i class="off"></i><i></i><i></i><i></i><i class="off"></i>
+            <i></i><i class="off"></i><i></i><i class="off"></i><i></i>
+            <i></i><i></i><i class="off"></i><i></i><i></i>
+          </div>
+        </div>
+        <div class="absolute top-[28%] -right-11 z-10">
+          <div class="stamp">
+            <div class="stamp__top">Modalidad</div>
+            <div class="stamp__main">Directa</div>
+            <div class="stamp__bot">v 1 · 2026</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -439,9 +493,9 @@
     <footer class="font-mono text-xs text-[var(--ink-3)] space-y-2">
       <div class="flex items-center gap-2">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <span>Conexión cifrada · Supabase Auth</span>
+        <span>Conexión cifrada</span>
       </div>
-      <div>sucursales · oficina externa · gerencia</div>
+      <div>Sistema externo</div>
     </footer>
   </aside>
 
@@ -451,17 +505,13 @@
       <!-- Brand mobile -->
       <div class="md:hidden mb-12 flex items-baseline gap-3">
         <span class="font-display text-3xl font-medium">ContaSystem</span>
-        <span class="label-mono mt-2">Carga</span>
+        <span class="label-mono mt-2">Gestión</span>
       </div>
 
-      <h1 class="font-display text-5xl lg:text-[3.5rem] font-medium leading-[0.95] mb-3">
+      <h1 class="font-display text-5xl lg:text-[3.5rem] font-medium leading-[0.95] mb-12">
         Iniciar<br>
         <span class="hl">sesión</span>
       </h1>
-      <p class="text-[var(--ink-2)] mb-12 text-base">
-        Operadores de sucursal. Cargá facturas y recibos en segundos —
-        el contador los importa después.
-      </p>
 
       <form class="space-y-7" onsubmit="event.preventDefault()">
         <div>
@@ -484,7 +534,7 @@
 
       <div class="perforated mt-16"></div>
       <div class="font-mono text-[11px] text-[var(--ink-3)] mt-4 flex justify-between">
-        <span>SOPORTE · soporte@contasystem.uy</span>
+        <span>SOPORTE · bentancormario@gmail.com</span>
         <span>v0.1</span>
       </div>
     </div>
@@ -502,7 +552,7 @@
     <div class="flex items-baseline justify-between mb-16">
       <div class="flex items-baseline gap-3">
         <span class="font-display text-2xl font-medium">ContaSystem</span>
-        <span class="label-mono">Carga</span>
+        <span class="label-mono">Gestión</span>
       </div>
       <a href="#" class="btn-ghost">
         <span class="label-mono">Cerrar sesión</span>
@@ -581,7 +631,7 @@
       <div class="flex items-center gap-5">
         <div class="flex items-baseline gap-2.5">
           <span class="font-display text-xl font-medium">ContaSystem</span>
-          <span class="label-mono">Carga</span>
+          <span class="label-mono">Gestión</span>
         </div>
         <div class="hidden md:block w-px h-6 bg-[var(--line-soft)]"></div>
         <div class="hidden md:block">

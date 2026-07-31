@@ -7,6 +7,7 @@ import { Lock, ArrowRight, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Highlight } from '@/components/Highlight'
 import { Stamp } from '@/components/Stamp'
+import { Comprobante } from '@/components/Comprobante'
 
 const DEV_AUTO_EMAIL = process.env.NEXT_PUBLIC_DEV_AUTO_LOGIN_EMAIL
 const DEV_AUTO_PASSWORD = process.env.NEXT_PUBLIC_DEV_AUTO_LOGIN_PASSWORD
@@ -88,21 +89,28 @@ export default function LoginPage() {
         <header>
           <div className="flex items-baseline gap-3">
             <span className="font-display text-3xl lg:text-4xl font-medium">ContaSystem</span>
-            <span className="label-mono mt-2">Carga</span>
+            <span className="label-mono mt-2">Gestión</span>
           </div>
           <div className="perforated mt-5 max-w-[220px]" />
         </header>
 
+        {/* Comprobante sellado: la boleta de fondo y el sello apoyado
+            sobre su esquina inferior derecha. */}
         <div className="flex-1 flex items-center justify-center my-8">
-          <Stamp />
+          <div className="relative">
+            <Comprobante />
+            <div className="absolute top-[28%] -right-11 z-10">
+              <Stamp />
+            </div>
+          </div>
         </div>
 
         <footer className="font-mono text-xs text-ink-3 space-y-2">
           <div className="flex items-center gap-2">
             <Lock size={13} />
-            <span>Conexión cifrada · Supabase Auth</span>
+            <span>Conexión cifrada</span>
           </div>
-          <div>sucursales · oficina externa · gerencia</div>
+          <div>Sistema externo</div>
         </footer>
       </aside>
 
@@ -112,17 +120,13 @@ export default function LoginPage() {
           {/* Brand en mobile */}
           <div className="md:hidden mb-12 flex items-baseline gap-3">
             <span className="font-display text-3xl font-medium">ContaSystem</span>
-            <span className="label-mono mt-2">Carga</span>
+            <span className="label-mono mt-2">Gestión</span>
           </div>
 
-          <h1 className="font-display text-5xl lg:text-[3.5rem] font-medium leading-[0.95] mb-3">
+          <h1 className="font-display text-5xl lg:text-[3.5rem] font-medium leading-[0.95] mb-12">
             Iniciar<br />
             <Highlight>sesión</Highlight>
           </h1>
-          <p className="text-ink-2 mb-12 text-base">
-            Operadores de sucursal. Cargá facturas y recibos en segundos —
-            el contador los importa después.
-          </p>
 
           <form className="space-y-7" onSubmit={onSubmit}>
             <div>
@@ -164,7 +168,7 @@ export default function LoginPage() {
 
           <div className="perforated mt-16" />
           <div className="font-mono text-[11px] text-ink-3 mt-4 flex justify-between">
-            <span>SOPORTE · soporte@contasystem.uy</span>
+            <span>SOPORTE · bentancormario@gmail.com</span>
             <span>v0.1</span>
           </div>
         </div>

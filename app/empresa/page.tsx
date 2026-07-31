@@ -111,7 +111,7 @@ export default function EmpresaPage() {
         <div className="flex items-baseline justify-between mb-16">
           <div className="flex items-baseline gap-3">
             <span className="font-display text-2xl font-medium">ContaSystem</span>
-            <span className="label-mono">Carga</span>
+            <span className="label-mono">Gestión</span>
           </div>
           <button onClick={logout} className="btn-ghost">
             <span className="label-mono">Cerrar sesión</span>

@@ -433,6 +433,50 @@ html, body {
 }
 
 /* ============================================================
+   Comprobante decorativo — ilustración del hero del login.
+   Es una boleta estilizada: el sello se apoya encima (ver Stamp).
+   Puramente ornamental, no representa un documento real.
+   ============================================================ */
+
+.recibo {
+  width: 244px;
+  padding: 18px 20px 16px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  transform: rotate(1.5deg);
+  box-shadow: 0 1px 0 var(--color-paper-3), 0 10px 24px -18px rgba(26, 24, 20, 0.5);
+}
+
+.recibo__label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+/* Renglones "escritos": barras de tinta muy tenue */
+.recibo__renglon {
+  height: 5px;
+  border-radius: 2px;
+  background: var(--color-paper-3);
+}
+
+/* Glifo de QR — guiño a eventos y certificados, que se validan por QR.
+   No es un QR legible: son módulos decorativos en grilla de 5. */
+.recibo__qr {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 1.5px;
+}
+.recibo__qr i { background: var(--color-ink); border-radius: 0.5px; }
+.recibo__qr i.off { background: transparent; }
+
+/* ============================================================
    Tabs (mobile)
    ============================================================ */
 
