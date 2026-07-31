@@ -539,6 +539,9 @@ export async function POST(
         alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
         moneda_codigo: inserted.moneda_codigo as string,
         modalidad: modalidadFinal,
+        // Recién nacida: 'pendiente' o 'pagado', nunca 'importado'. Va explícito
+        // igual para que el acuse del alta y el de la copia se lean del mismo dato.
+        estado: estadoInicial,
         referencia_transferencia: referencia || null,
         numero_sorteo: numeroSorteo,
       },

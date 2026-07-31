@@ -114,6 +114,63 @@ export async function leerEntradaCruda(
   return data ?? null
 }
 
+/**
+ * Entrada ya emitida por el desktop para una inscripción concreta.
+ *
+ * `numero` es el número de RECIBO del desktop ('RC-042'), no el de la
+ * inscripción ('INS-0011'): son numeraciones distintas. Puede venir null —una
+ * entrada emitida sin recibo detrás, como en los registros sin costo—, así que
+ * quien lo muestre tiene que tolerar su ausencia.
+ */
+export interface EntradaEmitida {
+  token: string
+  numero: string | null
+  emitida_at: string | null
+}
+
+/**
+ * Busca la entrada emitida para (evento, documento), o null si no hay.
+ *
+ * null NO distingue "el evento no usa QR" de "todavía no la emitieron": el
+ * desktop define si el evento emite entradas y la web sólo ve el resultado. Los
+ * dos casos se tratan igual —el comprobante sale sin entrada—, así que la
+ * ambigüedad no molesta.
+ *
+ * `documento` va normalizado (sin puntos ni guiones): el desktop pushea la
+ * cédula con el mismo criterio que la web guarda en la inscripción.
+ *
+ * No lanza: si la consulta falla se degrada a null. Este dato ADORNA el
+ * comprobante; hacer fallar el envío del mail por él sería peor que mandarlo sin
+ * el QR.
+ */
+export async function buscarEntradaEmitida(
+  admin: SupabaseClient,
+  eventoId: string,
+  documentoNormalizado: string,
+): Promise<EntradaEmitida | null> {
+  const doc = documentoNormalizado.trim()
+  if (!doc) return null
+
+  const { data, error } = await admin
+    .from('entradas_remoto')
+    .select('token, numero, emitida_at')
+    .eq('evento_id', eventoId)
+    .eq('documento', doc)
+    // Una entrada anulada es un pase que ya no vale: mandarla sería peor que no
+    // mandar nada.
+    .eq('estado', 'valida')
+    // Si el desktop reemitió, vale la última.
+    .order('emitida_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn(`[entradas] no se pudo resolver la entrada emitida · ${error.message}`)
+    return null
+  }
+  return data ? (data as EntradaEmitida) : null
+}
+
 /** Nombre y apellido separados de una ficha de socio. */
 export interface NombrePartido {
   nombre: string

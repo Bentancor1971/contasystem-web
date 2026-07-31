@@ -26,6 +26,24 @@ export async function qrSvg(texto: string): Promise<string> {
 }
 
 /**
+ * PNG del QR, para ADJUNTAR a un mail (referenciado por `cid:`).
+ *
+ * En el mail no sirve el SVG de arriba: Gmail no renderiza SVG inline y bloquea
+ * las `data:` URIs, así que la única forma de que el código se vea sin salir a
+ * internet es un adjunto embebido. `width` en px del lado del PNG — 320 entra
+ * entero en la columna de 600 del recibo y se escanea bien desde el teléfono.
+ */
+export async function qrPng(texto: string): Promise<Buffer> {
+  return QRCode.toBuffer(texto, {
+    type: 'png',
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 320,
+    color: { dark: '#1a1814', light: '#ffffff' },
+  })
+}
+
+/**
  * Origen público desde los headers del request (Server Component).
  * Equivalente a `origenPublico(req)` de lib/evento-acuse, que trabaja sobre un
  * Request de Route Handler.

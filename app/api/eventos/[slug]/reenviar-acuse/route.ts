@@ -16,7 +16,7 @@ import { loadEventoWebConfig } from '@/lib/evento-web-config'
 import { enviarAcuseInscripcion, origenPublico } from '@/lib/evento-acuse'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
-import type { ModalidadInscripcion } from '@/lib/eventos-types'
+import type { EstadoInscripcionRemota, ModalidadInscripcion } from '@/lib/eventos-types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -104,6 +104,11 @@ export async function POST(
         alimentacion_tipo: (ins.alimentacion_tipo as string | null) ?? null,
         moneda_codigo: (ins.moneda_codigo as string | null) ?? evento.moneda_codigo,
         modalidad: ((ins.modalidad as ModalidadInscripcion | null) ?? 'reserva'),
+        // El estado de HOY, no el del día del alta: si la organización ya
+        // confirmó, la copia sale como comprobante de inscripción confirmada —
+        // con la entrada al evento si el desktop la emitió— y no repite el
+        // "registrá tu pago" que ya no corresponde.
+        estado: (ins.estado as EstadoInscripcionRemota | null) ?? undefined,
         referencia_transferencia: (ins.referencia_transferencia as string | null) ?? null,
         // Esta es la vía por la que se recupera el número: el lookup público no
         // lo expone a propósito (ver InscripcionPrevia), y acá el destino es el

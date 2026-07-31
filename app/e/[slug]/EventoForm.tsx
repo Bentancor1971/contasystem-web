@@ -777,10 +777,13 @@ export function EventoForm({
               copia. Consultá con la organización.
             </p>
           ) : copiaEnviada ? (
-            <p className="flex items-start gap-2 text-sm text-status-ok">
-              <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-              Te enviamos una copia del registro a <strong>{yaInscripto.mail_mask}</strong>. Puede
-              tardar unos minutos; revisá también el correo no deseado.
+            <p className="flex items-start gap-2 rounded-lg border border-status-ok bg-status-ok-bg px-4 py-3 text-sm text-status-ok">
+              <CheckCircle2 size={17} className="mt-0.5 shrink-0" />
+              <span>
+                Te enviamos una copia del registro a{' '}
+                <strong className="break-all">{yaInscripto.mail_mask}</strong>. Puede tardar unos
+                minutos; revisá también el correo no deseado.
+              </span>
             </p>
           ) : confirmandoCopia ? (
             <div className="space-y-3">

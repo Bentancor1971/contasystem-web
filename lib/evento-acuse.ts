@@ -9,13 +9,20 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { EventoRemoto, EventoWebConfig, ModalidadInscripcion } from '@/lib/eventos-types'
+import type {
+  EstadoInscripcionRemota,
+  EventoRemoto,
+  EventoWebConfig,
+  ModalidadInscripcion,
+} from '@/lib/eventos-types'
 import { datosDepositoDe, simboloDe } from '@/lib/eventos-types'
 import { normalizarDatosDepositoMonedas, normalizarMonedas } from '@/lib/eventos'
+import { buscarEntradaEmitida } from '@/lib/entradas'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
 import { sendInscripcionEmail } from '@/lib/mailer'
+import { qrPng } from '@/lib/qr'
 import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
-import type { CambioDato } from '@/lib/recibo-evento-email'
+import type { CambioDato, EntradaRecibo } from '@/lib/recibo-evento-email'
 
 /** Datos de la inscripción tal como quedaron guardados (lo que se le comprueba). */
 export interface InscripcionAcuse {
@@ -34,6 +41,13 @@ export interface InscripcionAcuse {
   alimentacion_tipo: string | null
   moneda_codigo: string
   modalidad: ModalidadInscripcion
+  /**
+   * Estado en el puente. Sólo 'importado' cambia el mail: es la confirmación de
+   * la organización, y a partir de ahí el comprobante deja de reclamar pagos y
+   * pasa a llevar la entrada al evento. Omitirlo = tratarlo como no confirmada,
+   * que es lo correcto para el alta y para la declaración de pago.
+   */
+  estado?: EstadoInscripcionRemota
   referencia_transferencia: string | null
   /**
    * Número correlativo sorteable. null = no participa del sorteo.
@@ -74,6 +88,47 @@ export type ResultadoAcuse =
   | { ok: true }
   | { ok: false; motivo: 'sin_casilla' | 'sin_destino' | 'error'; error?: string }
 
+/** Content-ID con el que el HTML referencia el QR adjunto (`src="cid:…"`). */
+const CID_QR = 'entrada-qr'
+
+/**
+ * Entrada al evento lista para el mail: los datos que se muestran y el PNG del
+ * QR para adjuntar. null = esta inscripción no lleva entrada, y el comprobante
+ * sale igual con los datos del registro solos.
+ *
+ * Devuelve null en tres casos, todos normales:
+ *   - el evento no emite entradas (se define en el desktop);
+ *   - el desktop todavía no emitió la de esta persona;
+ *   - no hay `origen` con qué armar el link (llamadores sin Request).
+ *
+ * Si falla el dibujo del QR se manda igual con `cidQr: null`: el link y el N.º
+ * de recibo son el 90% del valor, y perderlos por un error de render sería peor.
+ */
+async function resolverEntrada(
+  admin: SupabaseClient,
+  evento: EventoRemoto,
+  documento: string,
+  origen: string | null | undefined,
+): Promise<{ recibo: EntradaRecibo; png: Buffer | null } | null> {
+  if (!origen) return null
+
+  const entrada = await buscarEntradaEmitida(admin, evento.id, documento)
+  if (!entrada) return null
+
+  const url = `${origen}/a/${entrada.token}`
+  let png: Buffer | null = null
+  try {
+    png = await qrPng(url)
+  } catch (err) {
+    console.warn(`[acuse] no se pudo generar el QR de la entrada · ${String(err)}`)
+  }
+
+  return {
+    recibo: { url, reciboNumero: entrada.numero, cidQr: png ? CID_QR : null },
+    png,
+  }
+}
+
 export async function enviarAcuseInscripcion(
   admin: SupabaseClient,
   { evento, cfg, destino, documento, nombre, apellido, inscripcion, cambios = [], origen }: EnviarAcuseParams,
@@ -96,6 +151,14 @@ export async function enviarAcuseInscripcion(
     // declarado), que acá no aplican: se ignoran y se usa el recibo branded, ya
     // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
     const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
+
+    // Confirmada por la organización: el comprobante cambia de naturaleza. Ya no
+    // hay trámite pendiente que reclamar, y si el desktop emitió la entrada, ESA
+    // es la parte útil del mail (ver el bloque de entrada en el recibo).
+    const confirmada = inscripcion.estado === 'importado'
+    const entrada = confirmada
+      ? await resolverEntrada(admin, evento, documento, origen)
+      : null
 
     // Moneda de ESTA inscripción (la que eligió la persona, no la base del
     // evento): define con qué símbolo se muestran los importes y a qué cuenta
@@ -127,9 +190,17 @@ export async function enviarAcuseInscripcion(
     // Plantilla según la modalidad: pago declarado usa la propia (con el aviso de
     // verificación de transferencia); preinscripción usa la suya. Si el campo del
     // caso está vacío, cae al recibo branded por defecto.
+    //
+    // Una inscripción CONFIRMADA también las ignora, por el mismo motivo que el
+    // registro sin costo: las dos plantillas propias que existen están redactadas
+    // para un trámite pendiente (pagá / vamos a verificar), ninguna sirve para
+    // quien ya está confirmado, y además el HTML propio reemplaza el cuerpo
+    // entero — se llevaría puesta la entrada con el QR, que es lo único que la
+    // persona necesita en la puerta.
     const esPago = inscripcion.modalidad === 'pago_transferencia'
-    const asuntoTpl = registroSinCosto ? null : esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
-    const htmlTpl = registroSinCosto ? null : esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
+    const sinPlantillaPropia = registroSinCosto || confirmada
+    const asuntoTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
+    const htmlTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
 
     // Link al registro de pago: sólo tiene sentido en la preinscripción con pago
     // pendiente y sólo si el form público lo ofrece (misma condición que
@@ -166,6 +237,8 @@ export async function enviarAcuseInscripcion(
         monedaSimbolo,
         modalidad: inscripcion.modalidad,
         registroSinCosto,
+        confirmada,
+        entrada: entrada?.recibo ?? null,
         datosDeposito,
         numero: inscripcion.numero,
         numeroSorteo: inscripcion.numero_sorteo,
@@ -173,6 +246,16 @@ export async function enviarAcuseInscripcion(
         referenciaDeclarada: inscripcion.referencia_transferencia,
         cambios,
       },
+      attachments: entrada?.png
+        ? [
+            {
+              filename: 'entrada-qr.png',
+              content: entrada.png,
+              cid: CID_QR,
+              contentType: 'image/png',
+            },
+          ]
+        : undefined,
     })
     if (!envio.ok) return { ok: false, motivo: 'error', error: envio.error }
     return { ok: true }

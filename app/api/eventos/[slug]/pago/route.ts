@@ -191,6 +191,11 @@ export async function POST(
           alimentacion_tipo: (insc.alimentacion_tipo as string | null) ?? null,
           moneda_codigo: monedaPago,
           modalidad: 'pago_transferencia',
+          // A propósito sin `estado`: este mail acusa el pago que la persona
+          // ACABA de declarar y que todavía hay que conciliar. Aunque la
+          // inscripción original ya esté 'importado' (pasa: ver la cabecera de
+          // este archivo), la declaración nueva no está verificada, así que no
+          // corresponde el comprobante de "inscripción confirmada".
           referencia_transferencia: referencia,
           // El número se asignó al inscribirse; declarar el pago no lo cambia.
           // Se repite en este acuse para que la copia más reciente lo tenga.

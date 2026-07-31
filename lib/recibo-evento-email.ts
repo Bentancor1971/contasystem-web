@@ -47,6 +47,22 @@ export interface DatoEmpresa {
   pagina_web?: string | null
 }
 
+/**
+ * Entrada al evento tal como se la muestra el recibo. La emite el desktop junto
+ * con el recibo de cobro; la web sólo la reenvía (ver buscarEntradaEmitida).
+ */
+export interface EntradaRecibo {
+  /** Link a /a/{token}: la pantalla pública que redibuja el QR. */
+  url: string
+  /** Número de RECIBO del desktop ('RC-042'), o null si la entrada no tiene. */
+  reciboNumero: string | null
+  /**
+   * `cid` del PNG adjunto con el QR. null = se manda sólo el link (no se pudo
+   * generar la imagen). El mail nunca queda sin salida: el link siempre está.
+   */
+  cidQr: string | null
+}
+
 export interface ReciboEventoEmailData {
   empresa: DatoEmpresa
   eventoNombre: string
@@ -80,6 +96,16 @@ export interface ReciboEventoEmailData {
    * número de sorteo, si lo hay, se muestra igual. Lo resuelve el caller.
    */
   registroSinCosto?: boolean
+  /**
+   * La organización ya confirmó la inscripción (estado 'importado' del puente).
+   * Manda sobre `modalidad`: sin esto, la copia que pide alguien ya confirmado
+   * sale con el texto del trámite pendiente —"registrá tu pago", "vamos a
+   * verificar la transferencia"— que era verdad el día que se inscribió y ahora
+   * es falso. Saca los llamados a pagar y cambia el asunto.
+   */
+  confirmada?: boolean
+  /** Entrada emitida por el desktop, si el evento las usa y ya salió la de esta persona. */
+  entrada?: EntradaRecibo | null
   /** Datos de la cuenta donde depositar (texto libre del evento). */
   datosDeposito: string | null
   numero: string | null
@@ -181,13 +207,19 @@ export function renderReciboEventoEmail(
   const fecha = fechaLarga(d.eventoFecha)
   // El 0 es un número de sorteo válido (el rango arranca ahí por defecto).
   const tieneSorteo = d.numeroSorteo != null
+  // Ya confirmada: no hay trámite pendiente que reclamarle a nadie. Apaga los
+  // dos bloques de pago y el botón de "registrar mi pago".
+  const confirmada = d.confirmada === true
+  const entrada = d.entrada ?? null
 
   const contenido = `
           <!-- Saludo -->
           <tr>
             <td style="padding:28px 32px 8px;">
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
-              <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${registroSinCosto
+              <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${confirmada
+                ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`
+                : registroSinCosto
                 ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'
                 : esTransferencia
                 ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
@@ -195,7 +227,34 @@ export function renderReciboEventoEmail(
             </td>
           </tr>
 
-          ${!esTransferencia && !registroSinCosto && d.urlPago ? `
+          ${entrada ? `
+          <!-- Entrada al evento: es lo más parecido al recibo formal que la web
+               puede reenviar, y lo único de este mail que se usa en la puerta.
+               Por eso va arriba de todo. El QR viaja adjunto (cid) porque Gmail
+               no muestra SVG inline ni data: URIs; el link es el respaldo para
+               quien tenga las imágenes bloqueadas. -->
+          <tr>
+            <td style="padding:20px 32px 4px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:2px solid ${C.primary};border-radius:8px;overflow:hidden;">
+                <tr style="background-color:${C.primary};"><td style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Tu entrada al evento</td></tr>
+                <tr>
+                  <td style="padding:20px 16px;text-align:center;">
+                    ${entrada.cidQr ? `<img src="cid:${esc(entrada.cidQr)}" alt="Código QR de tu entrada" width="200" style="display:block;margin:0 auto 12px;width:200px;max-width:100%;height:auto;border:0;" />` : ''}
+                    <p style="margin:0;font-size:13px;color:${C.grayText};">Mostrá este código en la puerta. Lo escanea la organización al ingresar.</p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:14px auto 0;">
+                      <tr><td style="background-color:${C.accent};border-radius:6px;">
+                        <a href="${esc(entrada.url)}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:bold;color:${C.white};text-decoration:none;">Ver mi entrada</a>
+                      </td></tr>
+                    </table>
+                    <p style="margin:10px 0 0;font-size:12px;color:#94949b;">Si no ves el código, abrí este enlace: <a href="${esc(entrada.url)}" style="color:${C.secondary};">${esc(entrada.url)}</a></p>
+                  </td>
+                </tr>
+                ${entrada.reciboNumero ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;text-align:center;font-size:13px;color:${C.grayText};">Recibo N.º <strong>${esc(entrada.reciboNumero)}</strong></td></tr>` : ''}
+              </table>
+            </td>
+          </tr>` : ''}
+
+          ${!confirmada && !esTransferencia && !registroSinCosto && d.urlPago ? `
           <!-- Botón: registrar el pago -->
           <tr>
             <td style="padding:12px 32px 4px;">
@@ -249,13 +308,15 @@ export function renderReciboEventoEmail(
                 ${d.categoriaNombre ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Categoría</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.categoriaNombre)} · ${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'}</td></tr>` : ''}
                 ${d.llevaTransporte || d.transporteImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Transporte</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.transporteImporte > 0 ? formatImporte(d.transporteImporte, M) : 'Sí · sin costo'}</td></tr>` : ''}
                 ${d.llevaAlimentacion || d.alimentacionTipo || d.alimentacionImporte > 0 ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Alimentación</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${d.alimentacionTipo ? esc(d.alimentacionTipo) : 'Sí'}${d.alimentacionImporte > 0 ? ` · ${formatImporte(d.alimentacionImporte, M)}` : ''}</td></tr>` : ''}
-                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${registroSinCosto ? 'Registro sin costo' : esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}</td></tr>
-                ${registroSinCosto && d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">N.º de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
+                <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Modalidad</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${registroSinCosto ? 'Registro sin costo' : esTransferencia ? (confirmada ? 'Pago realizado' : 'Pago realizado (a verificar)') : 'Preinscripción (pago después)'}</td></tr>
+                ${confirmada ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Estado</td><td style="padding:10px 16px;font-size:14px;color:#15803d;font-weight:bold;">Confirmada</td></tr>` : ''}
+                ${confirmada && esTransferencia && d.referenciaDeclarada ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia declarada</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.referenciaDeclarada)}</td></tr>` : ''}
+                ${(registroSinCosto || confirmada) && d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">N.º de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
               </table>
             </td>
           </tr>
 
-          ${!esTransferencia && !registroSinCosto && (d.datosDeposito || d.numero) ? `
+          ${!confirmada && !esTransferencia && !registroSinCosto && (d.datosDeposito || d.numero) ? `
           <tr>
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
@@ -268,7 +329,7 @@ export function renderReciboEventoEmail(
             </td>
           </tr>` : ''}
 
-          ${esTransferencia && d.datosDeposito ? `
+          ${!confirmada && esTransferencia && d.datosDeposito ? `
           <tr>
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
@@ -293,7 +354,9 @@ export function renderReciboEventoEmail(
 
           <tr><td style="height:16px;"></td></tr>`
 
-  const subject = registroSinCosto
+  const subject = confirmada
+    ? `Inscripción confirmada — ${d.eventoNombre}`
+    : registroSinCosto
     ? `Inscripción registrada — ${d.eventoNombre}`
     : esTransferencia
     ? `Inscripción con pago declarado — ${d.eventoNombre}`
@@ -302,27 +365,36 @@ export function renderReciboEventoEmail(
   const html = baseLayout(d.empresa, contenido, b)
 
   const lineas: string[] = [
-    `${registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
+    `${confirmada ? 'Inscripción confirmada' : registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
     '',
     `Hola ${d.socioNombre},`,
-    registroSinCosto
+    confirmada
+      ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`
+      : registroSinCosto
       ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'
       : esTransferencia
       ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
       : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? `:\n${d.urlPago}` : ' el formulario de inscripción del evento.'}`,
     fecha ? `Fecha: ${fecha}` : '',
     d.categoriaNombre ? `Categoría: ${d.categoriaNombre} (${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'})` : '',
-    `Modalidad: ${registroSinCosto ? 'Registro sin costo' : esTransferencia ? 'Pago realizado (a verificar)' : 'Preinscripción (pago después)'}`,
-    registroSinCosto ? (d.numero ? `N.º de inscripción: ${d.numero}` : '') : `Total: ${formatImporte(d.total, M)}`,
+    `Modalidad: ${registroSinCosto ? 'Registro sin costo' : esTransferencia ? (confirmada ? 'Pago realizado' : 'Pago realizado (a verificar)') : 'Preinscripción (pago después)'}`,
+    confirmada ? 'Estado: Confirmada' : '',
+    registroSinCosto || confirmada ? (d.numero ? `N.º de inscripción: ${d.numero}` : '') : '',
+    registroSinCosto ? '' : `Total: ${formatImporte(d.total, M)}`,
   ].filter(Boolean)
+  if (entrada) {
+    lineas.push('', 'TU ENTRADA AL EVENTO')
+    if (entrada.reciboNumero) lineas.push(`Recibo N.º ${entrada.reciboNumero}`)
+    lineas.push('Mostrá el código QR en la puerta. Si no lo ves en el mail, abrí:', entrada.url)
+  }
   if (tieneSorteo) {
     lineas.push('', `TU NÚMERO PARA EL SORTEO: ${d.numeroSorteo}`, 'Guardá este número: es el que participa del sorteo.')
   }
-  if (esTransferencia && d.datosDeposito) {
+  if (!confirmada && esTransferencia && d.datosDeposito) {
     lineas.push('', 'Pago declarado:', d.datosDeposito, `Importe: ${formatImporte(d.total, M)}`)
     if (d.referenciaDeclarada) lineas.push(`Referencia declarada: ${d.referenciaDeclarada}`)
   }
-  if (!esTransferencia && !registroSinCosto && (d.datosDeposito || d.numero)) {
+  if (!confirmada && !esTransferencia && !registroSinCosto && (d.datosDeposito || d.numero)) {
     lineas.push('', 'Datos para el pago:')
     if (d.datosDeposito) lineas.push(d.datosDeposito)
     lineas.push(`Importe a pagar: ${formatImporte(d.total, M)}`)
