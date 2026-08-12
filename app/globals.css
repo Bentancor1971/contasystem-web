@@ -502,6 +502,174 @@ html, body {
 }
 
 /* ============================================================
+   Boleta de votación (/v/[token])
+
+   Se vota desde el teléfono, muchas veces por gente mayor y en una sola
+   sesión. De ahí las tres reglas de este bloque:
+     · nada por debajo de 17px ni de 44px de alto tocable;
+     · el estado "elegido" se ve por borde Y por fondo, no sólo por el punto
+       del control (que en pantallas chicas casi no se distingue);
+     · todo es HTML nativo —radio, checkbox, <details>—, así la boleta se lee
+       y se entiende aunque el JavaScript no llegue a correr.
+   ============================================================ */
+
+.voto-papeleta {
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: white;
+  padding: 20px 16px;
+}
+@media (min-width: 640px) {
+  .voto-papeleta { padding: 24px; }
+}
+
+/* Papeleta obligatoria que quedó incompleta. Se marca recién al intentar
+   avanzar, nunca mientras la persona todavía está eligiendo. */
+.voto-papeleta--error {
+  border-color: var(--color-status-no);
+  box-shadow: inset 0 0 0 1px var(--color-status-no);
+}
+
+.voto-opcion {
+  border: 1.5px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-paper);
+  transition: border-color .15s, background .15s;
+}
+.voto-opcion--sel {
+  border-color: var(--color-amber-deep);
+  border-width: 2px;
+  background: var(--color-amber-light);
+}
+/* Llegó al tope de selecciones: esta opción ya no se puede sumar. */
+.voto-opcion--tope { opacity: .45; }
+
+.voto-fila {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  min-height: 56px;
+  cursor: pointer;
+}
+.voto-opcion--sel .voto-fila { padding: 13px 15px; }
+
+.voto-control {
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  flex: none;
+  accent-color: var(--color-amber-deep);
+}
+
+.voto-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 2px 8px;
+  margin-right: 10px;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: 2px;
+}
+
+.voto-titulo { font-size: 18px; font-weight: 600; line-height: 1.3; }
+.voto-lema {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--color-amber-deep);
+}
+.voto-desc {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+}
+
+/* Voto en blanco: punteado y sin ámbar. No compite visualmente con las
+   opciones — es una elección más, pero no es "la opción de la casa". */
+.voto-blanco {
+  border-style: dashed;
+  background: var(--color-paper-2);
+}
+.voto-blanco.voto-opcion--sel {
+  border-color: var(--color-ink);
+  border-style: dashed;
+  background: var(--color-paper-3);
+}
+
+/* Integrantes de la plancha: <details> nativo, fuera del <label> para que
+   desplegarlo no marque la opción. */
+.voto-integrantes {
+  border-top: 1px dashed var(--color-line);
+  padding: 0 16px;
+}
+.voto-integrantes summary {
+  padding: 12px 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+  cursor: pointer;
+}
+.voto-integrantes ul { margin: 0 0 14px; padding: 0; list-style: none; }
+.voto-integrantes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 15px;
+}
+.voto-integrantes li span:last-child {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Regla de la papeleta ("Elegí hasta 3"). Es ayuda visual: quien decide es la
+   validación de emitir_voto. */
+.voto-regla {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-3);
+}
+
+/* Botón principal al alcance del pulgar: el operador no debería buscarlo. */
+.voto-sticky {
+  position: sticky;
+  bottom: 0;
+  padding: 14px 0 18px;
+  background: linear-gradient(to bottom, rgba(253, 252, 247, 0) 0%, var(--color-paper) 32%);
+}
+
+.voto-aviso {
+  border: 1.5px solid var(--color-line);
+  border-left-width: 5px;
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: white;
+}
+.voto-aviso--ok    { border-left-color: var(--color-status-ok); }
+.voto-aviso--alto  { border-left-color: var(--color-status-no); }
+.voto-aviso--medio { border-left-color: var(--color-amber); }
+
+/* ============================================================
    Stagger reveal al cargar pantalla
    ============================================================ */
 

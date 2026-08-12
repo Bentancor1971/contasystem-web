@@ -19,6 +19,10 @@ const PUBLIC_PATHS = [
   // propósito y de sólo lectura: la asistencia la marca /checkin, con sesión.
   // Ojo: `/api/checkin/` NO empieza con `/a/`, así que no queda expuesta.
   '/a/',
+  // Votación de elecciones: el link personal que llega por mail. Es `/v/` y no
+  // `/e/` porque `/e/{slug}` ya es la inscripción a eventos.
+  '/v/',
+  '/api/votacion/',
 ]
 
 // Rutas realmente SIN sesión (inscripción / certificados públicos): acá nunca
@@ -31,7 +35,17 @@ const PUBLIC_SIN_SESION = [
   '/c/',
   '/api/certificados/',
   '/a/',
+  '/v/',
+  '/api/votacion/',
 ]
+
+/**
+ * Rutas donde una respuesta cacheada es un problema de verdad: `ya_voto`
+ * guardado en el disco del navegador es un voto perdido o un doble intento.
+ * Se marca acá y no en cada handler porque una *página* no puede escribir sus
+ * propios headers de respuesta.
+ */
+const SIN_CACHE = ['/v/', '/api/votacion/']
 
 // Auto-login SÓLO en desarrollo: con estas credenciales seteadas, el middleware
 // inicia sesión server-side y `/login` nunca se renderiza. El guard de NODE_ENV
@@ -101,6 +115,10 @@ export async function updateSession(request: NextRequest) {
     // opciones) o se perdería el login y quedaría un rebote infinito.
     for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie)
     return redirect
+  }
+
+  if (SIN_CACHE.some((p) => pathname.startsWith(p))) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
   }
 
   return response
