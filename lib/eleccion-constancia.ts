@@ -50,12 +50,36 @@ function aplicarPlantilla(plantilla: string, valores: Record<string, string>): s
   return texto
 }
 
+/**
+ * Igual, pero escapando los valores: acá se inyectan dentro del HTML de marca
+ * que armó el desktop. El nombre visible sale de la base y un `<` suelto rompería
+ * el mail — o algo peor.
+ */
+function aplicarPlantillaHtml(plantilla: string, valores: Record<string, string>): string {
+  const escapado: Record<string, string> = {}
+  for (const [k, v] of Object.entries(valores)) {
+    escapado[k] = String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+  return aplicarPlantilla(plantilla, escapado)
+}
+
 interface ConstanciaPendiente {
   ok: true
   empresa_id: string
   mail: string
   asunto: string
   cuerpo: string
+  /**
+   * Mismo cuerpo envuelto en el HTML de marca de la empresa, armado por el
+   * desktop y bajado con los `{placeholders}` sin sustituir. Puede faltar: en
+   * bases donde todavía no corrió 44_constancia_html.sql, o si la empresa no
+   * tiene configuración de correo.
+   */
+  cuerpo_html?: string | null
   responder_a: string | null
   valores: Record<string, string>
 }
@@ -109,6 +133,10 @@ export async function enviarConstanciaVoto(
       to: c.mail,
       subject: aplicarPlantilla(c.asunto, c.valores),
       text: aplicarPlantilla(c.cuerpo, c.valores),
+      // Las dos versiones: el cliente de correo elige. Si el desktop todavía no
+      // subió el HTML, sale sólo el texto — la constancia nunca se cae por el
+      // diseño.
+      html: c.cuerpo_html ? aplicarPlantillaHtml(c.cuerpo_html, c.valores) : null,
       replyTo: c.responder_a,
     })
 

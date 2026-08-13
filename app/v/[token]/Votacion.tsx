@@ -127,11 +127,14 @@ export function Votacion({
   token,
   verificacionDigitos,
   emailContacto,
+  textoDespues,
   boletaInicial,
 }: {
   token: string
   verificacionDigitos: number
   emailContacto: string | null
+  /** Cierre que escribe la institución. Se muestra recién con el voto emitido. */
+  textoDespues: string | null
   /** Sólo cuando la elección no pide segundo factor: la boleta ya viene del server. */
   boletaInicial: BoletaValidada | null
 }) {
@@ -404,6 +407,13 @@ export function Votacion({
           <p className="text-ink-2 text-[17px] leading-relaxed mt-2">
             Si tenés un mail registrado, además te llega una constancia.
           </p>
+          {/* Cierre propio de la institución. Va antes del "cerrá la página"
+              porque es contenido, no instrucción de uso. */}
+          {textoDespues && (
+            <p className="text-ink-2 text-[17px] leading-relaxed mt-4 whitespace-pre-line">
+              {textoDespues}
+            </p>
+          )}
           <p className="text-ink-3 text-sm leading-relaxed mt-3">
             Ya podés cerrar esta página. El link no vuelve a servir para votar.
           </p>

@@ -256,6 +256,7 @@ export default async function VotacionPage({
             token={token}
             verificacionDigitos={estado.verificacion_digitos}
             emailContacto={contacto}
+            textoDespues={eleccion.texto_despues}
             boletaInicial={boletaInicial}
           />
         </>

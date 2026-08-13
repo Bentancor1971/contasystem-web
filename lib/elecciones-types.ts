@@ -26,6 +26,8 @@ export interface EleccionPublica {
   /** Texto donde la institución avisa, entre otras cosas, que el voto es nominal. */
   instructivo: string | null
   texto_antes: string | null
+  /** Texto de cierre que la institución muestra una vez emitido el voto. */
+  texto_despues: string | null
   email_contacto: string | null
   imagen_url: string | null
   fecha_apertura: string
@@ -218,6 +220,19 @@ export function mensajeDeError(
   switch (r.error) {
     case 'digitos_incorrectos':
     case 'credencial_inexistente':
+      // El intento que agota los reintentos ya dejó la credencial bloqueada:
+      // `validar_credencial` incrementa el contador y devuelve
+      // `intentos_restantes: 0` en la MISMA respuesta, y recién el toque
+      // siguiente sale por `bloqueado`. Decir "te quedan 0 intentos" invita a
+      // probar otra vez para descubrir que estaba bloqueado. Se trata como
+      // bloqueo desde acá, que es lo que efectivamente pasó.
+      if (r.intentos_restantes === 0) {
+        return {
+          titulo: 'Demasiados intentos',
+          detalle: `Por seguridad la credencial quedó bloqueada un rato. Volvé a intentar más tarde.${contacto}`,
+          terminal: true,
+        }
+      }
       return {
         titulo: 'Los dígitos no coinciden',
         detalle:

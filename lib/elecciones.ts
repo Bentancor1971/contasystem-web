@@ -140,6 +140,7 @@ export async function buscarCredencial(
       descripcion: texto(e.descripcion),
       instructivo: texto(e.instructivo),
       texto_antes: texto(e.texto_antes),
+      texto_despues: texto(e.texto_despues),
       email_contacto: texto(e.email_contacto),
       imagen_url: texto(e.imagen_url),
       fecha_apertura: String(e.fecha_apertura ?? ''),
