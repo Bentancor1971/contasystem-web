@@ -29,6 +29,7 @@ import {
   tokenValido,
   type BoletaValidada,
   type EleccionPublica,
+  type VentanaEleccion,
 } from '@/lib/elecciones-types'
 import { ipDeHeaders, LIMITES, permitidoPorIp } from '@/lib/rate-limit'
 import { Votacion } from './Votacion'
@@ -98,7 +99,16 @@ function Cortada({ titulo, detalle }: { titulo: string; detalle: string }) {
   )
 }
 
-function Encabezado({ eleccion }: { eleccion: EleccionPublica }) {
+/**
+ * `ventana` y no `estado`: desde 43_publicacion_eleccion.sql la elección se
+ * publica al congelar el padrón, así que una credencial abierta antes de la
+ * apertura llega con `estado: 'padron'`. Mirando el estado, esa persona leía
+ * "Votación cerrada" el día antes de votar.
+ *
+ * La regla del módulo es que `ventana` es el único campo que decide: lo resuelve
+ * Postgres contra su propio reloj, no el del visitante.
+ */
+function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana: VentanaEleccion }) {
   return (
     <header className="rise mb-8">
       <span className="label-mono">Votación</span>
@@ -115,9 +125,11 @@ function Encabezado({ eleccion }: { eleccion: EleccionPublica }) {
         />
       )}
       <p className="font-mono text-sm text-ink-2">
-        {eleccion.estado === 'abierta'
+        {ventana === 'abierta'
           ? `Se puede votar hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
-          : 'Votación cerrada'}
+          : ventana === 'no_abierta'
+            ? `La votación abre el ${fechaHoraCorta(eleccion.fecha_apertura)}`
+            : 'Votación cerrada'}
       </p>
       {eleccion.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
@@ -240,7 +252,7 @@ export default async function VotacionPage({
 
   return (
     <Marco>
-      <Encabezado eleccion={eleccion} />
+      <Encabezado eleccion={eleccion} ventana={estado.ventana} />
 
       {bloqueada ? (
         <>

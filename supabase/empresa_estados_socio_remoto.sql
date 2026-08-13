@@ -50,6 +50,7 @@ CREATE OR REPLACE FUNCTION public.set_empresa_estados_socio(
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY INVOKER
+SET search_path = public, pg_temp
 AS $func$
 DECLARE
   n INT;

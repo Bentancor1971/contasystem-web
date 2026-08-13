@@ -328,7 +328,12 @@
       "PowerShell(node _tls.mjs)",
       "PowerShell($env:NODE_OPTIONS=\"\"; $env:NODE_TLS_REJECT_UNAUTHORIZED=\"0\"; npm start 2>&1)",
       "Bash(node _test40.mjs)",
-      "PowerShell(node _reg.mjs)"
+      "PowerShell(node _reg.mjs)",
+      "Bash(command -v python python3 py)",
+      "Bash(python C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/260960e8-7682-4d41-9784-60337526e32b/scratchpad/pin_search_path.py /c/Users/benta/Documentos/Programas/contasystem-desktop/docs/supabase)",
+      "Bash(python C:/Users/benta/AppData/Local/Temp/claude/c--Users-benta-Documentos-Programas-contasystem-web/260960e8-7682-4d41-9784-60337526e32b/scratchpad/pin_search_path.py /c/Users/benta/Documentos/Programas/contasystem-desktop/docs/supabase --apply)",
+      "Bash(git diff *)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\benta\\OneDrive\\Documents\\Programas\\contasystem-desktop\\src\\lib\\modules",

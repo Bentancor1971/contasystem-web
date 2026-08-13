@@ -93,8 +93,30 @@ export interface VotoEmitido {
 }
 
 /** Todos los códigos que puede devolver cualquiera de las tres RPC. */
+/**
+ * `eleccion_publica` — la página que se reparte (`/e/{slug}`).
+ *
+ * No trae boleta, ni padrón, ni conteos: sólo lo que ya está en la cartelera del
+ * club. Ver docs/supabase/43_publicacion_eleccion.sql.
+ */
+export interface EleccionPublicaPagina {
+  ok: true
+  eleccion: EleccionPublica & { slug: string }
+  verificacion_digitos: number
+  ventana: VentanaEleccion
+}
+
+/** `resolver_codigo` — traduce el código impreso al token de esa credencial. */
+export interface CodigoResuelto {
+  ok: true
+  token: string
+  slug: string
+  eleccion: string
+}
+
 export type CodigoError =
   | 'credencial_inexistente'
+  | 'codigo_inexistente'
   | 'eleccion_inexistente'
   | 'no_habilitado'
   | 'ya_voto'

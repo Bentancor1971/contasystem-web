@@ -22,6 +22,10 @@ const PUBLIC_PATHS = [
   // Votación de elecciones: el link personal que llega por mail. Es `/v/` y no
   // `/e/` porque `/e/{slug}` ya es la inscripción a eventos.
   '/v/',
+  // Entrada por código impreso. Va aparte y con `$` porque las demás entradas de
+  // esta lista se comparan con startsWith: `'/v/'` no captura `/v` a secas, y sin
+  // esto la página del código pediría login. Ver `esPublica`.
+  '/v$',
   '/api/votacion/',
 ]
 
@@ -36,8 +40,23 @@ const PUBLIC_SIN_SESION = [
   '/api/certificados/',
   '/a/',
   '/v/',
+  '/v$',
   '/api/votacion/',
 ]
+
+/**
+ * Compara un pathname contra la lista. Un patrón que termina en `$` exige
+ * coincidencia exacta; el resto es prefijo, como siempre.
+ *
+ * Existe por `/v`: la entrada por código es una ruta sin nada después, y las
+ * listas usan barra final a propósito para no capturar de más (`/e/` para no
+ * agarrar `/empresa`).
+ */
+function esPublica(pathname: string, lista: readonly string[]): boolean {
+  return lista.some((p) =>
+    p.endsWith('$') ? pathname === p.slice(0, -1) : pathname.startsWith(p),
+  )
+}
 
 /**
  * Rutas donde una respuesta cacheada es un problema de verdad: `ya_voto`
@@ -45,7 +64,7 @@ const PUBLIC_SIN_SESION = [
  * Se marca acá y no en cada handler porque una *página* no puede escribir sus
  * propios headers de respuesta.
  */
-const SIN_CACHE = ['/v/', '/api/votacion/']
+const SIN_CACHE = ['/v/', '/v$', '/api/votacion/']
 
 // Auto-login SÓLO en desarrollo: con estas credenciales seteadas, el middleware
 // inicia sesión server-side y `/login` nunca se renderiza. El guard de NODE_ENV
@@ -84,8 +103,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
-  const isPublicSinSesion = PUBLIC_SIN_SESION.some((p) => pathname.startsWith(p))
+  const isPublic = esPublica(pathname, PUBLIC_PATHS)
+  const isPublicSinSesion = esPublica(pathname, PUBLIC_SIN_SESION)
 
   // DEV: si no hay sesión, la firmamos acá mismo. `signInWithPassword` escribe
   // las cookies de sesión sobre `response` (vía el callback setAll de arriba), así
@@ -117,7 +136,7 @@ export async function updateSession(request: NextRequest) {
     return redirect
   }
 
-  if (SIN_CACHE.some((p) => pathname.startsWith(p))) {
+  if (esPublica(pathname, SIN_CACHE)) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
   }
 

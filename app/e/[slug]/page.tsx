@@ -1,16 +1,27 @@
 /**
- * /e/[slug] — Página PÚBLICA de inscripción a un evento.
+ * /e/[slug] — Página PÚBLICA de un evento **o de una elección**.
  *
- * Server Component: resuelve el evento por slug con service_role y entrega el
- * payload público al formulario cliente. Esta ruta está fuera del grupo (app)
- * y declarada como pública en el middleware.
+ * Server Component: resuelve el slug con service_role y entrega el payload
+ * público. Esta ruta está fuera del grupo (app) y declarada como pública en el
+ * middleware.
+ *
+ * ⚠️ Un solo path para dos entidades. El desktop compone los dos links como
+ * `{base}/e/{slug}` y los slugs tienen la misma forma —`nombre-normalizado` más
+ * los 8 primeros caracteres del id—, así que no chocan entre sí pero tampoco se
+ * distinguen mirándolos. Se resuelve por orden: evento primero (es el caso con
+ * mucho más tráfico), elección después, 404 si ninguno.
+ *
+ * No se separó en `/el/{slug}` para no invalidar los links de elecciones ya
+ * repartidos ni tener dos prefijos que explicar.
  */
 
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadEventoPublico } from '@/lib/eventos'
+import { eleccionPublica } from '@/lib/elecciones'
 import { sanitizeHtml } from '@/lib/sanitize-html'
+import { EleccionPublicaPage, metadataEleccion } from './EleccionPublica'
 import { EventoForm } from './EventoForm'
 
 export const runtime = 'nodejs'
@@ -28,6 +39,8 @@ export async function generateMetadata({
     if (evento) {
       return { title: `${evento.nombre} · Inscripción`, description: evento.descripcion ?? undefined }
     }
+    const eleccion = await eleccionPublica(admin, slug)
+    if (eleccion) return metadataEleccion(eleccion)
   } catch {
     /* ignora — cae al default */
   }
@@ -68,7 +81,14 @@ export default async function EventoPublicoPage({
   const { pago } = await searchParams
   const admin = createAdminClient()
   const evento = await loadEventoPublico(admin, slug)
-  if (!evento) notFound()
+  if (!evento) {
+    // Segunda rama: el slug puede ser de una elección publicada. Una elección en
+    // borrador da el mismo 404 que un slug inventado — distinguirlas confirmaría
+    // que la institución tiene una elección a medio armar.
+    const eleccion = await eleccionPublica(admin, slug)
+    if (eleccion) return <EleccionPublicaPage pagina={eleccion} />
+    notFound()
+  }
 
   const fecha = formatFechaLarga(evento.fecha)
   const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado)

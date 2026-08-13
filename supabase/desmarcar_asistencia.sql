@@ -53,7 +53,8 @@ CREATE INDEX IF NOT EXISTS idx_entradas_remoto_desmarcada
 CREATE OR REPLACE FUNCTION public.entrada_desmarca_gana(
   p_desmarcada_at TIMESTAMPTZ,
   p_entrante_at   TIMESTAMPTZ
-) RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$
+) RETURNS BOOLEAN LANGUAGE sql IMMUTABLE
+  SET search_path = public, pg_temp AS $$
   SELECT p_desmarcada_at IS NOT NULL
      AND (p_entrante_at IS NULL OR p_entrante_at <= p_desmarcada_at);
 $$;
@@ -104,7 +105,8 @@ END; $func$;
 -- asistencia, que pasan de COALESCE(existente, entrante) a la regla del punto 2.
 -- El resto de las columnas se comporta exactamente igual.
 CREATE OR REPLACE FUNCTION public.upsert_entrada(p_row JSONB)
-RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER AS $func$
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = public, pg_temp AS $func$
 DECLARE v public.entradas_remoto%ROWTYPE;
 BEGIN
   INSERT INTO public.entradas_remoto (
@@ -153,6 +155,14 @@ END; $func$;
 
 GRANT EXECUTE ON FUNCTION public.entrada_desmarca_gana(TIMESTAMPTZ, TIMESTAMPTZ) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.desmarcar_asistencia_entrada(TEXT, TEXT) TO authenticated;
+
+-- Y fuera de anon. El GRANT de arriba no quita nada: Supabase le da EXECUTE
+-- explícito a anon y authenticated a TODA función nueva (default privileges del
+-- proyecto), así que sin este REVOKE la función quedaba llamable con la anon key
+-- —la que va en el bundle del browser— y es SECURITY DEFINER: corre como
+-- postgres y borra el check-in de cualquier entrada con sólo tener el token.
+-- `authenticated` se conserva: es el personal del evento, que sí la usa.
+REVOKE EXECUTE ON FUNCTION public.desmarcar_asistencia_entrada(TEXT, TEXT) FROM PUBLIC, anon;
 
 -- ============================================================
 -- PENDIENTE DEL LADO DESKTOP

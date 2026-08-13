@@ -106,6 +106,15 @@ export const LIMITES = {
   votoValidar: { nombre: 'voto_validar', limite: 20, ventanaSegundos: 60 },
   /** Emitir. Una persona lo hace una vez; el margen es para el reintento. */
   votoEmitir: { nombre: 'voto_emitir', limite: 15, ventanaSegundos: 300 },
+  /**
+   * Canjear el código impreso de la credencial.
+   *
+   * Es el único punto del módulo donde se prueba un secreto SIN un bloqueo por
+   * credencial detrás: el token tiene su contador de intentos, el código no.
+   * Por eso el tope es más estrecho que el de votar, aunque siga siendo holgado
+   * para quien tipea mal un par de veces desde el papel.
+   */
+  votoCodigo: { nombre: 'voto_codigo', limite: 10, ventanaSegundos: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 /** Cuerpo estándar del 429. */

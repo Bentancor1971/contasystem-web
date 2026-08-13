@@ -14,6 +14,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
+  CodigoResuelto,
+  EleccionPublicaPagina,
   ErrorVotacion,
   IntegranteOpcion,
   OpcionPapeleta,
@@ -200,4 +202,76 @@ export async function emitirVoto(
   if (!emitido) throw new ErrorRpc('emitir_voto: ok sin emitido_at')
 
   return { ok: true, voto_id: String(d.voto_id ?? ''), emitido_at: emitido }
+}
+
+// ── Página pública de la elección (`/e/{slug}`) ─────────────────────────────
+
+/**
+ * Lo que se reparte por WhatsApp o cartelera. No pide credencial ni identifica
+ * a nadie: es la convocatoria.
+ *
+ * Devuelve `null` si el slug no existe. Una elección en borrador da lo mismo que
+ * un slug inventado — distinguirlas confirmaría que la institución tiene una
+ * elección a medio armar.
+ */
+export async function eleccionPublica(
+  admin: SupabaseClient,
+  slug: string,
+): Promise<EleccionPublicaPagina | null> {
+  const d = await llamar(admin, 'eleccion_publica', { p_slug: slug })
+  if (d.ok !== true) return null
+
+  const e = (d.eleccion ?? {}) as Record<string, unknown>
+  return {
+    ok: true,
+    eleccion: {
+      id: String(e.id),
+      slug: String(e.slug ?? slug),
+      nombre: String(e.nombre ?? ''),
+      descripcion: texto(e.descripcion),
+      instructivo: texto(e.instructivo),
+      texto_antes: texto(e.texto_antes),
+      // La página pública no lo recibe: `texto_despues` es de después de votar.
+      texto_despues: null,
+      email_contacto: texto(e.email_contacto),
+      imagen_url: texto(e.imagen_url),
+      fecha_apertura: String(e.fecha_apertura ?? ''),
+      fecha_cierre: String(e.fecha_cierre ?? ''),
+      estado: e.estado === 'abierta' ? 'abierta' : 'cerrada',
+    },
+    verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
+    ventana:
+      d.ventana === 'abierta' || d.ventana === 'no_abierta' ? d.ventana : 'cerrada',
+  }
+}
+
+// ── Entrada por código impreso (`/v`) ───────────────────────────────────────
+
+/**
+ * Traduce el `codigo_corto` de una credencial entregada en mano al token de esa
+ * persona, para mandarla a su `/v/{token}` de siempre.
+ *
+ * **No saltea nada**: el segundo factor se sigue pidiendo en la pantalla de
+ * votación. Es un cambio de vía de entrada, no un atajo.
+ *
+ * La normalización (mayúsculas, sin espacios ni guiones) la hace el RPC.
+ */
+export async function resolverCodigo(
+  admin: SupabaseClient,
+  codigo: string,
+): Promise<CodigoResuelto | ErrorVotacion> {
+  const d = await llamar(admin, 'resolver_codigo', { p_codigo: codigo })
+  if (d.ok !== true) return d as unknown as ErrorVotacion
+
+  const token = typeof d.token === 'string' ? d.token : ''
+  // Sin token no hay a dónde mandar a nadie. Se trata como código inválido en
+  // vez de redirigir a una URL rota.
+  if (!token) return { error: 'codigo_inexistente' }
+
+  return {
+    ok: true,
+    token,
+    slug: String(d.slug ?? ''),
+    eleccion: String(d.eleccion ?? ''),
+  }
 }

@@ -70,7 +70,13 @@ BEGIN
 END;
 $func$;
 
-REVOKE ALL ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) FROM PUBLIC;
+-- `FROM PUBLIC` NO alcanza en Supabase. Los default privileges del proyecto
+-- (ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ON FUNCTIONS TO anon, authenticated,
+-- service_role) le dan a cada función nueva un grant EXPLÍCITO a anon y
+-- authenticated, y revocar de PUBLIC no borra un grant explícito. Hay que
+-- nombrarlos. Sin esto, cualquiera con la anon key —que viaja en el bundle del
+-- browser— podía llamar al rate limiter.
+REVOKE ALL ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) TO service_role;
 
 -- ------------------------------------------------------------
@@ -91,5 +97,7 @@ BEGIN
 END;
 $func$;
 
-REVOKE ALL ON FUNCTION public.rate_limit_gc(INT) FROM PUBLIC;
+-- Misma corrección que arriba, y acá importa más: rate_limit_gc(0) borra la
+-- tabla entera. Expuesta a anon, desactivaba el limitador de un llamado.
+REVOKE ALL ON FUNCTION public.rate_limit_gc(INT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rate_limit_gc(INT) TO service_role;
