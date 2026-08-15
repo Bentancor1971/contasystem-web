@@ -160,9 +160,14 @@ export type RespuestaRetirar = PostulacionRetirada | ErrorPostulacion
 // ── Lo que la web manda al registrar ────────────────────────────────────────
 
 /**
- * Los tres campos abiertos del formulario. **No son la postulación**: que la
- * fila exista ya significa "me interesa integrar la lista". Son el contacto para
- * llamar a esa persona cuando se arme el acuerdo.
+ * Lo que viaja al registrar. **No es la postulación**: que la fila exista ya
+ * significa "me interesa integrar la lista".
+ *
+ * El formulario público sólo pide `comentario`: el contacto de la persona ya lo
+ * tiene la institución en su ficha, y pedirlo de nuevo agregaba fricción justo
+ * en la pantalla donde menos conviene. `telefono` y `mail_contacto` siguen en el
+ * contrato de la RPC —llegan vacíos— porque la columna existe y la baja del
+ * desktop los lee.
  */
 export interface DatosPostulacion {
   telefono: string
@@ -320,12 +325,26 @@ export function mensajeDeErrorPostulacion(
 // ── Situación de deuda, en palabras ─────────────────────────────────────────
 
 /**
- * La frase de regularización. Existe porque el reclamo típico de este módulo es
- * el de alguien que pagó ayer: el mensaje no puede ser "no podés", tiene que ser
- * "no podés todavía, y hasta cuándo hay tiempo".
+ * La frase de regularización para quien NO puede anotarse. Existe porque el
+ * reclamo típico de este módulo es el de alguien que pagó ayer: el mensaje no
+ * puede ser "no podés", tiene que ser "no podés todavía, y hasta cuándo hay
+ * tiempo".
  */
 export function textoRegularizacion(fechaLimite: string | null): string | null {
   const cuando = fechaHoraCorta(fechaLimite)
   if (!cuando) return null
   return `Si te ponés al día antes del ${cuando}, vas a poder anotarte con este mismo link.`
+}
+
+/**
+ * La misma fecha, para el ADVERTIDO. Es otra frase y no la de arriba porque a
+ * esta persona no le falta poder anotarse —ya se anota, y en esa misma pantalla
+ * lo está haciendo—: lo que esa fecha decide es si queda en el registro de
+ * habilitados. Prometerle que "vas a poder anotarte" la deja esperando un
+ * permiso que ya tiene. Es el mismo corte que el mail llama padrón.
+ */
+export function textoRegularizacionAdvertido(fechaLimite: string | null): string | null {
+  const cuando = fechaHoraCorta(fechaLimite)
+  if (!cuando) return null
+  return `Si te ponés al día antes del ${cuando} integrarás el registro.`
 }

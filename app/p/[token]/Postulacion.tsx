@@ -32,6 +32,7 @@ import {
 import {
   mensajeDeErrorPostulacion,
   textoRegularizacion,
+  textoRegularizacionAdvertido,
   type ErrorPostulacion,
   type InvitadoValidado,
   type MensajePostulacion,
@@ -144,12 +145,13 @@ function Situacion({ inv }: { inv: InvitadoValidado }) {
           ? `Figurás con ${cuotas}${importe ? ` (${importe})` : ''}.`
           : 'Figurás con cuotas pendientes.'}{' '}
         {inv.advertido
-          ? 'Podés anotarte igual: tu postulación queda marcada y la resuelve la comisión.'
+          ? 'Podés anotarte igual, pero tu postulación queda sujeta a revisión por parte de la '
+            + 'Comisión Directiva, podría no ser aceptada si no regularizás.'
           : 'No te impide anotarte.'}
       </p>
-      {inv.advertido && textoRegularizacion(inv.fecha_limite_regularizacion) && (
+      {inv.advertido && textoRegularizacionAdvertido(inv.fecha_limite_regularizacion) && (
         <p className="text-ink-2 text-[16px] leading-relaxed mt-2">
-          {textoRegularizacion(inv.fecha_limite_regularizacion)}
+          {textoRegularizacionAdvertido(inv.fecha_limite_regularizacion)}
         </p>
       )}
       {inv.deuda_actualizada_at && (
@@ -196,8 +198,6 @@ export function Postulacion({
   const [invitado, setInvitado] = useState<InvitadoValidado | null>(
     invitadoInicial?.puede_postularse ? invitadoInicial : null,
   )
-  const [telefono, setTelefono] = useState('')
-  const [mailContacto, setMailContacto] = useState('')
   const [comentario, setComentario] = useState('')
   const [acepta, setAcepta] = useState(false)
   const [aceptaAdvertencia, setAceptaAdvertencia] = useState(false)
@@ -304,8 +304,6 @@ export function Postulacion({
     setAviso(null)
     const r = await pedir<{ ok: true; recibida_at: string }>(`${base}/registrar`, {
       digitos,
-      telefono,
-      mail_contacto: mailContacto,
       comentario,
       acepta_condiciones: true,
     })
@@ -457,16 +455,13 @@ export function Postulacion({
               comprobante garantizado es la fecha y hora de arriba, que vino con
               el `ok` del servidor. */}
           <p className="text-ink-2 text-[17px] leading-relaxed mt-2">
-            Si tenés un mail registrado, además te llega un acuse de recibo.
+            Si tenés un mail registrado te estará llegando un acuse de recibo.
           </p>
           {textoDespues && (
             <p className="text-ink-2 text-[17px] leading-relaxed mt-4 whitespace-pre-line">
               {textoDespues}
             </p>
           )}
-          <p className="text-ink-3 text-sm leading-relaxed mt-3">
-            Guardá este link: sirve para darte de baja mientras el plazo siga abierto.
-          </p>
         </div>
       </div>
     )
@@ -646,43 +641,7 @@ export function Postulacion({
             no compromete a nada es lo que hace que alguien se anote. */}
         <p className="text-ink-2 text-[17px] leading-relaxed mb-6">
           Con esto sólo declarás interés. No elegís lista, ni cargo, ni compañeros: eso
-          se acuerda después, entre todos. Los datos de abajo son para poder ubicarte
-          cuando se arme el acuerdo.
-        </p>
-
-        <label htmlFor="telefono" className="block label-mono mb-2">
-          Teléfono <span className="text-ink-3">(opcional)</span>
-        </label>
-        <input
-          id="telefono"
-          name="telefono"
-          className="field mb-5"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          maxLength={40}
-          value={telefono}
-          onChange={(e) => setTelefono(e.target.value)}
-        />
-
-        <label htmlFor="mail" className="block label-mono mb-2">
-          Mail de contacto <span className="text-ink-3">(opcional)</span>
-        </label>
-        <input
-          id="mail"
-          name="mail"
-          className="field mb-1"
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          maxLength={120}
-          value={mailContacto}
-          onChange={(e) => setMailContacto(e.target.value)}
-        />
-        {/* Se dice explícitamente que no pisa la ficha: alguien podría escribir
-            acá creyendo que está actualizando sus datos de socio. No lo hace. */}
-        <p className="text-ink-3 text-sm mb-5 leading-relaxed">
-          Se usa sólo para esta convocatoria. No cambia los datos de tu ficha de socio.
+          se acuerda después, entre todos.
         </p>
 
         <label htmlFor="comentario" className="block label-mono mb-2">
@@ -731,10 +690,6 @@ export function Postulacion({
           {ocupado ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />}
           Anotarme
         </button>
-        <p className="text-ink-3 text-sm mt-4 leading-relaxed text-center">
-          Podés darte de baja después, con este mismo link, mientras el plazo siga
-          abierto.
-        </p>
       </form>
     </div>
   )
