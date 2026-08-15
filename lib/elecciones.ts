@@ -178,6 +178,9 @@ export async function buscarCredencial(
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
     habilitado: d.habilitado !== false,
     ya_voto: d.ya_voto === true,
+    // Desde 54_. Con la base sin ese script la clave no viene y queda `null`:
+    // la pantalla dice "ya votaste" sin fecha, que es como se comportaba antes.
+    emitido_at: texto(d.emitido_at),
     bloqueado: d.bloqueado === true,
     ventana: ventana(d.ventana),
   }

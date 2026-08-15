@@ -94,6 +94,12 @@ export interface EstadoCredencial {
   verificacion_digitos: number
   habilitado: boolean
   ya_voto: boolean
+  /**
+   * Cuándo votó, si votó. `null` mientras no haya votado —y también contra una
+   * base sin `54_buscar_credencial_emitido_at.sql`, que es un caso que las
+   * pantallas tienen que aguantar: dicen "ya votaste" sin la fecha—.
+   */
+  emitido_at: string | null
   bloqueado: boolean
   ventana: VentanaEleccion
 }
@@ -262,11 +268,23 @@ export function horaAperturaPasada(iso: string | null | undefined): boolean {
 
 // ── Mensajes ────────────────────────────────────────────────────────────────
 
+/**
+ * Cómo se pinta un aviso. Los mismos tres que usa la portada de `/v/[token]`:
+ * un hecho normal, algo que hay que atender, algo que corta.
+ */
+export type TonoAviso = 'ok' | 'medio' | 'alto'
+
 export interface MensajeVotacion {
   titulo: string
   detalle: string
   /** `true` = no hay nada que reintentar en esta sesión: se corta el flujo. */
   terminal: boolean
+  /**
+   * Por defecto 'alto'. Que exista no es cosmética: "ya votaste" es una buena
+   * noticia y en tono alto se lee como un error. La portada ya lo pintaba en
+   * 'ok' y el mismo mensaje, alcanzado a mitad del flujo, salía en rojo.
+   */
+  tono: TonoAviso
 }
 
 /** Cómo se anuncia una votación en la que ya no se puede votar. */
@@ -276,6 +294,13 @@ export interface CierreDeLaVotacion {
   titulo: string
   detalle: string
 }
+
+/**
+ * Lo mínimo para poder explicar un cierre. Se pide así y no la elección entera
+ * para que lo pueda pasar también el componente cliente, que necesita las
+ * mismas palabras cuando la votación cierra con la persona adentro.
+ */
+export type CierreCtx = Pick<EleccionPublica, 'estado' | 'fecha_cierre' | 'email_contacto'>
 
 /**
  * Por qué esta votación ya no recibe votos, en palabras.
@@ -293,7 +318,7 @@ export interface CierreDeLaVotacion {
  * votar, en el local. Ver `VentanaEleccion`.
  */
 export function cierreDeLaVotacion(
-  e: EleccionPublica,
+  e: CierreCtx,
   emailContacto: string | null,
 ): CierreDeLaVotacion {
   const mail = emailContacto ?? e.email_contacto
@@ -347,10 +372,15 @@ export function cierreDeLaVotacion(
  *
  *  · Ningún mensaje afirma que el voto NO se registró salvo que el servidor lo
  *    haya dicho. Ver `sin_respuesta`: un fetch que se cortó puede haber llegado.
+ *
+ * `eleccion` es opcional y sirve para una sola cosa: que un cierre alcanzado a
+ * mitad del flujo se cuente con las mismas palabras que un cierre encontrado al
+ * abrir el link. Ver el caso `eleccion_cerrada`.
  */
 export function mensajeDeError(
   r: ErrorVotacion,
   emailContacto: string | null,
+  eleccion?: CierreCtx,
 ): MensajeVotacion {
   const contacto = emailContacto ? ` Escribinos a ${emailContacto}.` : ''
 
@@ -368,6 +398,7 @@ export function mensajeDeError(
           titulo: 'Demasiados intentos',
           detalle: `Por seguridad la credencial quedó bloqueada un rato. Volvé a intentar más tarde.${contacto}`,
           terminal: true,
+          tono: 'alto',
         }
       }
       return {
@@ -381,6 +412,7 @@ export function mensajeDeError(
               }. Acordate de contar el dígito verificador.`
             : 'Revisá los últimos dígitos de tu cédula —contando el dígito verificador— y volvé a probar.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'bloqueado': {
@@ -391,6 +423,7 @@ export function mensajeDeError(
           ? `Probá de nuevo después de las ${hora}.`
           : 'Esperá unos minutos y volvé a probar.',
         terminal: true,
+        tono: 'alto',
       }
     }
 
@@ -402,6 +435,8 @@ export function mensajeDeError(
           ? `Registramos tu voto el ${cuando}. No se puede votar dos veces.`
           : 'Tu voto ya está registrado. No se puede votar dos veces.',
         terminal: true,
+        // Haber votado no es un error: es exactamente lo que tenía que pasar.
+        tono: 'ok',
       }
     }
 
@@ -410,14 +445,29 @@ export function mensajeDeError(
         titulo: 'Esta credencial fue dada de baja',
         detalle: `Ya no habilita a votar.${contacto}`,
         terminal: true,
+        tono: 'alto',
       }
 
-    case 'eleccion_cerrada':
+    case 'eleccion_cerrada': {
+      // Con la elección a mano se cuenta igual que en la portada: escrutada,
+      // anulada, cerrada por la hora o cerrada a mano por la comisión. Sin ella
+      // —`emitir_voto` no manda de qué cierre habla— queda el texto genérico.
+      //
+      // El reloj que decide las palabras acá es el del navegador y no el de
+      // Postgres, a diferencia de la portada. Sólo puede errarle en los minutos
+      // pegados a la hora de cierre, y entre las dos frases posibles: las dos
+      // dicen que está cerrada. Quién puede votar no se decide acá.
+      if (eleccion) {
+        const c = cierreDeLaVotacion(eleccion, emailContacto)
+        return { titulo: c.titulo, detalle: c.detalle, terminal: true, tono: 'alto' }
+      }
       return {
         titulo: 'La votación está cerrada',
         detalle: `Ya no se pueden emitir votos.${contacto}`,
         terminal: true,
+        tono: 'alto',
       }
+    }
 
     case 'cerrada_web': {
       // NO decir que la votación terminó: no terminó. Quien lee esto todavía
@@ -429,15 +479,26 @@ export function mensajeDeError(
           (desde ? `Cerró el ${desde}. ` : '') +
           `La votación sigue abierta: se vota en el local, en persona.${contacto}`,
         terminal: true,
+        // No es un error ni un cierre: es un cambio de canal, y esta persona
+        // todavía tiene algo que hacer.
+        tono: 'medio',
       }
     }
 
-    case 'no_abierta':
+    case 'no_abierta': {
+      // `validar_credencial` manda `desde` desde 43_. La portada ya decía la
+      // fecha y acá se decía "cuando empiece", como si no la supiéramos.
+      // `emitir_voto` no la manda: ahí se cae al texto sin fecha.
+      const desde = fechaHoraCorta(r.desde)
       return {
         titulo: 'La votación todavía no está abierta',
-        detalle: 'Volvé a entrar con este mismo link cuando empiece.',
+        detalle: desde
+          ? `Abre el ${desde}. Volvé a entrar con este mismo link.`
+          : 'Volvé a entrar con este mismo link cuando empiece.',
         terminal: true,
+        tono: 'medio',
       }
+    }
 
     case 'falta_papeleta':
       return {
@@ -446,6 +507,7 @@ export function mensajeDeError(
           ? `Todavía no elegiste nada en «${r.papeleta}».`
           : 'Todavía hay una parte de la boleta sin completar.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'cantidad_invalida': {
@@ -459,6 +521,7 @@ export function mensajeDeError(
         titulo: 'Cantidad de opciones incorrecta',
         detalle: r.papeleta ? `En «${r.papeleta}»: ${cuantas}` : cuantas,
         terminal: false,
+        tono: 'alto',
       }
     }
 
@@ -469,6 +532,7 @@ export function mensajeDeError(
           ? `«${r.papeleta}» no admite voto en blanco.`
           : 'Esa parte de la boleta no admite voto en blanco.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'blanco_con_opciones':
@@ -478,6 +542,7 @@ export function mensajeDeError(
           ? `En «${r.papeleta}» quedó marcado el voto en blanco junto con otras opciones.`
           : 'Quedó marcado el voto en blanco junto con otras opciones.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'opcion_invalida':
@@ -485,6 +550,7 @@ export function mensajeDeError(
         titulo: 'Revisá tu selección',
         detalle: 'Alguna de las opciones marcadas ya no existe. Volvé a cargar la página.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'sin_respuesta':
@@ -494,6 +560,7 @@ export function mensajeDeError(
         detalle:
           'Se cortó la conexión y no sabemos si llegó a registrarse. Verificá antes de volver a intentar.',
         terminal: false,
+        tono: 'medio',
       }
 
     case 'eleccion_inexistente':
@@ -501,6 +568,7 @@ export function mensajeDeError(
         titulo: 'El link no es válido',
         detalle: `Revisá que hayas abierto el link completo del mail.${contacto}`,
         terminal: true,
+        tono: 'alto',
       }
 
     default:
@@ -508,6 +576,7 @@ export function mensajeDeError(
         titulo: 'No pudimos completar la operación',
         detalle: `Volvé a probar en un momento.${contacto}`,
         terminal: false,
+        tono: 'alto',
       }
   }
 }

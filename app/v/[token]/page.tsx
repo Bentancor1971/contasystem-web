@@ -241,8 +241,21 @@ export default async function VotacionPage({
     estado.ya_voto
       ? {
           titulo: 'Ya votaste',
+          // La fecha es el punto de esta pantalla. Al votar le dijimos a esta
+          // persona que guardara la hora como comprobante; si vuelve al link
+          // —al día siguiente, que es cuando más se vuelve— tiene que
+          // encontrarla acá y no depender de haber sacado una captura.
+          // Llega desde `54_`; sin ese script se cae al texto sin fecha.
+          //
+          // Y la constancia por mail NO se promete como un hecho: sale sólo si
+          // la credencial tiene dirección y la empresa tiene casilla. Es el
+          // mismo cuidado que ya tenía la pantalla de voto emitido, que decía
+          // "si tenés un mail registrado" mientras acá se afirmaba que llegaba.
           detalle:
-            'Tu voto está registrado y no se puede votar dos veces. La constancia te llega por mail.',
+            (estado.emitido_at
+              ? `Registramos tu voto el ${fechaHoraCorta(estado.emitido_at)}. `
+              : 'Tu voto está registrado. ') +
+            'No se puede votar dos veces. Si tenés un mail registrado, te llegó una constancia.',
           tono: 'ok',
         }
       : !estado.habilitado
@@ -299,8 +312,8 @@ export default async function VotacionPage({
   if (!impedimento && estado.verificacion_digitos === 0) {
     const r = await validarCredencial(admin, token, '')
     if (esError(r)) {
-      const m = mensajeDeError(r, contacto)
-      errorBoleta = { titulo: m.titulo, detalle: m.detalle, tono: 'alto' }
+      const m = mensajeDeError(r, contacto, eleccion)
+      errorBoleta = { titulo: m.titulo, detalle: m.detalle, tono: m.tono }
     } else {
       boletaInicial = r
     }
@@ -308,28 +321,42 @@ export default async function VotacionPage({
 
   const bloqueada = impedimento ?? errorBoleta
 
+  // Con la votación abierta, el encabezado y el instructivo NO los pinta esta
+  // página: se los pasa armados a `Votacion`, que es quien sabe en qué paso
+  // está la persona. Con la boleta a la vista tienen que desaparecer, y eso no
+  // se puede decidir desde el servidor.
   return (
     <Marco>
-      <Encabezado eleccion={eleccion} ventana={estado.ventana} />
-
       {bloqueada ? (
         <>
+          <Encabezado eleccion={eleccion} ventana={estado.ventana} />
           <div className="mb-8">
             <Aviso titulo={bloqueada.titulo} detalle={bloqueada.detalle} tono={bloqueada.tono} />
           </div>
+          {/* El cierre que escribe la institución vivía sólo en la pantalla de
+              recién votado, o sea en la sesión en que se votó. Quien vuelve al
+              link al día siguiente leía "Ya votaste" y ese texto no aparecía
+              nunca más, cuando es justo el que contesta el "¿y ahora qué?". */}
+          {estado.ya_voto && eleccion.texto_despues && (
+            <p className="text-ink-2 text-[17px] leading-relaxed mb-8 whitespace-pre-line">
+              {eleccion.texto_despues}
+            </p>
+          )}
           {eleccion.instructivo && <Instructivo texto={eleccion.instructivo} />}
         </>
       ) : (
-        <>
-          {eleccion.instructivo && <Instructivo texto={eleccion.instructivo} />}
-          <Votacion
-            token={token}
-            verificacionDigitos={estado.verificacion_digitos}
-            emailContacto={contacto}
-            textoDespues={eleccion.texto_despues}
-            boletaInicial={boletaInicial}
-          />
-        </>
+        <Votacion
+          token={token}
+          verificacionDigitos={estado.verificacion_digitos}
+          emailContacto={contacto}
+          textoDespues={eleccion.texto_despues}
+          boletaInicial={boletaInicial}
+          eleccion={eleccion}
+          encabezado={<Encabezado eleccion={eleccion} ventana={estado.ventana} />}
+          instructivo={
+            eleccion.instructivo ? <Instructivo texto={eleccion.instructivo} /> : null
+          }
+        />
       )}
     </Marco>
   )

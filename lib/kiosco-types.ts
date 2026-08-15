@@ -145,11 +145,12 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
           'Fijate que lo hayas escrito completo, tal cual figura en el papel. Si sigue sin ' +
           'andar, pedile otro al operador de la mesa.',
         terminal: false,
+        tono: 'alto',
       }
 
     case 'otra_eleccion': {
       const m = mensajeKiosco('otra_eleccion')
-      return { ...m, terminal: false }
+      return { ...m, terminal: false, tono: 'alto' }
     }
 
     case 'pase_vencido':
@@ -157,6 +158,7 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         titulo: 'Pasó demasiado tiempo',
         detalle: 'Por seguridad hay que empezar de nuevo: escribí otra vez tu código.',
         terminal: true,
+        tono: 'medio',
       }
 
     case 'sesion_invalida':
@@ -164,6 +166,7 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         titulo: 'Esta terminal se cerró',
         detalle: 'Avisale al operador de la mesa.',
         terminal: true,
+        tono: 'alto',
       }
 
     case 'no_abierta':
@@ -171,6 +174,7 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         titulo: 'La votación todavía no está abierta',
         detalle: 'Avisale al operador de la mesa.',
         terminal: true,
+        tono: 'medio',
       }
 
     case 'eleccion_cerrada':
@@ -178,6 +182,7 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         titulo: 'La votación está cerrada',
         detalle: 'Ya no se pueden emitir votos. Avisale al operador de la mesa.',
         terminal: true,
+        tono: 'alto',
       }
 
     case 'opcion_invalida':
@@ -185,6 +190,7 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         titulo: 'Revisá tu selección',
         detalle: 'Alguna de las opciones marcadas ya no existe. Avisale al operador de la mesa.',
         terminal: true,
+        tono: 'alto',
       }
 
     default:

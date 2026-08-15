@@ -108,6 +108,7 @@ const MENSAJE_TOPE: MensajeVotacion = {
   titulo: 'Esperá un momento',
   detalle: 'La terminal recibió muchas peticiones seguidas. Probá de nuevo en unos segundos.',
   terminal: false,
+  tono: 'alto',
 }
 
 /** Códigos que la base devuelve cuando el voto con seguridad NO se registró. */
@@ -307,6 +308,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
             titulo: 'No pudimos verificar tus dígitos',
             detalle: 'Avisale al operador de la mesa y probá de nuevo.',
             terminal: false,
+            tono: 'alto',
           },
     )
   }
@@ -355,6 +357,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
             titulo: 'No pudimos leer tu código',
             detalle: 'Puede ser la conexión del local. Avisale al operador de la mesa.',
             terminal: false,
+            tono: 'alto',
           },
     )
   }
@@ -369,6 +372,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
         titulo: 'Faltan dígitos',
         detalle: `Ingresá los últimos ${digitosPedidos} dígitos de tu cédula, contando el dígito verificador.`,
         terminal: false,
+        tono: 'alto',
       })
       return
     }
@@ -434,6 +438,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
         titulo: 'Falta completar la boleta',
         detalle: `Revisá «${primera.titulo}».`,
         terminal: false,
+        tono: 'alto',
       })
       irA(`papeleta-${primera.id}`)
       return
@@ -460,6 +465,9 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     setOcupado(false)
 
     if (r.estado === 'ok') {
+      // Un `ok` contesta la duda de un intento anterior: ese emitir no había
+      // llegado, y este sí.
+      setDudoso(false)
       setEmitidoAt(r.data.emitido_at)
       setFase('listo')
       arriba()
@@ -499,14 +507,9 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     // eso NO se puede resolver acá: en la terminal no hay a quién preguntarle
     // "¿quedaste votado?" sin volver a exponer datos de la persona. Lo resuelve
     // el operador contra el padrón del desktop, que es donde se ve la verdad.
+    // El texto lo pone la caja de la duda, que es la que no se borra sola.
     setDudoso(true)
-    setAviso({
-      titulo: 'No pudimos confirmar tu voto',
-      detalle:
-        'Se cortó la conexión y no sabemos si llegó a registrarse. No vuelvas a votar: ' +
-        'avisale al operador de la mesa, que lo verifica en el sistema.',
-      terminal: false,
-    })
+    arriba()
   }
 
   // ── Desmontar (operador) ──────────────────────────────────────────────────
@@ -566,11 +569,32 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     </div>
   )
 
+  /**
+   * La duda tiene caja propia y no se borra con un click, igual que en
+   * `/v/[token]`. Acá importa todavía más: en la terminal no hay a quién
+   * preguntarle "¿quedé votado?" sin exponer datos, así que la única salida es
+   * el operador —y esa instrucción no puede desaparecer porque la persona tocó
+   * otra opción, con el botón de emitir todavía a la vista—.
+   */
+  const dudaVisible = dudoso && (
+    <div className="voto-aviso voto-aviso--medio mb-6" role="alert">
+      <div className="flex gap-3">
+        <AlertCircle className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />
+        <div>
+          <h3 className="font-medium text-[17px] leading-snug">
+            No pudimos confirmar tu voto
+          </h3>
+          <p className="text-ink-2 text-[16px] leading-relaxed mt-1">
+            Se cortó la conexión y no sabemos si llegó a registrarse. No vuelvas a votar:
+            avisale al operador de la mesa, que lo verifica en el sistema.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+
   const avisoVisible = aviso && (
-    <div
-      className={`voto-aviso ${dudoso ? 'voto-aviso--medio' : 'voto-aviso--alto'} mb-6`}
-      role="alert"
-    >
+    <div className={`voto-aviso voto-aviso--${aviso.tono} mb-6`} role="alert">
       <div className="flex gap-3">
         <AlertCircle className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />
         <div>
@@ -690,7 +714,10 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     if (fase === 'cortado' && cortado) {
       return (
         <div className="rise">
-          <div className="voto-aviso voto-aviso--alto" role="alert">
+          <div
+            className={`voto-aviso voto-aviso--${cortado.tono}`}
+            role={cortado.tono === 'ok' ? 'status' : 'alert'}
+          >
             <h2 className="font-display text-2xl font-medium leading-tight mb-2">
               {cortado.titulo}
             </h2>
@@ -809,6 +836,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     if (fase === 'confirmar') {
       return (
         <div className="rise">
+          {dudaVisible}
           {avisoVisible}
           <section className="card p-6 sm:p-7" aria-labelledby="confirmar-titulo">
             <span className="label-mono">Último paso</span>
@@ -863,8 +891,8 @@ export function Terminal({ info }: { info: InfoTerminal }) {
               type="button"
               className="btn-ghost mt-4 mx-auto"
               onClick={() => {
+                // `dudoso` no se apaga acá: ver la caja de la duda.
                 setAviso(null)
-                setDudoso(false)
                 setFase('boleta')
                 arriba()
               }}
@@ -881,6 +909,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
 
     return (
       <div>
+        {dudaVisible}
         {avisoVisible}
 
         <p className="text-[17px] leading-relaxed mb-6">
