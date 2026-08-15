@@ -61,7 +61,23 @@ export async function permitidoPorIp(
   ip: string,
   regla: RateLimitRule,
 ): Promise<boolean> {
-  const bucket = `${regla.nombre}:${ip}`
+  return permitidoPorClave(admin, ip, regla)
+}
+
+/**
+ * El mismo contador, con una clave que no es la IP.
+ *
+ * Existe por la terminal de mesa: doscientas personas votando desde la tablet
+ * del club son una sola IP, y contarlas juntas trancaría la mesa a mitad del
+ * acto. Ahí la clave es la terminal —una sesión que hubo que abrir con una
+ * llave— y por eso se puede contar aparte sin dejar de contar.
+ */
+export async function permitidoPorClave(
+  admin: SupabaseClient,
+  clave: string,
+  regla: RateLimitRule,
+): Promise<boolean> {
+  const bucket = `${regla.nombre}:${clave}`
   try {
     const { data, error } = await admin.rpc('rate_limit_hit', {
       p_bucket: bucket,
@@ -115,6 +131,29 @@ export const LIMITES = {
    * para quien tipea mal un par de veces desde el papel.
    */
   votoCodigo: { nombre: 'voto_codigo', limite: 10, ventanaSegundos: 300 },
+
+  // Terminal de mesa (`/v/mesa`). Montarla se cuenta por IP; atender votantes,
+  // por terminal. Esa asimetría es todo el punto de la llave: sin ella no habría
+  // forma de distinguir 200 votos legítimos que salen de la conexión del club de
+  // alguien probando códigos desde su casa. Ver docs/supabase/46_voto_kiosco.sql.
+  /**
+   * Tipear la llave. Son 10 caracteres de un alfabeto de 31 (~8·10^14
+   * combinaciones): el tope no es lo que la protege, es lo que evita que alguien
+   * use el endpoint como martillo. Holgado para el operador que copia de un
+   * papel y se equivoca dos veces.
+   */
+  kioscoAbrir: { nombre: 'kiosco_abrir', limite: 10, ventanaSegundos: 300 },
+  /**
+   * Canjear el código de una credencial EN una terminal montada. Por terminal,
+   * y holgado: es una fila de gente, no un script. El código sigue sin tener
+   * bloqueo por credencial detrás —el que cuenta intentos es el token—, así que
+   * el tope existe igual.
+   */
+  kioscoCodigo: { nombre: 'kiosco_codigo', limite: 40, ventanaSegundos: 60 },
+  /** Probar los dígitos. El bloqueo por credencial (5 fallos → 15 min) no se toca. */
+  kioscoValidar: { nombre: 'kiosco_validar', limite: 40, ventanaSegundos: 60 },
+  /** Emitir. Una persona lo hace una vez; el margen es para el reintento. */
+  kioscoEmitir: { nombre: 'kiosco_emitir', limite: 30, ventanaSegundos: 60 },
 
   /**
    * Entrar a un puesto de mesa (`/mesa`).
