@@ -17,6 +17,7 @@ import type {
   CodigoResuelto,
   EleccionPublicaPagina,
   ErrorVotacion,
+  EstadoActo,
   IntegranteOpcion,
   OpcionPapeleta,
   Papeleta,
@@ -65,6 +66,19 @@ function entero(v: unknown, def: number): number {
  */
 function ventana(v: unknown): VentanaEleccion {
   return v === 'abierta' || v === 'no_abierta' || v === 'cerrada_web' ? v : 'cerrada'
+}
+
+/**
+ * El estado sólo elige palabras —quién puede votar lo sigue decidiendo
+ * `ventana`—, pero un valor desconocido cae igual en `cerrada`: si la nube
+ * mandara algún día un estado que esta versión de la web no conoce, el peor
+ * error posible sería contarlo como abierto.
+ */
+const ESTADOS_ACTO: readonly EstadoActo[] = [
+  'padron', 'abierta', 'cerrada', 'escrutada', 'archivada', 'anulada',
+]
+function estadoActo(v: unknown): EstadoActo {
+  return ESTADOS_ACTO.includes(v as EstadoActo) ? (v as EstadoActo) : 'cerrada'
 }
 
 function integrantes(v: unknown): IntegranteOpcion[] {
@@ -159,7 +173,7 @@ export async function buscarCredencial(
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
       fecha_cierre_web: texto(e.fecha_cierre_web),
-      estado: e.estado === 'abierta' ? 'abierta' : 'cerrada',
+      estado: estadoActo(e.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
     habilitado: d.habilitado !== false,
@@ -267,7 +281,7 @@ export async function eleccionPublica(
       // verdad— y el tramo presencial lo explica el instructivo. Meterle un
       // cuarto estado a esa página complica más de lo que aclara (47_).
       fecha_cierre_web: null,
-      estado: e.estado === 'abierta' ? 'abierta' : 'cerrada',
+      estado: estadoActo(e.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
     ventana: ventana(d.ventana),

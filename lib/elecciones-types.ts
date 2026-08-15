@@ -40,8 +40,19 @@ export interface EleccionPublica {
   fecha_cierre: string
   /** Cierre del canal web, anterior al de la elección. `null` = cierran juntos. */
   fecha_cierre_web: string | null
-  estado: 'abierta' | 'cerrada'
+  /**
+   * Los estados que alguien puede llegar a ver. Desde `53_` la elección sigue
+   * publicada después del acto: el link personal y el `{base}/e/{slug}` ya están
+   * repartidos, y hacerlos desaparecer hace que la página diga "el link no es
+   * válido" el día después de votar, que es cuando más gente vuelve a abrirlos.
+   *
+   * `ventana` no depende de esto —Postgres devuelve `cerrada` para todo lo que
+   * no sea `abierta`—: el estado sólo elige las palabras.
+   */
+  estado: EstadoActo
 }
+
+export type EstadoActo = 'padron' | 'abierta' | 'cerrada' | 'escrutada' | 'archivada' | 'anulada'
 
 /** Integrante de una plancha. Informativo: no se vota por integrante. */
 export interface IntegranteOpcion {
@@ -256,6 +267,72 @@ export interface MensajeVotacion {
   detalle: string
   /** `true` = no hay nada que reintentar en esta sesión: se corta el flujo. */
   terminal: boolean
+}
+
+/** Cómo se anuncia una votación en la que ya no se puede votar. */
+export interface CierreDeLaVotacion {
+  /** Una línea, para debajo del título: reemplaza al "se puede votar hasta el…". */
+  linea: string
+  titulo: string
+  detalle: string
+}
+
+/**
+ * Por qué esta votación ya no recibe votos, en palabras.
+ *
+ * **El estado manda sobre la fecha.** Una elección que la comisión cerró antes
+ * de la hora no puede anunciar la hora que figuraba —"cerró a las 20:00" leído a
+ * las 18:00 es una hora futura y hace pensar que la página está rota—, y una
+ * anulada no cerró nunca: se dejó sin efecto, que no es lo mismo.
+ *
+ * Nada de esto habla de resultados: en la web no hay conteo, ni parcial ni
+ * final, y este texto no puede ser la primera vez que eso cambie. Quien pregunta
+ * "¿quién ganó?" tiene que salir de acá sabiendo que lo comunica la institución.
+ *
+ * `cerrada_web` NO pasa por acá y es a propósito: esa persona todavía puede
+ * votar, en el local. Ver `VentanaEleccion`.
+ */
+export function cierreDeLaVotacion(
+  e: EleccionPublica,
+  emailContacto: string | null,
+): CierreDeLaVotacion {
+  const mail = emailContacto ?? e.email_contacto
+  const escribinos = mail ? ` Si creés que es un error, escribinos a ${mail}.` : ''
+
+  if (e.estado === 'anulada') {
+    return {
+      linea: 'Esta elección quedó sin efecto',
+      titulo: 'La elección quedó sin efecto',
+      detalle:
+        `La institución la dejó sin efecto: no se emiten votos y no hay resultado.${escribinos}`,
+    }
+  }
+  if (e.estado === 'escrutada' || e.estado === 'archivada') {
+    return {
+      linea: 'La votación terminó · ya se escrutó',
+      titulo: 'La votación terminó',
+      detalle:
+        'Los votos ya se contaron y no se puede votar más. El resultado lo comunica la ' +
+        `institución: acá no se publica.${escribinos}`,
+    }
+  }
+  // Cerrada por la hora: la fecha explica sola qué pasó y cuándo.
+  // `horaAperturaPasada` es "este instante ya pasó"; sirve igual para el cierre.
+  if (horaAperturaPasada(e.fecha_cierre)) {
+    return {
+      linea: `La votación cerró el ${fechaHoraCorta(e.fecha_cierre)}`,
+      titulo: 'La votación está cerrada',
+      detalle: `Cerró el ${fechaHoraCorta(e.fecha_cierre)} y ya no se pueden emitir votos.${escribinos}`,
+    }
+  }
+  // Cerrada a mano, antes de la hora anunciada.
+  return {
+    linea: 'La votación ya cerró',
+    titulo: 'La votación está cerrada',
+    detalle:
+      'La comisión la cerró antes de la hora prevista y ya no se pueden emitir ' +
+      `votos.${escribinos}`,
+  }
 }
 
 /**

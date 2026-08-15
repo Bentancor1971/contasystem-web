@@ -141,6 +141,18 @@ export const LIMITES = {
   postulacionEnviar: { nombre: 'postulacion_enviar', limite: 15, ventanaSegundos: 300 },
   /** Darse de baja. */
   postulacionRetirar: { nombre: 'postulacion_retirar', limite: 10, ventanaSegundos: 300 },
+
+  /**
+   * Probar el acceso (`/v/prueba-acceso`, `/p/prueba-acceso`).
+   *
+   * Bucket propio a propósito: quien prueba el acceso suele estar en el mismo
+   * local —y detrás de la misma IP— que quien está votando. Con el bucket de
+   * `votoVer`, revisar el link diez veces le comería el cupo al votante.
+   *
+   * El tope existe igual porque cada prueba llega hasta Postgres, pero es
+   * holgado: no hay secreto que adivinar, el token es público y constante.
+   */
+  pruebaAcceso: { nombre: 'prueba_acceso', limite: 20, ventanaSegundos: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 /** Cuerpo estándar del 429. */

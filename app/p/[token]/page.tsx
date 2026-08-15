@@ -26,6 +26,7 @@ import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarConvocatoria, validarInvitado } from '@/lib/convocatorias'
 import {
+  cierreDelLlamado,
   esError,
   fechaHoraCorta,
   horaAperturaPasada,
@@ -35,6 +36,8 @@ import {
   type InvitadoValidado,
   type VentanaConvocatoria,
 } from '@/lib/convocatorias-types'
+import { diagnosticarAcceso, esTokenDePrueba } from '@/lib/prueba-acceso'
+import { PruebaAcceso } from '@/components/PruebaAcceso'
 import { ipDeHeaders, LIMITES, permitidoPorIp } from '@/lib/rate-limit'
 import { Postulacion } from './Postulacion'
 
@@ -107,8 +110,9 @@ function Cortada({ titulo, detalle }: { titulo: string; detalle: string }) {
  * `ventana` es el único campo que decide, y lo resuelve Postgres contra su
  * propio reloj: el del dispositivo de la persona no participa nunca.
  *
- * `horaAperturaPasada` sólo elige PALABRAS: anunciar en futuro una apertura que
- * ya quedó en el pasado es la frase que termina en un llamado por teléfono.
+ * `horaAperturaPasada` y `cierreDelLlamado` sólo eligen PALABRAS: anunciar en
+ * futuro una apertura que ya quedó en el pasado —o un plazo que la institución
+ * cortó antes— es la frase que termina en un llamado por teléfono.
  */
 function Encabezado({
   convocatoria,
@@ -117,6 +121,7 @@ function Encabezado({
   convocatoria: ConvocatoriaPublica
   ventana: VentanaConvocatoria
 }) {
+  const cerrado = ventana === 'cerrada'
   return (
     <header className="rise mb-8">
       <span className="label-mono">Convocatoria</span>
@@ -132,14 +137,17 @@ function Encabezado({
           className="w-full h-auto rounded-xl border border-line mb-5"
         />
       )}
-      <p className="font-mono text-sm text-ink-2">
+      {/* La línea del plazo es lo primero que se lee bajo el título, y es la que
+          hacía creer que el llamado seguía vigente. Cuando ya no lo está, acá se
+          dice, sin esperar a que la persona baje hasta el aviso. */}
+      <p className={`font-mono text-sm ${cerrado ? 'text-ink font-medium' : 'text-ink-2'}`}>
         {ventana === 'abierta'
           ? `Podés anotarte hasta el ${fechaHoraCorta(convocatoria.fecha_cierre)}`
           : ventana === 'no_abierta'
             ? horaAperturaPasada(convocatoria.fecha_apertura)
               ? `Apertura prevista: ${fechaHoraCorta(convocatoria.fecha_apertura)}`
               : `Se abre el ${fechaHoraCorta(convocatoria.fecha_apertura)}`
-            : `El plazo cerró el ${fechaHoraCorta(convocatoria.fecha_cierre)}`}
+            : cierreDelLlamado(convocatoria, null).linea}
       </p>
       {convocatoria.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
@@ -189,6 +197,19 @@ export default async function PostulacionPage({
 
   if (!tokenValido(token)) return <Cortada {...LINK_INVALIDO} />
 
+  // El token reservado de prueba, antes de crear el cliente admin: que falte la
+  // service key es una de las cosas que la prueba tiene que poder contar, y si
+  // se crea acá el fallo sale como un 500 en vez de como un diagnóstico.
+  // No pertenece a nadie y no abre ninguna postulación. Ver lib/prueba-acceso.ts.
+  if (esTokenDePrueba(token)) {
+    return (
+      <PruebaAcceso
+        modulo="convocatoria"
+        resultado={await diagnosticarAcceso('convocatoria', token, await headers())}
+      />
+    )
+  }
+
   const admin = createAdminClient()
 
   // Tope por IP. El token es inadivinable, pero los N dígitos del segundo factor
@@ -217,6 +238,12 @@ export default async function PostulacionPage({
   // deshacer, porque no altera ningún resultado.
   const puedeRetirarse = estado.ya_postulado && estado.ventana === 'abierta' && !estado.bloqueado
 
+  // Cómo se cuenta que este llamado terminó: por plazo vencido, por cierre
+  // anticipado, porque la lista ya se resolvió o porque quedó sin efecto. Se
+  // arma una sola vez y se usa en el encabezado y en el aviso, para que las dos
+  // frases no puedan contarse distinto.
+  const cierre = cierreDelLlamado(convocatoria, contacto)
+
   // Qué impide anotarse, si algo lo impide. El orden importa: "ya estás anotado"
   // es más informativo que "el plazo cerró" para quien se anotó y vuelve.
   const impedimento: Impedimento | null =
@@ -226,7 +253,8 @@ export default async function PostulacionPage({
           detalle:
             estado.ventana === 'abierta'
               ? `Tu interés está registrado.${escribinos}`
-              : `Tu interés está registrado y el plazo ya cerró. La comisión se comunica con los interesados.${escribinos}`,
+              : `Tu interés está registrado y ${cierre.frase}. ` +
+                `La comisión se comunica con los interesados.${escribinos}`,
           tono: 'ok',
         }
       : estado.ventana === 'no_abierta'
@@ -244,11 +272,7 @@ export default async function PostulacionPage({
               tono: 'medio',
             }
         : estado.ventana === 'cerrada'
-          ? {
-              titulo: 'El plazo para anotarse cerró',
-              detalle: `Cerró el ${fechaHoraCorta(convocatoria.fecha_cierre)} y ya no se reciben postulaciones.${escribinos}`,
-              tono: 'alto',
-            }
+          ? { titulo: cierre.titulo, detalle: cierre.detalle, tono: 'alto' }
           : estado.bloqueado
             ? {
                 titulo: 'Demasiados intentos',

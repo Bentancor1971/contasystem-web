@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   DatosPostulacion,
   ErrorPostulacion,
+  EstadoLlamado,
   PoliticaDeuda,
   RespuestaEstadoConv,
   RespuestaRegistrar,
@@ -62,6 +63,22 @@ function numero(v: unknown): number {
 /** Cualquier valor desconocido cae en `cerrada`, que es el más restrictivo. */
 function ventana(v: unknown): VentanaConvocatoria {
   return v === 'abierta' || v === 'no_abierta' ? v : 'cerrada'
+}
+
+/**
+ * El estado sólo elige palabras —quién puede anotarse lo sigue decidiendo
+ * `ventana`—, pero un valor desconocido cae igual en `cerrada`: si la nube
+ * mandara algún día un estado que esta versión de la web no conoce, el peor
+ * error posible sería contarlo como abierto.
+ *
+ * Los cuatro tienen que estar. Con el par `'abierta' | 'cerrada'` que había
+ * antes de `52_`, `resuelta` y `anulada` se aplastaban contra `cerrada` acá, y
+ * las ramas que `cierreDelLlamado` tiene para ellos nunca se alcanzaban: un
+ * llamado anulado seguía diciendo "el plazo cerró el …".
+ */
+const ESTADOS_LLAMADO: readonly EstadoLlamado[] = ['abierta', 'cerrada', 'resuelta', 'anulada']
+function estadoLlamado(v: unknown): EstadoLlamado {
+  return ESTADOS_LLAMADO.includes(v as EstadoLlamado) ? (v as EstadoLlamado) : 'cerrada'
 }
 
 function politica(v: unknown): PoliticaDeuda {
@@ -111,7 +128,7 @@ export async function buscarConvocatoria(
       imagen_url: texto(c.imagen_url),
       fecha_apertura: String(c.fecha_apertura ?? ''),
       fecha_cierre: String(c.fecha_cierre ?? ''),
-      estado: c.estado === 'abierta' ? 'abierta' : 'cerrada',
+      estado: estadoLlamado(c.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
     ya_postulado: d.ya_postulado === true,

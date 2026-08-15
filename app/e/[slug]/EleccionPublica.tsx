@@ -19,7 +19,11 @@
  */
 
 import type { Metadata } from 'next'
-import { horaAperturaPasada, type EleccionPublicaPagina } from '@/lib/elecciones-types'
+import {
+  cierreDeLaVotacion,
+  horaAperturaPasada,
+  type EleccionPublicaPagina,
+} from '@/lib/elecciones-types'
 
 /** ISO → "13/08 a las 09:00". Mismo formato que usa la pantalla de votación. */
 function fechaHoraLarga(iso: string): string {
@@ -53,8 +57,16 @@ export function metadataEleccion(p: EleccionPublicaPagina): Metadata {
  * `no_abierta` con la hora de apertura ya cumplida no se anuncia en futuro: el
  * acto se abre a mano y esa hora es una previsión que quedó atrás, no una
  * promesa. Ver `horaAperturaPasada`.
+ *
+ * El caso cerrado sale de `cierreDeLaVotacion`, el mismo que usa la pantalla de
+ * votación: desde `53_` esta página sobrevive al acto —el link ya está en la
+ * cartelera y en los grupos— y "la votación cerró" a secas no distinguía una
+ * elección escrutada de una que quedó sin efecto. Se le pasa `null` de contacto
+ * a propósito: acá no hay nadie identificado a quien invitar a reclamar.
  */
-function titularDe(p: EleccionPublicaPagina): { titulo: string; tono: string } {
+function titularDe(
+  p: EleccionPublicaPagina,
+): { titulo: string; detalle?: string; tono: string } {
   switch (p.ventana) {
     case 'no_abierta':
       return {
@@ -68,11 +80,10 @@ function titularDe(p: EleccionPublicaPagina): { titulo: string; tono: string } {
         titulo: `La votación está abierta hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
         tono: 'voto-aviso--ok',
       }
-    default:
-      return {
-        titulo: 'La votación cerró. Los resultados los comunica la institución.',
-        tono: 'voto-aviso--alto',
-      }
+    default: {
+      const cierre = cierreDeLaVotacion(p.eleccion, null)
+      return { titulo: cierre.titulo, detalle: cierre.detalle, tono: 'voto-aviso--alto' }
+    }
   }
 }
 
@@ -107,6 +118,9 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
 
         <div className={`voto-aviso ${titular.tono} rise`} role="status">
           <h2 className="font-display text-2xl font-medium leading-tight">{titular.titulo}</h2>
+          {titular.detalle && (
+            <p className="text-ink-2 text-[17px] leading-relaxed mt-2">{titular.detalle}</p>
+          )}
         </div>
 
         {e.texto_antes && (

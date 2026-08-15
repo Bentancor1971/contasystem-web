@@ -53,8 +53,19 @@ export interface ConvocatoriaPublica {
   imagen_url: string | null
   fecha_apertura: string
   fecha_cierre: string
-  estado: 'abierta' | 'cerrada'
+  /**
+   * Los cuatro estados que alguien puede llegar a ver. Un llamado terminado
+   * sigue publicado a propósito: el link ya está repartido por mail y hacerlo
+   * desaparecer haría que la página diga «el link no es válido», que manda a la
+   * persona a buscar un problema que no existe.
+   *
+   * `ventana` no depende de esto —Postgres devuelve `cerrada` para todo lo que
+   * no sea `abierta`—: el estado sólo elige las palabras.
+   */
+  estado: EstadoLlamado
 }
+
+export type EstadoLlamado = 'abierta' | 'cerrada' | 'resuelta' | 'anulada'
 
 /**
  * `buscar_convocatoria` — paso 1. Deliberadamente NO trae el nombre de la
@@ -183,6 +194,74 @@ export interface MensajePostulacion {
   detalle: string
   /** `true` = no hay nada que reintentar en esta sesión: se corta el flujo. */
   terminal: boolean
+}
+
+/** Cómo se anuncia un llamado que ya no recibe a nadie. */
+export interface CierreDelLlamado {
+  /** Una línea, para debajo del título: reemplaza al "podés anotarte hasta el…". */
+  linea: string
+  /** La misma idea como oración subordinada: «Tu interés está registrado y {frase}». */
+  frase: string
+  titulo: string
+  detalle: string
+}
+
+/**
+ * Por qué este llamado ya no recibe postulaciones, en palabras.
+ *
+ * **El estado manda sobre la fecha.** Un llamado que la institución cerró antes
+ * de tiempo no puede anunciar el plazo que figuraba —"cerró el 29/08" leído el
+ * 15/08 es una fecha en el futuro y hace pensar que la página está rota—, y uno
+ * anulado no venció nunca: se dejó sin efecto, que no es lo mismo y no se
+ * arregla esperando.
+ *
+ * Comparar contra el reloj del servidor sólo elige PALABRAS. Quién puede
+ * anotarse lo decide `ventana`, que resuelve Postgres contra el suyo.
+ */
+export function cierreDelLlamado(
+  c: ConvocatoriaPublica,
+  emailContacto: string | null,
+): CierreDelLlamado {
+  const mail = emailContacto ?? c.email_contacto
+  const escribinos = mail ? ` Si creés que es un error, escribinos a ${mail}.` : ''
+
+  if (c.estado === 'anulada') {
+    return {
+      linea: 'Este llamado quedó sin efecto',
+      frase: 'el llamado quedó sin efecto',
+      titulo: 'El llamado quedó sin efecto',
+      detalle: `La institución lo dejó sin efecto y no se reciben postulaciones.${escribinos}`,
+    }
+  }
+  if (c.estado === 'resuelta') {
+    return {
+      linea: 'Este llamado ya se resolvió',
+      frase: 'el llamado ya se resolvió',
+      titulo: 'El llamado ya se resolvió',
+      detalle:
+        'La lista ya se conformó con quienes se anotaron y este llamado no recibe más ' +
+        `postulaciones.${escribinos}`,
+    }
+  }
+  // Cerrado por el plazo: la fecha explica sola qué pasó y cuándo.
+  // `horaAperturaPasada` es "este instante ya pasó"; sirve igual para el cierre.
+  if (horaAperturaPasada(c.fecha_cierre)) {
+    return {
+      linea: `El plazo cerró el ${fechaHoraCorta(c.fecha_cierre)}`,
+      frase: `el plazo cerró el ${fechaHoraCorta(c.fecha_cierre)}`,
+      titulo: 'El plazo para anotarse cerró',
+      detalle: `Cerró el ${fechaHoraCorta(c.fecha_cierre)} y ya no se reciben postulaciones.${escribinos}`,
+    }
+  }
+  // Cerrado a mano, antes de la fecha anunciada.
+  return {
+    linea: 'El plazo para anotarse ya cerró',
+    frase: 'el plazo ya cerró',
+    titulo: 'El plazo para anotarse cerró',
+    detalle:
+      'La institución cerró el llamado antes de la fecha prevista y ya no se reciben ' +
+      `postulaciones.${escribinos}`,
+  }
 }
 
 /**

@@ -23,6 +23,7 @@ import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarCredencial, validarCredencial } from '@/lib/elecciones'
 import {
+  cierreDeLaVotacion,
   esError,
   fechaHoraCorta,
   horaAperturaPasada,
@@ -32,6 +33,8 @@ import {
   type EleccionPublica,
   type VentanaEleccion,
 } from '@/lib/elecciones-types'
+import { diagnosticarAcceso, esTokenDePrueba } from '@/lib/prueba-acceso'
+import { PruebaAcceso } from '@/components/PruebaAcceso'
 import { ipDeHeaders, LIMITES, permitidoPorIp } from '@/lib/rate-limit'
 import { Votacion } from './Votacion'
 
@@ -115,6 +118,7 @@ function Cortada({ titulo, detalle }: { titulo: string; detalle: string }) {
  * 09:00" es una frase que no se sostiene.
  */
 function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana: VentanaEleccion }) {
+  const cerrada = ventana === 'cerrada'
   return (
     <header className="rise mb-8">
       <span className="label-mono">Votación</span>
@@ -130,7 +134,11 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
           className="w-full h-auto rounded-xl border border-line mb-5"
         />
       )}
-      <p className="font-mono text-sm text-ink-2">
+      {/* Esta línea es lo primero que se lee bajo el título. Con el acto ya
+          terminado tiene que decirlo acá —"Votación cerrada" a secas no
+          distinguía una elección escrutada de una anulada— y sin esperar a que
+          la persona baje hasta el aviso. */}
+      <p className={`font-mono text-sm ${cerrada ? 'text-ink font-medium' : 'text-ink-2'}`}>
         {ventana === 'abierta'
           ? `Se puede votar hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
           : ventana === 'no_abierta'
@@ -140,7 +148,7 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
             : ventana === 'cerrada_web'
               ? // La votación NO cerró: cerró el canal web. Ver `cerrada_web`.
                 'El voto por internet cerró · se vota en el local'
-              : 'Votación cerrada'}
+              : cierreDeLaVotacion(eleccion, null).linea}
       </p>
       {eleccion.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
@@ -185,6 +193,19 @@ export default async function VotacionPage({
 
   if (!tokenValido(token)) return <Cortada {...LINK_INVALIDO} />
 
+  // El token reservado de prueba, antes de crear el cliente admin: que falte la
+  // service key es una de las cosas que la prueba tiene que poder contar, y si
+  // se crea acá el fallo sale como un 500 en vez de como un diagnóstico.
+  // No pertenece a nadie y no abre ninguna credencial. Ver lib/prueba-acceso.ts.
+  if (esTokenDePrueba(token)) {
+    return (
+      <PruebaAcceso
+        modulo="votacion"
+        resultado={await diagnosticarAcceso('votacion', token, await headers())}
+      />
+    )
+  }
+
   const admin = createAdminClient()
 
   // Tope por IP. El token es inadivinable, pero los N dígitos del segundo factor
@@ -207,6 +228,12 @@ export default async function VotacionPage({
   const { eleccion } = estado
   const contacto = eleccion.email_contacto
   const escribinos = contacto ? ` Si creés que es un error, escribinos a ${contacto}.` : ''
+
+  // Cómo se cuenta que este acto terminó: por hora cumplida, por cierre
+  // anticipado, porque ya se escrutó o porque quedó sin efecto. Se arma una sola
+  // vez y se usa en el encabezado y en el aviso, para que las dos frases no
+  // puedan contarse distinto.
+  const cierre = cierreDeLaVotacion(eleccion, contacto)
 
   // Qué impide votar, si algo lo impide. El orden importa: "ya votaste" es más
   // informativo que "la votación cerró" para quien votó y vuelve a entrar.
@@ -241,11 +268,7 @@ export default async function VotacionPage({
                 tono: 'medio',
               }
           : estado.ventana === 'cerrada'
-            ? {
-                titulo: 'La votación está cerrada',
-                detalle: `Cerró el ${fechaHoraCorta(eleccion.fecha_cierre)} y ya no se pueden emitir votos.${escribinos}`,
-                tono: 'alto',
-              }
+            ? { titulo: cierre.titulo, detalle: cierre.detalle, tono: 'alto' }
             : estado.ventana === 'cerrada_web'
               ? {
                   // El mensaje más caro de todo el módulo. Esta persona TODAVÍA
