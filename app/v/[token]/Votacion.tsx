@@ -132,7 +132,7 @@ export function Votacion({
   textoDespues,
   boletaInicial,
   encabezado,
-  instructivo,
+  portada,
   eleccion,
 }: {
   token: string
@@ -144,8 +144,12 @@ export function Votacion({
   boletaInicial: BoletaValidada | null
   /** Título, fechas, descripción y texto de apertura. Los arma el servidor. */
   encabezado: React.ReactNode
-  /** El "Antes de votar" de la institución, o `null` si no escribió ninguno. */
-  instructivo: React.ReactNode
+  /**
+   * Lo que se lee antes de votar: el texto de apertura y el "Antes de votar".
+   * Ya viene en `null` cuando esta persona no puede votar —lo decide el
+   * servidor, que es el que sabe si ya votó o si el acto terminó—.
+   */
+  portada: React.ReactNode
   /**
    * Lo justo para explicar un cierre que llegue con la persona adentro. Sin
    * esto, una elección que cerraba a mitad de sesión daba "ya no se pueden
@@ -414,23 +418,24 @@ export function Votacion({
   // ── Pantallas ─────────────────────────────────────────────────────────────
 
   /**
-   * El encabezado y el instructivo son la PORTADA: acompañan a la pantalla de
-   * entrada y se van cuando la persona pasa a marcar. Con la boleta delante,
-   * el título, las fechas, la descripción y el "Antes de votar" son dos
-   * pantallas de scroll entre la persona y la primera papeleta —en un teléfono,
-   * la boleta arranca abajo de todo—, y en la confirmación compiten con lo
-   * único que importa leer ahí, que es lo que se está por emitir.
+   * El encabezado y la portada acompañan a la pantalla de ENTRADA y se van
+   * cuando la persona pasa a marcar. Con la boleta delante, el título, las
+   * fechas, la descripción y el "Antes de votar" son dos pantallas de scroll
+   * entre la persona y la primera papeleta —en un teléfono, la boleta arranca
+   * abajo de todo—, y en la confirmación compiten con lo único que importa leer
+   * ahí, que es lo que se está por emitir.
    *
    * La entrada no siempre es el segundo factor: cuando la elección no lo pide,
-   * la boleta ES la portada, y ahí el instructivo tiene que estar sí o sí —es
-   * donde la institución avisa que el voto es nominal, y eso se lee antes de
-   * marcar, no después—.
+   * la boleta ES la entrada, y ahí la portada tiene que estar sí o sí —es donde
+   * la institución avisa que el voto es nominal, y eso se lee antes de marcar,
+   * no después—.
    */
   const enPortada = fase === 'factor' || (fase === 'boleta' && !!boletaInicial)
 
-  // En las pantallas terminales queda el encabezado y no el instructivo: sirve
-  // para saber de qué elección habla el aviso, y las instrucciones para votar
-  // ya no le sirven a nadie que no puede votar o que acaba de votar.
+  // En las pantallas terminales queda el encabezado y no la portada: sirve para
+  // saber de qué elección habla el aviso, y el texto de apertura y las
+  // instrucciones ya no le sirven a nadie que no puede votar o que acaba de
+  // votar.
   if (fase === 'cortado' && cortado) {
     return (
       <>
@@ -554,7 +559,7 @@ export function Votacion({
     return (
       <div className="rise">
         {encabezado}
-        {instructivo}
+        {portada}
         {avisoVisible}
         <form onSubmit={onValidar} className="card p-6 sm:p-7">
           <div className="flex items-center gap-2 mb-4">
@@ -692,7 +697,7 @@ export function Votacion({
       {enPortada && (
         <>
           {encabezado}
-          {instructivo}
+          {portada}
         </>
       )}
       {dudaVisible}

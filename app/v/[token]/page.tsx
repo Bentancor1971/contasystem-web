@@ -155,11 +155,10 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
           {eleccion.descripcion}
         </p>
       )}
-      {eleccion.texto_antes && (
-        <p className="text-ink-2 mt-3 text-[17px] leading-relaxed whitespace-pre-line">
-          {eleccion.texto_antes}
-        </p>
-      )}
+      {/* `texto_antes` NO va acá: se fue a la portada, con el instructivo.
+          Este encabezado dice qué elección es y cómo está, y eso vale en
+          cualquier pantalla; el texto de apertura le habla a alguien que está
+          por votar y no tiene nada que hacer arriba de un "ya votaste". */}
       <div className="perforated mt-8" />
     </header>
   )
@@ -321,6 +320,42 @@ export default async function VotacionPage({
 
   const bloqueada = impedimento ?? errorBoleta
 
+  /**
+   * El instructivo se muestra mientras esta persona todavía pueda votar por
+   * algún camino, y no cuando ya no.
+   *
+   * No es una regla estética. Contra la elección de ATRI ya escrutada, alguien
+   * que votó ayer leía «Ya votaste» y debajo, entero, el «Antes de votar»:
+   * cómo marcar la boleta, y que escriba al mail de contacto «antes de que
+   * cierre la votación» —de una votación que terminó y ya se escrutó—. Son
+   * instrucciones para hacer algo que no se puede hacer.
+   *
+   * Los que SÍ lo siguen viendo son los que tienen algo por delante: la
+   * votación que todavía no abrió, la credencial bloqueada un rato, y sobre
+   * todo `cerrada_web`, donde la persona va a votar al local y el instructivo
+   * suele ser el que explica cómo.
+   */
+  const puedeVotarTodavia =
+    !estado.ya_voto && estado.habilitado && estado.ventana !== 'cerrada'
+
+  /**
+   * Lo que se lee ANTES de votar: el texto de apertura de la institución y el
+   * instructivo. Van juntos porque son la misma clase de cosa —contenido
+   * dirigido a alguien que está por votar— y por lo tanto aparecen y
+   * desaparecen juntos: en la pantalla de entrada sí, con la boleta delante no,
+   * y nunca cuando esta persona ya no puede votar.
+   */
+  const portada = puedeVotarTodavia && (eleccion.texto_antes || eleccion.instructivo) && (
+    <>
+      {eleccion.texto_antes && (
+        <p className="text-ink-2 text-[17px] leading-relaxed mb-6 whitespace-pre-line">
+          {eleccion.texto_antes}
+        </p>
+      )}
+      {eleccion.instructivo && <Instructivo texto={eleccion.instructivo} />}
+    </>
+  )
+
   // Con la votación abierta, el encabezado y el instructivo NO los pinta esta
   // página: se los pasa armados a `Votacion`, que es quien sabe en qué paso
   // está la persona. Con la boleta a la vista tienen que desaparecer, y eso no
@@ -342,7 +377,7 @@ export default async function VotacionPage({
               {eleccion.texto_despues}
             </p>
           )}
-          {eleccion.instructivo && <Instructivo texto={eleccion.instructivo} />}
+          {portada}
         </>
       ) : (
         <Votacion
@@ -353,9 +388,7 @@ export default async function VotacionPage({
           boletaInicial={boletaInicial}
           eleccion={eleccion}
           encabezado={<Encabezado eleccion={eleccion} ventana={estado.ventana} />}
-          instructivo={
-            eleccion.instructivo ? <Instructivo texto={eleccion.instructivo} /> : null
-          }
+          portada={portada || null}
         />
       )}
     </Marco>
