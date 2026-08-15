@@ -14,7 +14,13 @@ import { TZ_UY, formatHoraUY } from '@/lib/format'
 
 // ── Formas que devuelven las RPC ────────────────────────────────────────────
 
-export type VentanaEleccion = 'abierta' | 'no_abierta' | 'cerrada'
+/**
+ * `cerrada_web` NO es `cerrada`, y confundirlos es el error más caro del módulo:
+ * la elección sigue abierta, lo que cerró es el canal de internet, y quien lee
+ * "la votación terminó" a esa hora se queda en su casa en vez de ir al local.
+ * Ver docs/supabase/47_mesa_presencial.sql.
+ */
+export type VentanaEleccion = 'abierta' | 'no_abierta' | 'cerrada' | 'cerrada_web'
 
 /** Cómo se dibuja la papeleta. No valida nada: quien valida es min/max. */
 export type TipoPapeleta = 'lista' | 'cargo' | 'pregunta' | 'multiple'
@@ -32,6 +38,8 @@ export interface EleccionPublica {
   imagen_url: string | null
   fecha_apertura: string
   fecha_cierre: string
+  /** Cierre del canal web, anterior al de la elección. `null` = cierran juntos. */
+  fecha_cierre_web: string | null
   estado: 'abierta' | 'cerrada'
 }
 
@@ -123,6 +131,8 @@ export type CodigoError =
   | 'bloqueado'
   | 'digitos_incorrectos'
   | 'eleccion_cerrada'
+  /** El canal web cerró; la elección NO. Se vota en el local. */
+  | 'cerrada_web'
   | 'no_abierta'
   | 'falta_papeleta'
   | 'blanco_no_admitido'
@@ -138,6 +148,8 @@ export interface ErrorVotacion {
   intentos_restantes?: number
   /** `bloqueado` — hasta cuándo. */
   hasta?: string
+  /** `cerrada_web` / `no_abierta` — desde cuándo. */
+  desde?: string
   /** `ya_voto` */
   emitido_at?: string
   /** Errores de boleta: título de la papeleta que falló. */
@@ -209,6 +221,32 @@ export function fechaHoraCorta(iso: string | null | undefined): string {
   const dia = partes.find((p) => p.type === 'day')?.value ?? ''
   const mes = partes.find((p) => p.type === 'month')?.value ?? ''
   return `${dia}/${mes} a las ${formatHoraUY(iso)}`
+}
+
+/**
+ * Si la hora de apertura ya pasó. Sirve para elegir CÓMO se cuenta un
+ * `ventana: 'no_abierta'`, que tiene dos causas bien distintas:
+ *
+ *  · la hora todavía no llegó → "abre el 14/08 a las 09:00" es una espera con
+ *    fecha, y la persona sabe qué hacer: volver más tarde;
+ *  · la hora ya pasó y la elección sigue en `padron` → la apertura del acto es
+ *    un gesto manual de la comisión (ver `WHEN v_e.estado = 'padron'` en
+ *    docs/supabase/43_publicacion_eleccion.sql, que gana ANTES de mirar el
+ *    reloj) y ese gesto todavía no ocurrió. Decirle "abre a las 09:00" a las
+ *    once de la mañana es mentirle, y es justo el caso que termina en un
+ *    llamado por teléfono.
+ *
+ * Se compara contra el reloj del server de Next, no contra el del visitante: un
+ * celular con la hora mal no puede cambiar el texto. Los dos son instantes
+ * absolutos, así que la zona no interviene.
+ *
+ * ⚠️ Alcance: esto elige PALABRAS, no permisos. Quién puede votar lo sigue
+ * decidiendo `ventana`, que resuelve Postgres contra su propio reloj.
+ */
+export function horaAperturaPasada(iso: string | null | undefined): boolean {
+  if (!iso) return false
+  const d = new Date(iso)
+  return !isNaN(d.getTime()) && Date.now() >= d.getTime()
 }
 
 // ── Mensajes ────────────────────────────────────────────────────────────────
@@ -301,6 +339,19 @@ export function mensajeDeError(
         detalle: `Ya no se pueden emitir votos.${contacto}`,
         terminal: true,
       }
+
+    case 'cerrada_web': {
+      // NO decir que la votación terminó: no terminó. Quien lee esto todavía
+      // puede votar, en persona. Es el mensaje más caro de equivocar del módulo.
+      const desde = fechaHoraCorta(r.desde)
+      return {
+        titulo: 'El voto por internet cerró',
+        detalle:
+          (desde ? `Cerró el ${desde}. ` : '') +
+          `La votación sigue abierta: se vota en el local, en persona.${contacto}`,
+        terminal: true,
+      }
+    }
 
     case 'no_abierta':
       return {

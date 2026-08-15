@@ -115,6 +115,32 @@ export const LIMITES = {
    * para quien tipea mal un par de veces desde el papel.
    */
   votoCodigo: { nombre: 'voto_codigo', limite: 10, ventanaSegundos: 300 },
+
+  /**
+   * Entrar a un puesto de mesa (`/mesa`).
+   *
+   * La base bloquea la MESA a los 5 fallos, y eso cubre a quien martilla una
+   * sola. Lo que cubre este tope es lo otro: un PIN son 10⁶ combinaciones y sin
+   * límite por IP alguien podría barrer todas las mesas en paralelo sin llegar a
+   * bloquear ninguna. Holgado igual, porque las mesas de un mismo local salen
+   * todas por la misma conexión y el operador que tipea mal no puede quedar
+   * afuera de su propio acto electoral.
+   */
+  mesaLogin: { nombre: 'mesa_login', limite: 20, ventanaSegundos: 300 },
+
+  // Postulación a una convocatoria (/p/[token]). Mismo criterio y mismos topes
+  // holgados que la votación, por la misma razón: la defensa fuerte contra el
+  // martilleo de los 4 dígitos es el bloqueo por credencial que hace la base (5
+  // fallos → 15 minutos), y un límite estrecho por IP no frena a quien rota IPs
+  // pero sí deja afuera a un socio real detrás del CGNAT de su operador.
+  /** Abrir el link. */
+  postulacionVer: { nombre: 'postulacion_ver', limite: 30, ventanaSegundos: 60 },
+  /** Probar los dígitos. */
+  postulacionValidar: { nombre: 'postulacion_validar', limite: 20, ventanaSegundos: 60 },
+  /** Anotarse. Una persona lo hace una vez; el margen es para el reintento. */
+  postulacionEnviar: { nombre: 'postulacion_enviar', limite: 15, ventanaSegundos: 300 },
+  /** Darse de baja. */
+  postulacionRetirar: { nombre: 'postulacion_retirar', limite: 10, ventanaSegundos: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 /** Cuerpo estándar del 429. */

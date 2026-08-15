@@ -27,6 +27,15 @@ const PUBLIC_PATHS = [
   // esto la página del código pediría login. Ver `esPublica`.
   '/v$',
   '/api/votacion/',
+  // Postulación a una convocatoria: el link personal que llega por mail. Es
+  // `/p/` de postularse, porque `/c/{token}` ya es la validación de certificados.
+  '/p/',
+  '/api/postulacion/',
+  // La mesa del local. NO usa la sesión de Supabase: entra con código + PIN y
+  // guarda su propia cookie httpOnly (`mesa_sesion`). Quien atiende una mesa no
+  // tiene usuario del sistema, así que un redirect a /login la dejaría afuera.
+  '/mesa',
+  '/api/mesa/',
 ]
 
 // Rutas realmente SIN sesión (inscripción / certificados públicos): acá nunca
@@ -42,6 +51,10 @@ const PUBLIC_SIN_SESION = [
   '/v/',
   '/v$',
   '/api/votacion/',
+  '/p/',
+  '/api/postulacion/',
+  '/mesa',
+  '/api/mesa/',
 ]
 
 /**
@@ -60,11 +73,20 @@ function esPublica(pathname: string, lista: readonly string[]): boolean {
 
 /**
  * Rutas donde una respuesta cacheada es un problema de verdad: `ya_voto`
- * guardado en el disco del navegador es un voto perdido o un doble intento.
+ * guardado en el disco del navegador es un voto perdido o un doble intento, y
+ * `ya_postulado` cacheado le muestra a alguien una pantalla que no es la suya.
  * Se marca acá y no en cada handler porque una *página* no puede escribir sus
  * propios headers de respuesta.
  */
-const SIN_CACHE = ['/v/', '/v$', '/api/votacion/']
+const SIN_CACHE = [
+  '/v/',
+  '/v$',
+  '/api/votacion/',
+  '/p/',
+  '/api/postulacion/',
+  '/mesa',
+  '/api/mesa/',
+]
 
 // Auto-login SÓLO en desarrollo: con estas credenciales seteadas, el middleware
 // inicia sesión server-side y `/login` nunca se renderiza. El guard de NODE_ENV

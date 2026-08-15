@@ -19,7 +19,7 @@
  */
 
 import type { Metadata } from 'next'
-import type { EleccionPublicaPagina } from '@/lib/elecciones-types'
+import { horaAperturaPasada, type EleccionPublicaPagina } from '@/lib/elecciones-types'
 
 /** ISO → "13/08 a las 09:00". Mismo formato que usa la pantalla de votación. */
 function fechaHoraLarga(iso: string): string {
@@ -49,12 +49,18 @@ export function metadataEleccion(p: EleccionPublicaPagina): Metadata {
  * Sale de `ventana` y no de `estado`: una elección publicada al congelar el
  * padrón está en la nube pero todavía no se vota. La ventana la resuelve
  * Postgres contra su propio reloj, no el del visitante.
+ *
+ * `no_abierta` con la hora de apertura ya cumplida no se anuncia en futuro: el
+ * acto se abre a mano y esa hora es una previsión que quedó atrás, no una
+ * promesa. Ver `horaAperturaPasada`.
  */
 function titularDe(p: EleccionPublicaPagina): { titulo: string; tono: string } {
   switch (p.ventana) {
     case 'no_abierta':
       return {
-        titulo: `La votación abre el ${fechaHoraLarga(p.eleccion.fecha_apertura)}.`,
+        titulo: horaAperturaPasada(p.eleccion.fecha_apertura)
+          ? `La votación estaba prevista para el ${fechaHoraLarga(p.eleccion.fecha_apertura)} y todavía no está habilitada.`
+          : `La votación abre el ${fechaHoraLarga(p.eleccion.fecha_apertura)}.`,
         tono: 'voto-aviso--medio',
       }
     case 'abierta':

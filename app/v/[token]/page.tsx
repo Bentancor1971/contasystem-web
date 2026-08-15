@@ -25,6 +25,7 @@ import { buscarCredencial, validarCredencial } from '@/lib/elecciones'
 import {
   esError,
   fechaHoraCorta,
+  horaAperturaPasada,
   mensajeDeError,
   tokenValido,
   type BoletaValidada,
@@ -107,6 +108,11 @@ function Cortada({ titulo, detalle }: { titulo: string; detalle: string }) {
  *
  * La regla del módulo es que `ventana` es el único campo que decide: lo resuelve
  * Postgres contra su propio reloj, no el del visitante.
+ *
+ * Lo único que se mira acá además de `ventana` es si la hora de apertura ya
+ * pasó, y sólo para no anunciar en futuro algo que quedó en el pasado: con la
+ * elección todavía en `padron` a las once de la mañana, "la votación abre a las
+ * 09:00" es una frase que no se sostiene.
  */
 function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana: VentanaEleccion }) {
   return (
@@ -128,8 +134,13 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
         {ventana === 'abierta'
           ? `Se puede votar hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
           : ventana === 'no_abierta'
-            ? `La votación abre el ${fechaHoraCorta(eleccion.fecha_apertura)}`
-            : 'Votación cerrada'}
+            ? horaAperturaPasada(eleccion.fecha_apertura)
+              ? `Apertura prevista: ${fechaHoraCorta(eleccion.fecha_apertura)}`
+              : `La votación abre el ${fechaHoraCorta(eleccion.fecha_apertura)}`
+            : ventana === 'cerrada_web'
+              ? // La votación NO cerró: cerró el canal web. Ver `cerrada_web`.
+                'El voto por internet cerró · se vota en el local'
+              : 'Votación cerrada'}
       </p>
       {eleccion.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
@@ -214,18 +225,42 @@ export default async function VotacionPage({
             tono: 'alto',
           }
         : estado.ventana === 'no_abierta'
-          ? {
-              titulo: 'La votación todavía no está abierta',
-              detalle: `Abre el ${fechaHoraCorta(eleccion.fecha_apertura)}. Volvé a entrar con este mismo link.`,
-              tono: 'medio',
-            }
+          ? horaAperturaPasada(eleccion.fecha_apertura)
+            ? {
+                // La hora llegó y la elección sigue sin habilitarse: el acto se
+                // abre a mano. No se promete una hora nueva porque no la hay.
+                titulo: 'La votación todavía no está habilitada',
+                detalle:
+                  `Estaba prevista para el ${fechaHoraCorta(eleccion.fecha_apertura)} y todavía no la ` +
+                  `abrieron. Volvé a entrar con este mismo link en un rato.${escribinos}`,
+                tono: 'medio',
+              }
+            : {
+                titulo: 'La votación todavía no está abierta',
+                detalle: `Abre el ${fechaHoraCorta(eleccion.fecha_apertura)}. Volvé a entrar con este mismo link.`,
+                tono: 'medio',
+              }
           : estado.ventana === 'cerrada'
             ? {
                 titulo: 'La votación está cerrada',
                 detalle: `Cerró el ${fechaHoraCorta(eleccion.fecha_cierre)} y ya no se pueden emitir votos.${escribinos}`,
                 tono: 'alto',
               }
-            : estado.bloqueado
+            : estado.ventana === 'cerrada_web'
+              ? {
+                  // El mensaje más caro de todo el módulo. Esta persona TODAVÍA
+                  // PUEDE VOTAR: si lee "la votación terminó" se queda en su
+                  // casa. La elección sigue abierta; lo que cerró es internet.
+                  titulo: 'El voto por internet cerró',
+                  detalle:
+                    (eleccion.fecha_cierre_web
+                      ? `Cerró el ${fechaHoraCorta(eleccion.fecha_cierre_web)}. `
+                      : '') +
+                    `La votación sigue abierta: ahora se vota en el local, en persona. ` +
+                    `Llevá tu documento.${escribinos}`,
+                  tono: 'medio',
+                }
+              : estado.bloqueado
               ? {
                   titulo: 'Demasiados intentos',
                   detalle:

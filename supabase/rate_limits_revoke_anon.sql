@@ -1,0 +1,83 @@
+-- ============================================================
+-- rate_limits — correr el REVOKE que quedó escrito y sin aplicar
+-- ------------------------------------------------------------
+-- Lo levantó el Security Advisor de Supabase: `rate_limit_hit` y `rate_limit_gc`
+-- siguen siendo ejecutables por `anon` en producción.
+--
+-- No hay nada que arreglar en el código: la corrección ya está en
+-- supabase/rate_limits.sql. Lo que pasó es que la base tiene la versión vieja.
+--
+-- La primera versión del archivo —la que se aplicó— decía:
+--
+--     REVOKE ALL ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) FROM PUBLIC;
+--
+-- y eso no alcanza. Los default privileges del proyecto Supabase
+-- (ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ON FUNCTIONS TO anon,
+-- authenticated, service_role) le dan a cada función NUEVA un grant EXPLÍCITO a
+-- anon y a authenticated. Revocar de PUBLIC no borra un grant explícito: hay que
+-- nombrar los roles. El REVOKE corrió, no dio error, y no sacó nada.
+--
+-- La versión corregida se escribió en el commit 8e434c9 ("Elecciones V") y quedó
+-- en el archivo, pero el archivo no se volvió a pegar en el SQL Editor. Editar
+-- un .sql ya aplicado no cambia la base.
+--
+-- ------------------------------------------------------------
+-- POR QUÉ IMPORTA MÁS QUE LOS OTROS AVISOS DEL ADVISOR
+-- ------------------------------------------------------------
+-- Estas dos funciones no guardan datos: sostienen a todas las demás. El tope de
+-- intentos de la votación y de los endpoints públicos de eventos vive acá, no en
+-- la base de votos. Con la anon key —la que viaja en el bundle del browser—:
+--
+--   · rate_limit_gc(0) borra la tabla `rate_limits` entera. Un solo llamado y no
+--     hay más límite: ni para probar los 4 dígitos de una credencial, ni para
+--     martillar el canje del código impreso, ni para enumerar cédulas en el
+--     lookup de eventos.
+--
+--   · rate_limit_hit('voto_validar:<IP de la víctima>', 1, 60) repetido 20 veces
+--     agota el cupo de esa IP sin que la víctima haya hecho nada. Con el CGNAT
+--     de los operadores móviles, detrás de una IP hay cientos de personas: es
+--     dejar sin votar a un grupo de socios reales desde afuera.
+--
+-- Las dos las llama SOLO el server (lib/rate-limit.ts) con la service key.
+--
+-- Aplicar en: Supabase Dashboard → SQL Editor → pegar y "Run". Idempotente.
+--
+-- Equivale a re-pegar supabase/rate_limits.sql entero, que también es
+-- idempotente y también deja la base al día. Este archivo existe sólo para poder
+-- correr las cuatro líneas que faltan sin volver a ejecutar las definiciones.
+-- ============================================================
+
+REVOKE ALL ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.rate_limit_gc(INT)             FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.rate_limit_gc(INT)             TO service_role;
+
+-- ============================================================
+-- VERIFICACIÓN
+-- ============================================================
+--
+-- SELECT p.proname,
+--        has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon,
+--        has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
+--        has_function_privilege('service_role',  p.oid, 'EXECUTE') AS srv
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--  WHERE n.nspname = 'public'
+--    AND p.proname IN ('rate_limit_hit','rate_limit_gc');
+--
+--    Esperado, para las dos:  anon = f,  auth = f,  srv = t
+--
+-- Prueba funcional: el limitador tiene que seguir contando. Abrí varias veces
+-- seguidas el link de votación de una elección de prueba y mirá que la tabla se
+-- mueva —el server sigue llamando con la service key, así que nada cambia para
+-- él:
+--
+-- SELECT bucket, hits, window_start FROM public.rate_limits
+--  ORDER BY window_start DESC LIMIT 10;
+--
+-- ⚠️ Ojo con leer un 200 como que anduvo: `permitido()` es FAIL-OPEN a propósito
+-- (lib/rate-limit.ts:12). Si este REVOKE se llevara puesto el grant de
+-- service_role, la web NO se caería: dejaría pasar todo y sólo quedaría un
+-- `[rate-limit] fail-open` en los logs de Vercel. Por eso se verifica con la
+-- query de arriba y con la tabla, no probando que el sitio abre.
+-- ============================================================

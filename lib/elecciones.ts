@@ -25,6 +25,7 @@ import type {
   RespuestaValidar,
   SeleccionPapeleta,
   TipoPapeleta,
+  VentanaEleccion,
 } from '@/lib/elecciones-types'
 
 /** Si la RPC misma falla (red, SQL), no hay respuesta que interpretar. */
@@ -54,6 +55,16 @@ function texto(v: unknown): string | null {
 function entero(v: unknown, def: number): number {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? Math.trunc(n) : def
+}
+
+/**
+ * Cualquier valor desconocido cae en `cerrada`, que es el más restrictivo. La
+ * excepción es `cerrada_web`, que hay que reconocer explícitamente: tratarlo
+ * como `cerrada` le diría "la votación terminó" a alguien que todavía puede ir
+ * a votar al local. Ver docs/supabase/47_mesa_presencial.sql.
+ */
+function ventana(v: unknown): VentanaEleccion {
+  return v === 'abierta' || v === 'no_abierta' || v === 'cerrada_web' ? v : 'cerrada'
 }
 
 function integrantes(v: unknown): IntegranteOpcion[] {
@@ -147,14 +158,14 @@ export async function buscarCredencial(
       imagen_url: texto(e.imagen_url),
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
+      fecha_cierre_web: texto(e.fecha_cierre_web),
       estado: e.estado === 'abierta' ? 'abierta' : 'cerrada',
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
     habilitado: d.habilitado !== false,
     ya_voto: d.ya_voto === true,
     bloqueado: d.bloqueado === true,
-    ventana:
-      d.ventana === 'abierta' || d.ventana === 'no_abierta' ? d.ventana : 'cerrada',
+    ventana: ventana(d.ventana),
   }
 }
 
@@ -189,11 +200,25 @@ export async function emitirVoto(
   digitos: string,
   selecciones: SeleccionPapeleta[],
 ): Promise<RespuestaEmitir> {
-  const d = await llamar(admin, 'emitir_voto', {
-    p_token: token,
-    p_digitos: digitos,
-    p_selecciones: selecciones,
-  })
+  let d: Record<string, unknown>
+  try {
+    d = await llamar(admin, 'emitir_voto', {
+      p_token: token,
+      p_digitos: digitos,
+      p_selecciones: selecciones,
+    })
+  } catch (err) {
+    // `emitir_voto` no valida el cierre del canal web: lo hace cumplir un
+    // trigger sobre `votos_remoto`, que levanta una excepción en vez de
+    // devolver un JSON (47_mesa_presencial.sql explica por qué). Se llega acá
+    // sólo con una pestaña vieja —alguien que cargó la boleta antes del cierre
+    // y la manda después—, y esa persona tiene que leer que se vota en el
+    // local, no un error genérico ni un 500 a la cara.
+    if (err instanceof Error && err.message.includes('canal_web_cerrado')) {
+      return { error: 'cerrada_web' }
+    }
+    throw err
+  }
   if (d.ok !== true) return d as unknown as ErrorVotacion
 
   // Sin `emitido_at` no hay constancia que mostrar, y sin constancia no se le
@@ -237,11 +262,15 @@ export async function eleccionPublica(
       imagen_url: texto(e.imagen_url),
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
+      // `eleccion_publica` no lo devuelve, y es a propósito: la página que se
+      // reparte por WhatsApp sigue diciendo "abierta hasta el DD/MM" —que es
+      // verdad— y el tramo presencial lo explica el instructivo. Meterle un
+      // cuarto estado a esa página complica más de lo que aclara (47_).
+      fecha_cierre_web: null,
       estado: e.estado === 'abierta' ? 'abierta' : 'cerrada',
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
-    ventana:
-      d.ventana === 'abierta' || d.ventana === 'no_abierta' ? d.ventana : 'cerrada',
+    ventana: ventana(d.ventana),
   }
 }
 
