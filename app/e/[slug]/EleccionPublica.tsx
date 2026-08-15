@@ -144,7 +144,9 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
             {pagina.verificacion_digitos > 0 && (
               <p className="text-ink-3 text-sm leading-relaxed mt-4">
                 En los dos casos se te van a pedir los últimos {pagina.verificacion_digitos} dígitos
-                de tu cédula, para confirmar que sos vos.
+                de tu cédula, para confirmar que sos vos: son los últimos{' '}
+                {pagina.verificacion_digitos} <strong>incluyendo el dígito verificador</strong>, todo
+                sin puntos ni guiones.
               </p>
             )}
           </section>

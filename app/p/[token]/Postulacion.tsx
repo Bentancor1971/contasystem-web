@@ -236,7 +236,7 @@ export function Postulacion({
     if (faltanDigitos) {
       setAviso({
         titulo: 'Faltan dígitos',
-        detalle: `Ingresá los últimos ${verificacionDigitos} dígitos de tu cédula.`,
+        detalle: `Ingresá los últimos ${verificacionDigitos} dígitos de tu cédula, contando el dígito verificador.`,
         terminal: false,
       })
       return
@@ -385,7 +385,7 @@ export function Postulacion({
     if (faltanDigitos) {
       setAviso({
         titulo: 'Faltan dígitos',
-        detalle: `Ingresá los últimos ${verificacionDigitos} dígitos de tu cédula.`,
+        detalle: `Ingresá los últimos ${verificacionDigitos} dígitos de tu cédula, contando el dígito verificador.`,
         terminal: false,
       })
       return
@@ -532,12 +532,21 @@ export function Postulacion({
         enterKeyHint="go"
         maxLength={verificacionDigitos}
         value={digitos}
-        aria-describedby="digitos-ayuda"
+        aria-describedby="digitos-ayuda digitos-privacidad"
         onChange={(e) =>
           setDigitos(e.target.value.replace(/\D/g, '').slice(0, verificacionDigitos))
         }
       />
+      {/* La duda más común no es cuál es la cédula, es si el verificador cuenta.
+          Se contesta con el ejemplo, que además muestra que no van ni puntos ni
+          guiones sin tener que decirlo dos veces. */}
       <p id="digitos-ayuda" className="text-ink-3 text-sm mt-3 leading-relaxed">
+        Son los últimos {verificacionDigitos} dígitos <strong>incluyendo el dígito
+        verificador</strong>, todo sin puntos ni guiones. Por ejemplo, si tu cédula
+        es 1.234.567-8, escribí{' '}
+        <span className="font-mono">{'12345678'.slice(-verificacionDigitos)}</span>.
+      </p>
+      <p id="digitos-privacidad" className="text-ink-3 text-sm mt-2 leading-relaxed">
         No mostramos tu nombre ni tu situación hasta verificarlo. Si el link te lo
         reenviaron, no alcanza.
       </p>
@@ -601,7 +610,7 @@ export function Postulacion({
           <label htmlFor="digitos" className="block text-[17px] leading-relaxed mb-5">
             Para anotarte, escribí los{' '}
             <span className="hl hl-thin">últimos {verificacionDigitos} dígitos</span> de tu
-            cédula, sin puntos ni guiones.
+            cédula.
           </label>
           {campoDigitos}
           <button

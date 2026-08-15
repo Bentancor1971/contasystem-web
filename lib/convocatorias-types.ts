@@ -219,12 +219,14 @@ export function mensajeDeErrorPostulacion(
       }
       return {
         titulo: 'Los dígitos no coinciden',
+        // El error casi siempre es haber dejado afuera el verificador, así que
+        // el recordatorio va acá y no sólo en la ayuda del campo.
         detalle:
           typeof r.intentos_restantes === 'number'
             ? `Te ${r.intentos_restantes === 1 ? 'queda' : 'quedan'} ${r.intentos_restantes} ${
                 r.intentos_restantes === 1 ? 'intento' : 'intentos'
-              }.`
-            : 'Revisá los últimos dígitos de tu cédula y volvé a probar.',
+              }. Acordate de contar el dígito verificador.`
+            : 'Revisá los últimos dígitos de tu cédula —contando el dígito verificador— y volvé a probar.',
         terminal: false,
       }
 
