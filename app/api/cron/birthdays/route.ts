@@ -17,6 +17,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBirthdayEmail, type SendResult } from '@/lib/mailer'
 import { loadActiveEmpresas, esEstadoActivo } from '@/lib/birthday-template-store'
@@ -110,6 +111,39 @@ function formatNombre(raw: string | null): string {
     .join(' ')
 }
 
+/**
+ * Direcciones que pidieron no recibir, como claves `empresa_id|mail`.
+ *
+ * El set lo publica el desktop de forma atómica en cada sync: lo que no está en
+ * `bajas_mails_remoto` es que no está dado de baja. Por eso una REVOCACIÓN
+ * también se propaga sola, sin ningún borrado explícito.
+ *
+ * `categoria` no se mira: un saludo de cumpleaños es difusión, así que tanto
+ * 'difusion' como 'total' lo bloquean.
+ *
+ * Si la consulta falla se devuelve un set VACÍO y el cron sigue. Es una
+ * decisión incómoda y vale explicitarla: cortar el saludo de todos por un error
+ * de base es peor que mandarle a alguien que se dio de baja, pero el error
+ * queda logeado para que se vea.
+ */
+async function loadBajas(
+  admin: SupabaseClient,
+  empresaIds: string[],
+): Promise<Set<string>> {
+  if (empresaIds.length === 0) return new Set()
+  const { data, error } = await admin
+    .from('bajas_mails_remoto')
+    .select('empresa_id, mail')
+    .in('empresa_id', empresaIds)
+  if (error) {
+    console.error('[cron/birthdays] error consultando bajas:', error.message)
+    return new Set()
+  }
+  return new Set(
+    (data ?? []).map((b) => `${b.empresa_id as string}|${(b.mail as string).trim().toLowerCase()}`),
+  )
+}
+
 export async function GET(req: NextRequest) {
   // ── 1) Autorización ──────────────────────────────────────────────────
   const cronSecret = process.env.CRON_SECRET
@@ -177,6 +211,18 @@ export async function GET(req: NextRequest) {
       return bd ? cumpleHoy(bd, today) : false
     })
 
+    // ── 4b) Bajas: quién pidió no recibir ──────────────────────────────
+    // El saludo de cumpleaños es el ÚNICO envío del sistema que no sale del
+    // desktop, así que es el único que no pasa por su índice de bajas. El set
+    // lo publica el desktop en `bajas_mails_remoto` (ver el opt-out del repo
+    // desktop, docs/opt-out-propuesta.md). Sin este filtro, la persona que se
+    // dio de baja desde el pie de un mail seguiría recibiendo el saludo — y la
+    // única salida que le queda es el botón "Spam".
+    //
+    // Se compara por dirección normalizada, no por socio: la baja es del mail,
+    // porque una casilla puede estar en varias fichas.
+    const bajas = await loadBajas(admin, empresaIds)
+
     // ── 5) Idempotencia: socios ya saludados hoy ───────────────────────
     const { data: logsData, error: logsErr } = await admin
       .from('birthday_email_logs')
@@ -212,6 +258,13 @@ export async function GET(req: NextRequest) {
       const mail = (socio.mail ?? '').trim()
       const empresaId = socio.empresa_id
       if (!mail || !empresaId) {
+        skipped++
+        continue
+      }
+
+      // Pidió no recibir. No se logea como error ni se reintenta: no es una
+      // falla, es la decisión de la persona.
+      if (bajas.has(`${empresaId}|${mail.toLowerCase()}`)) {
         skipped++
         continue
       }
