@@ -143,15 +143,30 @@ export default async function EventoPublicoPage({
               </div>
             </div>
           )}
-          {evento.descripcion && (
-            <p className="text-ink-2 mt-5 text-base leading-relaxed whitespace-pre-line">
-              {evento.descripcion}
-            </p>
-          )}
-          {evento.texto_antes && (
-            <p className="text-ink-2 mt-3 text-sm leading-relaxed whitespace-pre-line">
-              {evento.texto_antes}
-            </p>
+          {/* Los dos textos de la institución se van juntos con las
+              inscripciones cerradas, misma regla que en votación y convocatoria:
+              queda el nombre, la fecha, el lugar y el cartel de estado.
+
+              `texto_antes` es, encima, el texto de INVITACIÓN del mail ("Nos
+              gustaría invitarte a participar de X. ¡Esperamos contar con tu
+              presencia!"), y quedaba justo arriba del cartel que dice que ya no
+              se puede entrar.
+
+              Fecha y lugar SÍ se quedan: son los datos que busca quien abre el
+              link viejo para saber si llegó tarde o se equivocó de evento. */}
+          {evento.abierto && (
+            <>
+              {evento.descripcion && (
+                <p className="text-ink-2 mt-5 text-base leading-relaxed whitespace-pre-line">
+                  {evento.descripcion}
+                </p>
+              )}
+              {evento.texto_antes && (
+                <p className="text-ink-2 mt-3 text-sm leading-relaxed whitespace-pre-line">
+                  {evento.texto_antes}
+                </p>
+              )}
+            </>
           )}
           <div className="perforated mt-8" />
         </header>

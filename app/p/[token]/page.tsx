@@ -149,20 +149,35 @@ function Encabezado({
               : `Se abre el ${fechaHoraCorta(convocatoria.fecha_apertura)}`
             : cierreDelLlamado(convocatoria, null).linea}
       </p>
-      {convocatoria.descripcion && (
-        <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
-          {convocatoria.descripcion}
-        </p>
-      )}
-      {convocatoria.cargos_descripcion && (
-        <p className="text-ink-2 mt-3 text-[17px] leading-relaxed whitespace-pre-line">
-          {convocatoria.cargos_descripcion}
-        </p>
-      )}
-      {convocatoria.texto_antes && (
-        <p className="text-ink-2 mt-3 text-[17px] leading-relaxed whitespace-pre-line">
-          {convocatoria.texto_antes}
-        </p>
+      {/* Los tres textos de la institución se van juntos cuando el llamado
+          terminó, y no por prolijidad: están escritos para convocar. La
+          `descripcion` de ATRI es "Se convoca a todos los socios... quienes
+          deseen participar", los cargos son los que se están llamando y
+          `texto_antes` le habla a alguien que está por anotarse. Con el plazo
+          cerrado eso invita a hacer algo que ya no se puede hacer, justo debajo
+          de la línea que acaba de decir que cerró.
+
+          Lo que queda arriba —nombre, imagen y la línea del plazo— alcanza para
+          saber qué llamado es y cómo está, que es lo único que sigue siendo
+          cierto. Misma regla que el instructivo, más abajo. */}
+      {!cerrado && (
+        <>
+          {convocatoria.descripcion && (
+            <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
+              {convocatoria.descripcion}
+            </p>
+          )}
+          {convocatoria.cargos_descripcion && (
+            <p className="text-ink-2 mt-3 text-[17px] leading-relaxed whitespace-pre-line">
+              {convocatoria.cargos_descripcion}
+            </p>
+          )}
+          {convocatoria.texto_antes && (
+            <p className="text-ink-2 mt-3 text-[17px] leading-relaxed whitespace-pre-line">
+              {convocatoria.texto_antes}
+            </p>
+          )}
+        </>
       )}
       <div className="perforated mt-8" />
     </header>
@@ -238,6 +253,13 @@ export default async function PostulacionPage({
   // deshacer, porque no altera ningún resultado.
   const puedeRetirarse = estado.ya_postulado && estado.ventana === 'abierta' && !estado.bloqueado
 
+  /**
+   * El llamado terminó: venció el plazo, lo cerraron antes, la lista ya se
+   * resolvió o quedó sin efecto. Es lo único que decide si esta pantalla sigue
+   * mostrando textos que convocan a anotarse.
+   */
+  const llamadoTerminado = estado.ventana === 'cerrada'
+
   // Cómo se cuenta que este llamado terminó: por plazo vencido, por cierre
   // anticipado, porque la lista ya se resolvió o porque quedó sin efecto. Se
   // arma una sola vez y se usa en el encabezado y en el aviso, para que las dos
@@ -307,7 +329,17 @@ export default async function PostulacionPage({
           <div className="mb-8">
             <Aviso titulo={bloqueada.titulo} detalle={bloqueada.detalle} tono={bloqueada.tono} />
           </div>
-          {convocatoria.instructivo && <Instructivo texto={convocatoria.instructivo} />}
+          {/* El instructivo se titula "Antes de anotarte": es, literalmente, lo
+              que hay que leer antes de hacer algo. Con el llamado terminado no
+              hay un antes, y quien se había anotado leía "Ya estás anotado · el
+              plazo cerró" y debajo un recuadro explicándole cómo sigue el
+              trámite que ya terminó.
+
+              Sí lo siguen viendo los que tienen algo por delante: el llamado
+              que todavía no abrió y la credencial bloqueada un rato. */}
+          {!llamadoTerminado && convocatoria.instructivo && (
+            <Instructivo texto={convocatoria.instructivo} />
+          )}
         </>
       ) : (
         <>

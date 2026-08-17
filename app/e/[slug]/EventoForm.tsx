@@ -558,7 +558,13 @@ export function EventoForm({
   if (!evento.abierto) {
     return (
       <div className="card p-8 text-center rise">
-        <p className="font-display text-2xl font-medium mb-2">Inscripciones cerradas</p>
+        {/* El título lo arma el server junto con el motivo (ver
+            `loadEventoPublico`): "Inscripciones cerradas" era un título fijo, y
+            bajo él un evento que ya se realizó se leía igual que uno al que se
+            le llenó el cupo. El fallback cubre un payload viejo en caché. */}
+        <p className="font-display text-2xl font-medium mb-2">
+          {evento.titulo_cerrado ?? 'Inscripciones cerradas'}
+        </p>
         <p className="text-ink-2">{evento.motivo_cerrado}</p>
       </div>
     )

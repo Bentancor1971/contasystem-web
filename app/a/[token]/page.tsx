@@ -17,7 +17,7 @@ import { CheckCircle2, Clock3, Info, XCircle, HelpCircle } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarEntrada } from '@/lib/entradas'
 import { extraerToken } from '@/lib/checkin-token'
-import { formatFechaHoraUY } from '@/lib/format'
+import { fechaYaPaso, formatFechaHoraUY } from '@/lib/format'
 import { origenPublicoDesdeHeaders, qrSvg } from '@/lib/qr'
 import type { EntradaRemota, ResultadoEntrada } from '@/lib/entradas-types'
 
@@ -59,7 +59,20 @@ interface Presentacion {
  */
 function presentar(resultado: ResultadoEntrada, entrada: EntradaRemota | null): Presentacion {
   switch (resultado) {
-    case 'valida':
+    case 'valida': {
+      // Con el evento ya pasado, la frase de siempre habla en futuro de algo que
+      // no va a ocurrir: nadie va a escanear este código en ninguna puerta. El
+      // hecho es el mismo —no hay ingreso registrado— pero lo que corresponde
+      // ofrecer es reclamar, no esperar.
+      if (fechaYaPaso(entrada?.evento_fecha)) {
+        return {
+          Icono: Info,
+          color: 'text-status-pending',
+          titulo: 'Sin ingreso registrado',
+          detalle:
+            'El evento ya se realizó y no quedó registrado tu ingreso. Si asististe, consultá con la organización.',
+        }
+      }
       return {
         Icono: CheckCircle2,
         color: 'text-status-ok',
@@ -67,6 +80,7 @@ function presentar(resultado: ResultadoEntrada, entrada: EntradaRemota | null): 
         detalle:
           'Todavía no tenés ingreso registrado. Se registra cuando la organización escanea este código en la puerta.',
       }
+    }
     case 'ya_presente': {
       const hora = formatFechaHoraUY(entrada?.asistio_at)
       return {

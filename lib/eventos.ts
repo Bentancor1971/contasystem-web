@@ -24,7 +24,7 @@ import type {
   TipoParticipante,
 } from '@/lib/eventos-types'
 import { esEstadoSocio, opcionesConSinRestriccion, puedeInscribirse } from '@/lib/eventos-types'
-import { simboloMoneda } from '@/lib/format'
+import { fechaYaPaso, simboloMoneda } from '@/lib/format'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
@@ -408,9 +408,36 @@ export async function loadEventoPublico(
   const sorteoTotal = rango ? rango.hasta - rango.desde + 1 : 0
   // Rango mal configurado (rango null con sorteo prendido) = sin números que dar.
   const sorteoCompleto = !!ev.sorteo_disponible && (!rango || sorteoAsignados >= sorteoTotal)
+  /**
+   * Por qué no se puede inscribir. Tres noticias distintas, y dos de ellas se
+   * contaban con la misma frase: un evento que se hizo el mes pasado se leía
+   * igual que uno que cierra inscripciones mañana.
+   *
+   * `anulado` no aparece acá y no es un olvido: `loadEventoRemotoBySlug` lo
+   * filtra, así que un evento anulado da 404 en vez de página. Es lo correcto y
+   * no se toca — en `eventos_remoto` ese estado lo escribe también
+   * `reconciliar_eventos_online` como soft-delete de todo lo que dejó de venir
+   * en el push (un evento devuelto a borrador, una empresa a la que le apagaron
+   * `permite_eventos_online`), así que no distingue una cancelación de una
+   * despublicación y ningún texto podría afirmar cuál de las dos fue.
+   *
+   * La fecha pasada sólo cambia las PALABRAS del cierre; no cierra nada por su
+   * cuenta. Un evento que sigue `abierto` el día después se deja abierto a
+   * propósito: hay organizaciones que anotan gente en la puerta, y el estado lo
+   * manda el desktop.
+   */
+  const yaSeRealizo = fechaYaPaso(ev.fecha_fin ?? ev.fecha_inicio)
+  let titulo: string | null = null
   let motivo: string | null = null
-  if (ev.estado !== 'abierto') motivo = 'Las inscripciones están cerradas'
-  else if (cupoCompleto) motivo = 'Se completó el cupo del evento'
+  if (ev.estado !== 'abierto') {
+    titulo = yaSeRealizo ? 'Este evento ya se realizó' : 'Inscripciones cerradas'
+    motivo = yaSeRealizo
+      ? 'La fecha ya pasó y no se reciben más inscripciones.'
+      : 'Las inscripciones están cerradas'
+  } else if (cupoCompleto) {
+    titulo = 'Inscripciones cerradas'
+    motivo = 'Se completó el cupo del evento'
+  }
 
   return {
     slug: ev.slug,
@@ -426,6 +453,7 @@ export async function loadEventoPublico(
     tipo: ev.tipo,
     umbral_cuotas_no_socio: ev.umbral_cuotas_no_socio,
     abierto: motivo == null,
+    titulo_cerrado: titulo,
     motivo_cerrado: motivo,
     ocupacion_nivel: nivelOcupacion(inscriptos, ev.cupo_maximo),
     texto_antes: ev.texto_antes,

@@ -181,6 +181,40 @@ export function hoyISO(): string {
  */
 export const TZ_UY = 'America/Montevideo'
 
+/**
+ * Fecha de hoy en Montevideo, YYYY-MM-DD.
+ *
+ * No es `hoyISO()`, y la diferencia importa: esa mira la zona local, y la zona
+ * local del server es UTC. Entre la medianoche y las tres de la mañana
+ * uruguayas devuelve el día siguiente — justo el margen en el que un evento que
+ * es HOY se contaría como pasado y la página anunciaría que ya se realizó.
+ */
+export function hoyISO_UY(): string {
+  // 'en-CA' formatea como YYYY-MM-DD, que es exactamente lo que se compara.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_UY,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+/**
+ * ¿Esa fecha ya quedó atrás en Montevideo?
+ *
+ * El día en curso NO cuenta como pasado: un evento que es hoy sigue siendo un
+ * evento por delante hasta que termine el día. Sin fecha devuelve false — no se
+ * afirma que algo pasó cuando no se sabe cuándo era.
+ *
+ * Acepta tanto DATE (`2026-08-17`) como timestamp ISO: compara sólo el día.
+ */
+export function fechaYaPaso(iso: string | null | undefined): boolean {
+  if (!iso) return false
+  const dia = iso.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return false
+  return dia < hoyISO_UY()
+}
+
 /** Timestamptz ISO → "HH:MM" en hora de Montevideo. '' si no hay valor. */
 export function formatHoraUY(iso: string | null | undefined): string {
   if (!iso) return ''

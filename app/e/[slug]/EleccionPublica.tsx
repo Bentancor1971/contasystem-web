@@ -109,7 +109,11 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
               className="w-full h-auto rounded-xl border border-line mb-5"
             />
           )}
-          {e.descripcion && (
+          {/* Misma regla que en `/v/[token]`: cerrada la votación queda el
+              nombre, la imagen y el aviso de estado. La `descripcion` no se
+              esconde por larga ni por sensible — se esconde porque presenta un
+              acto que ya pasó como si estuviera por pasar. */}
+          {!cerrada && e.descripcion && (
             <p className="text-ink-2 text-[17px] leading-relaxed whitespace-pre-line">
               {e.descripcion}
             </p>
@@ -123,7 +127,15 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
           )}
         </div>
 
-        {e.texto_antes && (
+        {/* El texto de apertura y el instructivo se van con el acto terminado,
+            por lo mismo que "Cómo se vota": los dos le hablan a alguien que está
+            por votar. Esta página es la que más sobrevive al acto —queda en la
+            cartelera y en los grupos de WhatsApp—, así que es donde más se lee
+            un "antes de votar" de una votación que ya se escrutó.
+
+            Con la elección todavía sin abrir sí se muestran: ahí el instructivo
+            es justo lo que la persona viene a leer. */}
+        {!cerrada && e.texto_antes && (
           <p className="rise text-ink-2 text-[17px] leading-relaxed whitespace-pre-line mt-8">
             {e.texto_antes}
           </p>
@@ -131,7 +143,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
 
         {/* El instructivo va COMPLETO y sin plegar: es donde la persona se entera
             de que el voto es nominal, y tiene derecho a saberlo antes de votar. */}
-        {e.instructivo && (
+        {!cerrada && e.instructivo && (
           <section className="card rise p-6 sm:p-7 mt-8">
             <span className="label-mono">Instructivo</span>
             <p className="text-ink-2 text-[17px] leading-relaxed whitespace-pre-line mt-3">
@@ -166,10 +178,25 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
           </section>
         )}
 
+        {/* El canal de contacto queda siempre —terminado el acto es cuando más
+            se pregunta—, pero no con la misma frase: "creés que tu situación en
+            el padrón no es correcta" invita a corregir un padrón que ya se usó
+            para contar votos, y "no te llegó el mail" ofrece destrabar algo que
+            no se destraba. Cerrada la votación se ofrece el mail a secas. */}
         {e.email_contacto && (
           <p className="text-ink-3 text-sm leading-relaxed mt-8">
-            ¿No te llegó el mail, o creés que tu situación en el padrón no es correcta? Escribinos
-            a <a className="underline" href={`mailto:${e.email_contacto}`}>{e.email_contacto}</a>.
+            {cerrada ? (
+              <>
+                ¿Tenés una consulta sobre esta elección? Escribinos a{' '}
+                <a className="underline" href={`mailto:${e.email_contacto}`}>{e.email_contacto}</a>.
+              </>
+            ) : (
+              <>
+                ¿No te llegó el mail, o creés que tu situación en el padrón no es correcta?
+                Escribinos a{' '}
+                <a className="underline" href={`mailto:${e.email_contacto}`}>{e.email_contacto}</a>.
+              </>
+            )}
           </p>
         )}
 

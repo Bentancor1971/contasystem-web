@@ -513,6 +513,13 @@ export interface EventoPublico {
   tipo: 'con_costo' | 'sin_costo'
   umbral_cuotas_no_socio: number
   abierto: boolean
+  /**
+   * Por qué no se puede inscribir, en dos partes. Van separadas porque los
+   * motivos no son la misma noticia: "se completó el cupo" invita a insistir,
+   * "el evento ya se realizó" no, y bajo un título fijo de "Inscripciones
+   * cerradas" las dos se leían igual desde arriba. `null` con el evento abierto.
+   */
+  titulo_cerrado: string | null
   motivo_cerrado: string | null
   /**
    * Nivel de ocupación del cupo para el semáforo del form. `null` cuando el

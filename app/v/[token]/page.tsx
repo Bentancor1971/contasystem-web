@@ -150,7 +150,12 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
                 'El voto por internet cerró · se vota en el local'
               : cierreDeLaVotacion(eleccion, null).linea}
       </p>
-      {eleccion.descripcion && (
+      {/* Regla común a las cuatro pantallas públicas (esta, la elección sin
+          token, la convocatoria y el evento): terminado el acto queda el nombre,
+          la imagen y la línea de estado, y nada más. Los textos que escribe la
+          institución están escritos para convocar, y con el acto cerrado
+          invitan a algo que ya no se puede hacer. */}
+      {!cerrada && eleccion.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
           {eleccion.descripcion}
         </p>
@@ -335,8 +340,13 @@ export default async function VotacionPage({
    * todo `cerrada_web`, donde la persona va a votar al local y el instructivo
    * suele ser el que explica cómo.
    */
-  const puedeVotarTodavia =
-    !estado.ya_voto && estado.habilitado && estado.ventana !== 'cerrada'
+  /**
+   * El acto terminó: cerró la votación, se escrutó, o quedó sin efecto. Es lo
+   * único que decide si esta pantalla habla de algo que todavía va a pasar.
+   */
+  const actoTerminado = estado.ventana === 'cerrada'
+
+  const puedeVotarTodavia = !estado.ya_voto && estado.habilitado && !actoTerminado
 
   /**
    * Lo que se lee ANTES de votar: el texto de apertura de la institución y el
@@ -371,8 +381,17 @@ export default async function VotacionPage({
           {/* El cierre que escribe la institución vivía sólo en la pantalla de
               recién votado, o sea en la sesión en que se votó. Quien vuelve al
               link al día siguiente leía "Ya votaste" y ese texto no aparecía
-              nunca más, cuando es justo el que contesta el "¿y ahora qué?". */}
-          {estado.ya_voto && eleccion.texto_despues && (
+              nunca más, cuando es justo el que contesta el "¿y ahora qué?".
+
+              Pero deja de contestarlo cuando ya no hay "ahora qué": está
+              escrito para el minuto siguiente al voto y habla en futuro —"vas a
+              recibir por mail una constancia", "si no fuiste vos, avisanos
+              enseguida"—. Contra la elección de ATRI ya escrutada eso prometía
+              un mail que salió hace días y pedía avisar a tiempo de algo que ya
+              se contó. Terminado el acto, el aviso de arriba dice todo lo que
+              hay para decir. Misma regla que el instructivo: ver
+              `puedeVotarTodavia`. */}
+          {estado.ya_voto && !actoTerminado && eleccion.texto_despues && (
             <p className="text-ink-2 text-[17px] leading-relaxed mb-8 whitespace-pre-line">
               {eleccion.texto_despues}
             </p>
