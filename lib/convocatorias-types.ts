@@ -39,6 +39,67 @@ export type VentanaConvocatoria = 'abierta' | 'no_abierta' | 'cerrada'
 /** Las tres conductas de deuda. La decisión ya viene tomada: esto es contexto. */
 export type PoliticaDeuda = 'informar' | 'advertir' | 'bloquear'
 
+/**
+ * Cómo se contesta una pregunta del llamado.
+ *
+ *  - `si_no`     una casilla que se tilda
+ *  - `opciones`  elegir UNA de hasta cuatro
+ *  - `texto`     una línea escrita
+ */
+export type TipoPregunta = 'si_no' | 'opciones' | 'texto'
+
+export interface OpcionPregunta {
+  id: string
+  texto: string
+}
+
+/**
+ * Una pregunta que se le hace a la persona al anotarse, propia de este llamado.
+ *
+ * Las define la institución en el desktop (hasta tres) y llegan acá ya escritas.
+ * `obligatoria` la hace cumplir `registrar_postulacion`, no esta pantalla: acá
+ * se apaga el botón para no hacerle perder el viaje a nadie, pero quien saltee
+ * el front se choca igual contra el servidor.
+ */
+export interface PreguntaConvocatoria {
+  id: string
+  texto: string
+  tipo: TipoPregunta
+  obligatoria: boolean
+  /** Sólo en `opciones`. Vacío en los otros dos tipos. */
+  opciones: OpcionPregunta[]
+}
+
+/**
+ * Lo que se contesta: `true`/`false` en una casilla, el id de la opción elegida,
+ * o el texto escrito. El servidor lo normaliza contra la definición del llamado.
+ */
+export type ValorRespuesta = boolean | string
+
+/**
+ * Los textos de la tarjeta con la que alguien se anota, para cuando el llamado
+ * no los trae.
+ *
+ * Son los mismos que esta pantalla tenía escritos a mano antes de que fueran
+ * editables, y siguen acá sólo como red: un llamado pusheado por una versión
+ * vieja del desktop, o una nube sin `57_convocatoria_confirmaciones.sql`
+ * aplicado, llegan sin ellos y la tarjeta no puede quedar en blanco.
+ *
+ * El dueño de estos textos es el desktop. Si hay que cambiarlos de verdad, se
+ * cambian allá — tocar esto sólo mueve el respaldo.
+ */
+export const TEXTOS_FORMULARIO_RESPALDO = {
+  titulo: 'Me interesa integrar la lista',
+  texto:
+    'Con esto sólo declarás interés. No elegís lista, ni cargo, ni compañeros: eso se '
+    + 'acuerda después, entre todos.',
+  declaracion: 'Declaro conocer el estatuto y las condiciones de esta convocatoria.',
+  tituloFinal: 'Quedaste anotado',
+  textoFinal:
+    'Anotarte no te compromete a nada todavía: la lista se conforma después, de común '
+    + 'acuerdo, y la comisión se comunica con los interesados.',
+} as const
+
 export interface ConvocatoriaPublica {
   id: string
   nombre: string
@@ -51,6 +112,19 @@ export interface ConvocatoriaPublica {
   texto_despues: string | null
   email_contacto: string | null
   imagen_url: string | null
+  /**
+   * Los textos de la tarjeta para anotarse y los de la pantalla de cuando
+   * termina. Los resuelve el desktop contra sus propios defaults, así que
+   * normalmente llegan con contenido; null es una nube o un desktop viejo, y ahí
+   * vale `TEXTOS_FORMULARIO_RESPALDO`.
+   */
+  titulo_formulario: string | null
+  texto_formulario: string | null
+  texto_declaracion: string | null
+  titulo_final: string | null
+  texto_final: string | null
+  /** Hasta tres preguntas propias del llamado. Vacío = sólo la declaración. */
+  preguntas: PreguntaConvocatoria[]
   fecha_apertura: string
   fecha_cierre: string
   /**
@@ -135,6 +209,8 @@ export type CodigoErrorPostulacion =
   | 'ya_importada'
   /** No viene de la base: lo exige el route handler, que es quien mira el checkbox. */
   | 'falta_aceptar'
+  /** Falta contestar alguna pregunta obligatoria del llamado. Lo decide la base. */
+  | 'falta_confirmar'
   /** No viene de la base: lo pone la web cuando el fetch no llegó a destino. */
   | 'sin_respuesta'
 
@@ -185,6 +261,37 @@ export interface DatosPostulacion {
   mail_contacto: string
   comentario: string
   acepta_condiciones: boolean
+  /**
+   * Lo que contestó a las preguntas del llamado, por id. El servidor lo
+   * normaliza contra la definición —descarta lo que no corresponda y completa lo
+   * que no vino—, así que mandar de más no sirve de nada.
+   */
+  respuestas: Record<string, ValorRespuesta>
+}
+
+/**
+ * ¿Está contestada?
+ *
+ * Tiene que decir lo mismo que `_respuesta_normalizada` de la base: tildada,
+ * una opción que existe, o texto con algo escrito. Si divergen, el botón se
+ * habilita y el servidor rechaza — que es la peor de las dos formas de estar mal.
+ */
+export function preguntaContestada(
+  p: PreguntaConvocatoria,
+  v: ValorRespuesta | undefined,
+): boolean {
+  if (p.tipo === 'si_no') return v === true
+  if (typeof v !== 'string') return false
+  if (p.tipo === 'opciones') return p.opciones.some((o) => o.id === v)
+  return v.trim().length > 0
+}
+
+/** Las obligatorias que todavía no están contestadas. Vacío = se puede anotar. */
+export function preguntasPendientes(
+  preguntas: PreguntaConvocatoria[],
+  respuestas: Record<string, ValorRespuesta>,
+): PreguntaConvocatoria[] {
+  return preguntas.filter((p) => p.obligatoria && !preguntaContestada(p, respuestas[p.id]))
 }
 
 // ── Mensajes ────────────────────────────────────────────────────────────────
@@ -375,6 +482,15 @@ export function mensajeDeErrorPostulacion(
       return {
         titulo: 'Falta aceptar las condiciones',
         detalle: 'Marcá la casilla del final para poder anotarte.',
+        terminal: false,
+      }
+
+    case 'falta_confirmar':
+      return {
+        titulo: 'Falta contestar algo',
+        detalle:
+          'Este llamado pide contestar una o más cosas para poder anotarte. Repasá las '
+          + 'preguntas de arriba del botón.',
         terminal: false,
       }
 

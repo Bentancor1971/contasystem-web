@@ -350,6 +350,12 @@ export default async function PostulacionPage({
             verificacionDigitos={estado.verificacion_digitos}
             emailContacto={contacto}
             textoDespues={convocatoria.texto_despues}
+            tituloFormulario={convocatoria.titulo_formulario}
+            textoFormulario={convocatoria.texto_formulario}
+            textoDeclaracion={convocatoria.texto_declaracion}
+            tituloFinal={convocatoria.titulo_final}
+            textoFinal={convocatoria.texto_final}
+            preguntas={convocatoria.preguntas}
             invitadoInicial={invitadoInicial}
           />
         </>

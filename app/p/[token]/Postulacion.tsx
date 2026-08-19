@@ -31,11 +31,15 @@ import {
 } from 'lucide-react'
 import {
   mensajeDeErrorPostulacion,
+  preguntasPendientes,
   textoRegularizacion,
   textoRegularizacionAdvertido,
+  TEXTOS_FORMULARIO_RESPALDO,
   type ErrorPostulacion,
   type InvitadoValidado,
   type MensajePostulacion,
+  type PreguntaConvocatoria,
+  type ValorRespuesta,
 } from '@/lib/convocatorias-types'
 import { formatFechaHoraUY, formatMonto } from '@/lib/format'
 
@@ -95,6 +99,7 @@ const NO_SE_REGISTRO = new Set([
   'convocatoria_cerrada',
   'no_puede_postularse',
   'falta_aceptar',
+  'falta_confirmar',
 ])
 
 function arriba() {
@@ -172,6 +177,12 @@ export function Postulacion({
   verificacionDigitos,
   emailContacto,
   textoDespues,
+  tituloFormulario,
+  textoFormulario,
+  textoDeclaracion,
+  tituloFinal,
+  textoFinal,
+  preguntas,
   invitadoInicial,
 }: {
   token: string
@@ -181,6 +192,18 @@ export function Postulacion({
   emailContacto: string | null
   /** Cierre que escribe la institución. Se muestra recién con la postulación hecha. */
   textoDespues: string | null
+  /**
+   * Los tres textos de la tarjeta para anotarse, tal como los escribió la
+   * institución. Null = este llamado no los trae y vale el respaldo.
+   */
+  tituloFormulario: string | null
+  textoFormulario: string | null
+  textoDeclaracion: string | null
+  /** La pantalla de cuando la postulación ya quedó registrada. */
+  tituloFinal: string | null
+  textoFinal: string | null
+  /** Las preguntas propias del llamado, en orden. Vacío = sólo la declaración. */
+  preguntas: PreguntaConvocatoria[]
   /** Sólo cuando la convocatoria no pide segundo factor: la situación ya viene del server. */
   invitadoInicial: InvitadoValidado | null
 }) {
@@ -200,6 +223,8 @@ export function Postulacion({
   )
   const [comentario, setComentario] = useState('')
   const [acepta, setAcepta] = useState(false)
+  /** Lo contestado de las preguntas propias del llamado, por id. */
+  const [respuestas, setRespuestas] = useState<Record<string, ValorRespuesta>>({})
   const [aceptaAdvertencia, setAceptaAdvertencia] = useState(false)
   const [aviso, setAviso] = useState<MensajePostulacion | null>(null)
   const [cortado, setCortado] = useState<MensajePostulacion | null>(
@@ -216,6 +241,20 @@ export function Postulacion({
 
   const base = `/api/postulacion/${encodeURIComponent(token)}`
   const faltanDigitos = digitos.length !== verificacionDigitos
+
+  // Los textos de la tarjeta. El respaldo es para el llamado que llega sin
+  // ellos —desktop viejo, o nube sin 57_ aplicado—: nunca se muestra en blanco.
+  const tituloTarjeta = tituloFormulario?.trim() || TEXTOS_FORMULARIO_RESPALDO.titulo
+  const textoTarjeta = textoFormulario?.trim() || TEXTOS_FORMULARIO_RESPALDO.texto
+  const declaracion = textoDeclaracion?.trim() || TEXTOS_FORMULARIO_RESPALDO.declaracion
+  const tituloTerminado = tituloFinal?.trim() || TEXTOS_FORMULARIO_RESPALDO.tituloFinal
+  const textoTerminado = textoFinal?.trim() || TEXTOS_FORMULARIO_RESPALDO.textoFinal
+
+  // Las obligatorias sin contestar. Apagan el botón, igual que la declaración:
+  // la exigencia real la aplica `registrar_postulacion`, pero mandar un request
+  // que se sabe que va a volver rechazado es hacerle perder el viaje a la
+  // persona.
+  const pendientes = preguntasPendientes(preguntas, respuestas)
 
   function mostrar(err: ErrorPostulacion) {
     const m = mensajeDeErrorPostulacion(err, emailContacto)
@@ -299,6 +338,14 @@ export function Postulacion({
       })
       return
     }
+    if (pendientes.length > 0) {
+      setAviso({
+        titulo: pendientes.length === 1 ? 'Falta una respuesta' : 'Faltan respuestas',
+        detalle: `Para anotarte hay que contestar: ${pendientes.map((p) => p.texto).join(' · ')}`,
+        terminal: false,
+      })
+      return
+    }
     enVuelo.current = true
     setOcupado(true)
     setAviso(null)
@@ -306,6 +353,15 @@ export function Postulacion({
       digitos,
       comentario,
       acepta_condiciones: true,
+      // Van TODAS las preguntas del llamado, no sólo las contestadas: no haber
+      // contestado una opcional es una respuesta y el informe la cuenta. El
+      // servidor igualmente normaliza contra la definición del llamado.
+      respuestas: Object.fromEntries(
+        preguntas.map((p) => [
+          p.id,
+          p.tipo === 'si_no' ? respuestas[p.id] === true : (respuestas[p.id] ?? ''),
+        ]),
+      ),
     })
     enVuelo.current = false
     setOcupado(false)
@@ -438,7 +494,7 @@ export function Postulacion({
           <CheckCircle2 className="text-status-ok mx-auto mb-3" size={52} aria-hidden />
           <span className="label-mono text-status-ok">Postulación recibida</span>
           <h2 className="font-display text-3xl font-medium leading-tight mt-3 mb-4">
-            Quedaste anotado{invitado?.nombre ? `, ${invitado.nombre}` : ''}
+            {tituloTerminado}{invitado?.nombre ? `, ${invitado.nombre}` : ''}
           </h2>
           <div className="perforated mb-4" />
           {recibidaAt ? (
@@ -446,9 +502,8 @@ export function Postulacion({
           ) : (
             <p className="font-mono text-[15px]">Tu postulación figura registrada</p>
           )}
-          <p className="text-ink-2 text-[17px] leading-relaxed mt-4">
-            Anotarte no te compromete a nada todavía: la lista se conforma después, de
-            común acuerdo, y la comisión se comunica con los interesados.
+          <p className="text-ink-2 text-[17px] leading-relaxed mt-4 whitespace-pre-line">
+            {textoTerminado}
           </p>
           {/* No se promete el mail como un hecho: el acuse lo manda el desktop
               cuando baja la postulación, y sólo si hay dirección registrada. El
@@ -643,14 +698,16 @@ export function Postulacion({
       <form onSubmit={onRegistrar} className="card p-6 sm:p-7">
         <span className="label-mono">Anotarme</span>
         <h2 className="font-display text-2xl font-medium leading-tight mt-3 mb-2">
-          Me interesa integrar la lista
+          {tituloTarjeta}
         </h2>
-        {/* El tono es deliberado: el problema real de una convocatoria no es que
-            sobren candidatos, es que faltan. Decir con todas las letras que esto
-            no compromete a nada es lo que hace que alguien se anote. */}
-        <p className="text-ink-2 text-[17px] leading-relaxed mb-6">
-          Con esto sólo declarás interés. No elegís lista, ni cargo, ni compañeros: eso
-          se acuerda después, entre todos.
+        {/* El tono del texto de fábrica es deliberado: el problema real de una
+            convocatoria no es que sobren candidatos, es que faltan. Decir con
+            todas las letras que esto no compromete a nada es lo que hace que
+            alguien se anote. La institución puede cambiarlo desde el desktop
+            —hay llamados que no son a integrar ninguna lista—, y por eso se
+            respeta el salto de línea de lo que escribió. */}
+        <p className="text-ink-2 text-[17px] leading-relaxed mb-6 whitespace-pre-line">
+          {textoTarjeta}
         </p>
 
         <label htmlFor="comentario" className="block label-mono mb-2">
@@ -665,6 +722,63 @@ export function Postulacion({
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
         />
+
+        {/* Las preguntas propias del llamado. Van ARRIBA de la advertencia por
+            deuda y de la declaración, que son las dos de siempre: primero lo
+            que pregunta esta convocatoria, después lo que se firma en todas. */}
+        {preguntas.map((p) => (
+          <fieldset key={p.id} className="mb-5">
+            <legend className="text-[16px] leading-relaxed mb-2">
+              {p.texto}
+              {/* Se marca la obligatoria y no la opcional: son pocas, y saber
+                  cuál frena el botón es lo que evita el "no me deja anotarme". */}
+              {p.obligatoria && (
+                <span className="text-ink-3 text-[14px] block">
+                  Hay que contestarla para poder anotarte.
+                </span>
+              )}
+            </legend>
+
+            {p.tipo === 'si_no' && (
+              <label className="flex gap-3 items-start text-[16px] leading-relaxed">
+                <input
+                  type="checkbox"
+                  className="voto-control mt-0.5"
+                  checked={respuestas[p.id] === true}
+                  onChange={(e) => setRespuestas((r) => ({ ...r, [p.id]: e.target.checked }))}
+                />
+                <span>Sí</span>
+              </label>
+            )}
+
+            {p.tipo === 'opciones' && (
+              <div className="space-y-2">
+                {p.opciones.map((o) => (
+                  <label key={o.id} className="flex gap-3 items-start text-[16px] leading-relaxed">
+                    <input
+                      type="radio"
+                      name={`preg_${p.id}`}
+                      className="voto-control mt-0.5"
+                      checked={respuestas[p.id] === o.id}
+                      onChange={() => setRespuestas((r) => ({ ...r, [p.id]: o.id }))}
+                    />
+                    <span>{o.texto}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {p.tipo === 'texto' && (
+              <input
+                type="text"
+                className="field"
+                maxLength={200}
+                value={typeof respuestas[p.id] === 'string' ? (respuestas[p.id] as string) : ''}
+                onChange={(e) => setRespuestas((r) => ({ ...r, [p.id]: e.target.value }))}
+              />
+            )}
+          </fieldset>
+        ))}
 
         {invitado.advertido && (
           <label className="flex gap-3 items-start text-[16px] leading-relaxed mb-5">
@@ -688,13 +802,18 @@ export function Postulacion({
             checked={acepta}
             onChange={(e) => setAcepta(e.target.checked)}
           />
-          <span>Declaro conocer el estatuto y las condiciones de esta convocatoria.</span>
+          <span className="whitespace-pre-line">{declaracion}</span>
         </label>
 
         <button
           type="submit"
           className="btn-primary w-full mt-7"
-          disabled={ocupado || !acepta || (invitado.advertido && !aceptaAdvertencia)}
+          disabled={
+            ocupado
+            || !acepta
+            || (invitado.advertido && !aceptaAdvertencia)
+            || pendientes.length > 0
+          }
         >
           {ocupado ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />}
           Anotarme

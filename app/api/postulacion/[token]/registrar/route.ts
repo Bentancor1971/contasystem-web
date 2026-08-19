@@ -1,6 +1,6 @@
 /**
  * POST /api/postulacion/[token]/registrar
- * body: { digitos, telefono?, mail_contacto?, comentario?, acepta_condiciones }
+ * body: { digitos, telefono?, mail_contacto?, comentario?, acepta_condiciones, respuestas? }
  *
  * Endpoint PÚBLICO. Anota a la persona en la convocatoria.
  *
@@ -33,6 +33,34 @@ const MAX = { telefono: 40, mail_contacto: 120, comentario: 2000 } as const
 
 function recortar(v: unknown, max: number): string {
   return typeof v === 'string' ? v.trim().slice(0, max) : ''
+}
+
+/**
+ * Las respuestas a las preguntas del llamado, saneadas.
+ *
+ * Un booleano (casilla), o un texto (id de la opción elegida, o lo escrito).
+ * Acá NO se valida cuáles corresponden, cuáles son obligatorias ni si la opción
+ * existe: eso lo hace `registrar_postulacion` contra la definición del llamado,
+ * que es la única capa que no se puede saltear. Esto sólo evita que un POST a
+ * mano meta un objeto arbitrario en una columna JSONB.
+ *
+ * Los dos topes son la misma idea que el de largo de los textos: el llamado
+ * admite tres preguntas de hasta 200 caracteres, así que un cuerpo con
+ * quinientas claves o con un texto de megabytes es basura.
+ */
+const MAX_RESPUESTAS = 20
+const MAX_LARGO_RESPUESTA = 200
+
+function respuestas(v: unknown): Record<string, boolean | string> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: Record<string, boolean | string> = {}
+  for (const [k, valor] of Object.entries(v as Record<string, unknown>)) {
+    if (Object.keys(out).length >= MAX_RESPUESTAS) break
+    if (!k) continue
+    if (typeof valor === 'boolean') out[k] = valor
+    else if (typeof valor === 'string') out[k] = valor.trim().slice(0, MAX_LARGO_RESPUESTA)
+  }
+  return out
 }
 
 export async function POST(
@@ -72,6 +100,7 @@ export async function POST(
         mail_contacto: recortar(body.mail_contacto, MAX.mail_contacto),
         comentario: recortar(body.comentario, MAX.comentario),
         acepta_condiciones: true,
+        respuestas: respuestas(body.respuestas),
       }),
     )
     return NextResponse.json(r, { headers: SIN_CACHE })

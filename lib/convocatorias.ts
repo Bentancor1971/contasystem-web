@@ -27,6 +27,9 @@ import type {
   RespuestaRetirar,
   RespuestaValidarInvitado,
   VentanaConvocatoria,
+  OpcionPregunta,
+  PreguntaConvocatoria,
+  TipoPregunta,
 } from '@/lib/convocatorias-types'
 
 /** Si la RPC misma falla (red, SQL), no hay respuesta que interpretar. */
@@ -81,6 +84,56 @@ function estadoLlamado(v: unknown): EstadoLlamado {
   return ESTADOS_LLAMADO.includes(v as EstadoLlamado) ? (v as EstadoLlamado) : 'cerrada'
 }
 
+const TIPOS_PREGUNTA: readonly TipoPregunta[] = ['si_no', 'opciones', 'texto']
+
+/**
+ * Las preguntas del llamado, saneadas.
+ *
+ * Se descarta la que no tenga id y texto —sin id no hay dónde guardar la
+ * respuesta, sin texto no hay qué preguntar— y se corta en tres, que es el tope
+ * del desktop: si una fila vieja o tocada a mano trae quince, la pantalla
+ * muestra tres y no se convierte en un cuestionario.
+ *
+ * Una de opciones sin opciones válidas se degrada a `si_no`: dibujar un
+ * enunciado sin nada debajo deja a la persona sin forma de contestar algo que
+ * puede ser obligatorio, y ahí no se anota nadie.
+ *
+ * `obligatoria` sólo es true si vino true. Ante cualquier valor raro se asume
+ * opcional: acá equivocarse para el lado estricto sería frenar a alguien que sí
+ * puede anotarse, y la exigencia real la aplica igual el servidor al registrar.
+ */
+function preguntas(v: unknown): PreguntaConvocatoria[] {
+  if (!Array.isArray(v)) return []
+  return v
+    .map((x) => (x && typeof x === 'object' ? (x as Record<string, unknown>) : null))
+    .filter((x): x is Record<string, unknown> => x !== null)
+    .map((x) => {
+      const opciones: OpcionPregunta[] = Array.isArray(x.opciones)
+        ? (x.opciones as unknown[])
+          .map((o) => (o && typeof o === 'object' ? (o as Record<string, unknown>) : null))
+          .filter((o): o is Record<string, unknown> => o !== null)
+          .map((o) => ({ id: String(o.id ?? ''), texto: String(o.texto ?? '').trim() }))
+          .filter((o) => o.id && o.texto)
+          .slice(0, 4)
+        : []
+      const tipoCrudo = TIPOS_PREGUNTA.includes(x.tipo as TipoPregunta)
+        ? (x.tipo as TipoPregunta)
+        : 'si_no'
+      const tipo: TipoPregunta = tipoCrudo === 'opciones' && opciones.length === 0
+        ? 'si_no'
+        : tipoCrudo
+      return {
+        id: String(x.id ?? ''),
+        texto: String(x.texto ?? '').trim(),
+        tipo,
+        obligatoria: x.obligatoria === true,
+        opciones: tipo === 'opciones' ? opciones : [],
+      }
+    })
+    .filter((x) => x.id && x.texto)
+    .slice(0, 3)
+}
+
 function politica(v: unknown): PoliticaDeuda {
   return v === 'advertir' || v === 'bloquear' ? v : 'informar'
 }
@@ -126,6 +179,12 @@ export async function buscarConvocatoria(
       texto_despues: texto(c.texto_despues),
       email_contacto: texto(c.email_contacto),
       imagen_url: texto(c.imagen_url),
+      titulo_formulario: texto(c.titulo_formulario),
+      texto_formulario: texto(c.texto_formulario),
+      texto_declaracion: texto(c.texto_declaracion),
+      titulo_final: texto(c.titulo_final),
+      texto_final: texto(c.texto_final),
+      preguntas: preguntas(c.preguntas),
       fecha_apertura: String(c.fecha_apertura ?? ''),
       fecha_cierre: String(c.fecha_cierre ?? ''),
       estado: estadoLlamado(c.estado),
