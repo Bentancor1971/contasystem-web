@@ -250,11 +250,11 @@ export type RespuestaRetirar = PostulacionRetirada | ErrorPostulacion
  * Lo que viaja al registrar. **No es la postulación**: que la fila exista ya
  * significa "me interesa integrar la lista".
  *
- * El formulario público sólo pide `comentario`: el contacto de la persona ya lo
- * tiene la institución en su ficha, y pedirlo de nuevo agregaba fricción justo
- * en la pantalla donde menos conviene. `telefono` y `mail_contacto` siguen en el
- * contrato de la RPC —llegan vacíos— porque la columna existe y la baja del
- * desktop los lee.
+ * El formulario público no pide nada de contacto: la institución ya lo tiene en
+ * la ficha, y pedirlo de nuevo agregaba fricción justo en la pantalla donde
+ * menos conviene. `telefono`, `mail_contacto` y `comentario` siguen en el
+ * contrato de la RPC —llegan vacíos— porque las columnas existen y el desktop
+ * las lee: `comentario` lo escribe hoy quien carga una postulación a mano.
  */
 export interface DatosPostulacion {
   telefono: string

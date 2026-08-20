@@ -31,6 +31,10 @@ export const dynamic = 'force-dynamic'
  */
 const MAX = { telefono: 40, mail_contacto: 120, comentario: 2000 } as const
 
+// `comentario` se sigue aceptando aunque el formulario ya no lo dibuje: una
+// pestaña abierta antes del despliegue lo manda igual, y perder esa postulación
+// por un campo de más sería peor que guardarlo. Nada nuevo lo escribe.
+
 function recortar(v: unknown, max: number): string {
   return typeof v === 'string' ? v.trim().slice(0, max) : ''
 }

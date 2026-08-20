@@ -221,7 +221,6 @@ export function Postulacion({
   const [invitado, setInvitado] = useState<InvitadoValidado | null>(
     invitadoInicial?.puede_postularse ? invitadoInicial : null,
   )
-  const [comentario, setComentario] = useState('')
   const [acepta, setAcepta] = useState(false)
   /** Lo contestado de las preguntas propias del llamado, por id. */
   const [respuestas, setRespuestas] = useState<Record<string, ValorRespuesta>>({})
@@ -351,7 +350,6 @@ export function Postulacion({
     setAviso(null)
     const r = await pedir<{ ok: true; recibida_at: string }>(`${base}/registrar`, {
       digitos,
-      comentario,
       acepta_condiciones: true,
       // Van TODAS las preguntas del llamado, no sólo las contestadas: no haber
       // contestado una opcional es una respuesta y el informe la cuenta. El
@@ -710,22 +708,18 @@ export function Postulacion({
           {textoTarjeta}
         </p>
 
-        <label htmlFor="comentario" className="block label-mono mb-2">
-          Comentario <span className="text-ink-3">(opcional)</span>
-        </label>
-        <textarea
-          id="comentario"
-          name="comentario"
-          className="field mb-6"
-          rows={4}
-          maxLength={2000}
-          value={comentario}
-          onChange={(e) => setComentario(e.target.value)}
-        />
-
         {/* Las preguntas propias del llamado. Van ARRIBA de la advertencia por
             deuda y de la declaración, que son las dos de siempre: primero lo
-            que pregunta esta convocatoria, después lo que se firma en todas. */}
+            que pregunta esta convocatoria, después lo que se firma en todas.
+
+            Acá estaba la caja de "Comentario (opcional)": una caja abierta, sin
+            consigna, que la institución no podía ni renombrar ni apagar. Se
+            sacó cuando aparecieron las preguntas del llamado, que hacen lo
+            mismo pero con una consigna escrita por quien convoca —y que además
+            vuelven en el mail de constancia, cosa que el comentario nunca
+            hizo—. Quien quiera la caja abierta arma una pregunta escrita. La
+            columna sigue existiendo: guarda lo que ya se escribió y lo que
+            anota quien carga una postulación a mano en el desktop. */}
         {preguntas.map((p) => (
           <fieldset key={p.id} className="mb-5">
             <legend className="text-[16px] leading-relaxed mb-2">
