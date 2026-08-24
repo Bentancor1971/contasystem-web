@@ -535,6 +535,47 @@ async function estadosSocioDeEmpresa(
 }
 
 /**
+ * Scope donde vive la FICHA (socios_datos) de los socios de esta empresa.
+ *
+ * Todo lo demás que publica el desktop —cuotas, categoría por socio, estados de
+ * socio— se lee del padrón y se republica bajo la empresa que ORGANIZA, así que
+ * se busca por `empresa_id = evento.empresa_id`. La ficha es la excepción:
+ * lleva el tenant de la PERSONA (`grupo_id` XOR `empresa_id`), que en un grupo
+ * empresarial es la empresa padre o el grupo, nunca la empresa hijo. Buscarla
+ * por la empresa del evento devolvía 0 filas y el formulario le contestaba
+ * "no estás en la base" a socios que sí están.
+ *
+ * Devuelve los dos ids porque las fichas de un grupo pueden vivir en cualquiera
+ * de los dos tenants, según se haya corrido o no la migración 41 del desktop.
+ * Sin fila (o sin la tabla, migración sin aplicar) cae al comportamiento de
+ * siempre: la empresa del evento. Ver docs/supabase/58_empresa_padron.sql del
+ * repo desktop.
+ */
+async function padronDeEmpresa(
+  admin: SupabaseClient,
+  empresaId: string,
+): Promise<{ empresaId: string; grupoId: string | null }> {
+  const propio = { empresaId, grupoId: null }
+  const { data, error } = await admin
+    .from('empresa_padron_remoto')
+    .select('padron_empresa_id, padron_grupo_id')
+    .eq('empresa_id', empresaId)
+    .maybeSingle()
+  if (error) {
+    console.warn(
+      `[padronDeEmpresa] no se pudo leer el padrón (${error.message}); se busca la ficha en la empresa del evento`,
+    )
+    return propio
+  }
+  const padronEmpresa = ((data?.padron_empresa_id as string | null) ?? '').trim()
+  if (!padronEmpresa) return propio
+  return {
+    empresaId: padronEmpresa,
+    grupoId: ((data?.padron_grupo_id as string | null) ?? '').trim() || null,
+  }
+}
+
+/**
  * Resuelve la cédula contra el registro del evento y decide el tipo de
  * participante. Se exigen DOS condiciones para la tarifa de socio:
  *   1. el estado de registro de la ficha cuenta como socio (ver esEstadoSocio)
@@ -574,14 +615,27 @@ export async function resolverParticipante(
   }
   if (doc.length < 6) return vacio
 
-  const { data: socio, error } = await admin
+  // La ficha se busca en el PADRÓN, que puede no ser la empresa del evento
+  // (grupo empresarial: el socio es uno solo y vive en la padre o en el grupo).
+  const padron = await padronDeEmpresa(admin, evento.empresa_id)
+
+  let query = admin
     .from('socios_datos')
     .select(
-      'id, nombre, apellido, mail, telefono, celular, documento_hash, estado_registro_nombre',
+      'id, nombre, apellido, mail, telefono, celular, documento_hash, estado_registro_nombre, grupo_id',
     )
-    .eq('empresa_id', evento.empresa_id)
     .eq('documento', doc)
     .is('deleted_at', null)
+
+  query = padron.grupoId
+    ? query.or(`empresa_id.eq.${padron.empresaId},grupo_id.eq.${padron.grupoId}`)
+    : query.eq('empresa_id', padron.empresaId)
+
+  const { data: socio, error } = await query
+    // Si la misma cédula tiene ficha en los dos tenants (grupo y empresa padre)
+    // gana la del grupo: es la que dejó la migración 41 y la que edita el
+    // desktop desde que el padrón se comparte.
+    .order('grupo_id', { ascending: true, nullsFirst: false })
     .limit(1)
     .maybeSingle()
 
@@ -592,6 +646,9 @@ export async function resolverParticipante(
 
   // Cuotas pendientes + categoría del socio (ambas keyed por empresa +
   // documento_hash) + qué estados de registro cuentan como socio en la empresa.
+  // Acá SÍ va la empresa del evento y no el padrón: el desktop lee estas tres
+  // cosas del padrón y las republica bajo la empresa que organiza (ver
+  // pushEventosOnline). La ficha de arriba es la única excepción.
   const [{ data: cuotasRow }, { data: catRow }, estadosSocio] = await Promise.all([
     admin
       .from('socios_cuotas_remoto')
