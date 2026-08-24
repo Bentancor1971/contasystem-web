@@ -126,6 +126,15 @@ function esc(s: string): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+/**
+ * Igual que `esc()`, pero además pasa los saltos de línea a <br>. Hace falta
+ * para el texto que se escribe a mano en el desktop: `white-space:pre-line` lo
+ * respeta Gmail pero no Outlook, que lo manda todo a un solo párrafo.
+ */
+function escNl(s: string): string {
+  return esc(s).replace(/\r\n?/g, '\n').trim().replace(/\n/g, '<br>')
+}
+
 /** `moneda` es lo que precede al número: el símbolo del evento o, si no hay, el código. */
 function formatImporte(n: number, moneda: string): string {
   return `${moneda} ${n.toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -321,7 +330,7 @@ export function renderReciboEventoEmail(
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
                 <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Datos para el pago</td></tr>
-                ${d.datosDeposito ? `<tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>` : ''}
+                ${d.datosDeposito ? `<tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};">${escNl(d.datosDeposito)}</td></tr>` : ''}
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:180px;">Importe a pagar</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, M)}</td></tr>
                 ${d.numero ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia de inscripción</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.numero)}</td></tr>` : ''}
               </table>
@@ -334,7 +343,7 @@ export function renderReciboEventoEmail(
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.primary};border-radius:6px;overflow:hidden;">
                 <tr style="background-color:${C.primary};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Pago declarado</td></tr>
-                <tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};white-space:pre-line;">${esc(d.datosDeposito)}</td></tr>
+                <tr><td colspan="2" style="padding:12px 16px;font-size:13px;color:${C.grayText};">${escNl(d.datosDeposito)}</td></tr>
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Importe</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${formatImporte(d.total, M)}</td></tr>
                 ${d.referenciaDeclarada ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Referencia declarada</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.referenciaDeclarada)}</td></tr>` : ''}
               </table>
