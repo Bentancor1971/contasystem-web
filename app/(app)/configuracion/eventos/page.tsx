@@ -622,6 +622,42 @@ export default function ConfiguracionEventosPage() {
           {/* ── Pestaña: Mails ──────────────────────────────────────── */}
           {tab === 'mails' && (
             <>
+              {/* Copia oculta: excepción de ESTE evento al default de la casilla.
+                  Tri-estado, porque "heredar" no es lo mismo que "sí": si la
+                  empresa cambia su default, el evento en herencia lo sigue. */}
+              <Seccion titulo="Copia a la organización">
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  Cada acuse puede dejar una copia oculta en la casilla que lo envía. En un
+                  evento con muchas inscripciones son cientos de mails a esa casilla: acá se
+                  apaga sólo para este evento, sin tocar a los demás.
+                </p>
+                <label htmlFor="copia-oculta" className="label-mono block mb-2">
+                  Copia oculta del acuse
+                </label>
+                <select
+                  id="copia-oculta"
+                  className="field text-[15px]"
+                  value={cfg.copia_oculta === null ? '' : cfg.copia_oculta ? 'si' : 'no'}
+                  onChange={(e) =>
+                    setCfg((p) => ({
+                      ...p,
+                      copia_oculta:
+                        e.target.value === '' ? null : e.target.value === 'si',
+                    }))
+                  }
+                >
+                  <option value="">Lo que diga la casilla de la empresa</option>
+                  <option value="si">Sí, copiar cada acuse</option>
+                  <option value="no">No copiar (sólo le llega a la persona)</option>
+                </select>
+                <p className="font-mono text-[11px] text-ink-3 mt-2 leading-relaxed">
+                  El default de la empresa se configura en Configuración → Mails → Plantilla,
+                  junto a la casilla remitente. Apagarlo no pierde nada: las inscripciones se
+                  ven en el desktop, que es el registro real.
+                </p>
+              </Seccion>
+
               <Seccion titulo="Mail de acuse — Preinscripción (reserva)">
                 <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
                   <Info size={14} className="mt-0.5 shrink-0" />

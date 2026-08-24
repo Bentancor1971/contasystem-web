@@ -468,6 +468,13 @@ export interface EventoWebConfig {
   mail_acuse_pago_html: string | null
   certificado_html: string | null
   /**
+   * Copia oculta del acuse a la casilla remitente, SÓLO para este evento.
+   * null = heredar lo que diga la casilla de la empresa (lo normal). true/false
+   * pisan ese default: un evento de inscripción masiva puede apagarla sin que
+   * la empresa pierda el registro en los demás.
+   */
+  copia_oculta: boolean | null
+  /**
    * Leyendas del formulario público. NULL = texto por defecto, que se adapta
    * solo según el evento sea con costo o sin costo (ver EventoForm). Escribir
    * una fija ese texto para ambos casos, así que conviene dejarlas vacías salvo
@@ -508,6 +515,7 @@ export const DEFAULT_EVENTO_WEB_CONFIG: EventoWebConfig = {
   mail_acuse_pago_asunto: null,
   mail_acuse_pago_html: null,
   certificado_html: null,
+  copia_oculta: null,
   leyenda_socio: null,
   leyenda_no_socio: null,
   leyenda_datos_ficha: null,

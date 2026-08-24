@@ -34,6 +34,7 @@ export const EVENTO_CONFIG_COLUMNS = [
   'mail_acuse_pago_asunto',
   'mail_acuse_pago_html',
   'certificado_html',
+  'copia_oculta',
   'leyenda_socio',
   'leyenda_no_socio',
   'leyenda_datos_ficha',
@@ -73,6 +74,8 @@ export function rowToConfig(row: Record<string, unknown> | null): EventoWebConfi
     mail_acuse_pago_asunto: text(row.mail_acuse_pago_asunto),
     mail_acuse_pago_html: text(row.mail_acuse_pago_html),
     certificado_html: text(row.certificado_html),
+    // Tri-estado: null (heredar de la casilla) es un valor propio, no un default.
+    copia_oculta: typeof row.copia_oculta === 'boolean' ? row.copia_oculta : null,
     leyenda_socio: text(row.leyenda_socio),
     leyenda_no_socio: text(row.leyenda_no_socio),
     leyenda_datos_ficha: text(row.leyenda_datos_ficha),

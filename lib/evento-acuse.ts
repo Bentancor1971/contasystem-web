@@ -19,6 +19,7 @@ import { datosDepositoDe, esSoloSorteo, simboloDe } from '@/lib/eventos-types'
 import { normalizarDatosDepositoMonedas, normalizarMonedas } from '@/lib/eventos'
 import { buscarEntradaEmitida } from '@/lib/entradas'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
+import { loadEmpresaBranding } from '@/lib/empresa-branding'
 import { sendInscripcionEmail } from '@/lib/mailer'
 import { qrPng } from '@/lib/qr'
 import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
@@ -141,6 +142,18 @@ export async function enviarAcuseInscripcion(
     const cuenta = await loadGmailAccountForEmpresa(admin, evento.empresa_id)
     if (!cuenta) return { ok: false, motivo: 'sin_casilla' }
 
+    // Identidad y colores de quien ORGANIZA, que no tienen por qué coincidir con
+    // el remitente: la casilla Gmail puede estar compartida entre empresas de un
+    // grupo (y el `from_name` elegido a propósito). Sin fila de branding se cae
+    // al comportamiento viejo — marca = nombre del remitente — para no romper a
+    // ninguna empresa a la que todavía no le corrió el push del desktop.
+    const marca = await loadEmpresaBranding(admin, evento.empresa_id)
+
+    // Copia oculta a la casilla remitente: default de la empresa, excepción por
+    // evento. Un evento de inscripción masiva puede apagarla sin que la
+    // organización pierda el registro en los demás.
+    const copiaOculta = cfg.copia_oculta ?? cuenta.copiaOcultaAcuse
+
     const total =
       Number(inscripcion.importe) +
       Number(inscripcion.transporte_importe) +
@@ -225,12 +238,14 @@ export async function enviarAcuseInscripcion(
     const envio = await sendInscripcionEmail({
       cuenta,
       to,
+      branding: marca?.branding,
+      copiaOculta,
       override: {
         asunto: asuntoTpl ? aplicarVariables(asuntoTpl, varsTexto) : null,
         html: htmlTpl ? sanitizeHtml(aplicarVariables(htmlTpl, varsHtml)) : null,
       },
       data: {
-        empresa: { nombre: cuenta.fromName },
+        empresa: marca?.empresa ?? { nombre: cuenta.fromName },
         eventoNombre: evento.nombre,
         eventoFecha: evento.fecha_inicio,
         eventoFechaFin: evento.fecha_fin,

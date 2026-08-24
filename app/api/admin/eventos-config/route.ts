@@ -191,6 +191,10 @@ export async function PUT(req: NextRequest) {
     for (const f of BOOL_FIELDS) {
       row[f] = typeof body[f] === 'boolean' ? body[f] : DEFAULT_EVENTO_WEB_CONFIG[f]
     }
+    // Tri-estado, fuera de BOOL_FIELDS: null significa "heredar de la casilla"
+    // y hay que poder guardarlo, cosa que el default de un booleano no permite.
+    row.copia_oculta = typeof body.copia_oculta === 'boolean' ? body.copia_oculta : null
+
     for (const f of HTML_FIELDS) {
       const v = typeof body[f] === 'string' ? (body[f] as string).trim() : ''
       if (v.length > MAX_HTML) {

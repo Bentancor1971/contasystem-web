@@ -58,6 +58,11 @@ interface FormState {
   gmailAppPassword: string
   /** true si ya hay una App Password guardada. */
   gmailAppPasswordSet: boolean
+  /**
+   * Copia oculta a esta misma casilla de cada acuse de inscripción a eventos.
+   * Default de la empresa: cada evento puede pisarlo en /configuracion/eventos.
+   */
+  copiaOcultaAcuse: boolean
 }
 
 /** Nombre de ejemplo usado en el preview. */
@@ -165,6 +170,7 @@ export default function PlantillaMailPage() {
           fromName: data.fromName ?? '',
           gmailAppPassword: '',
           gmailAppPasswordSet: !!data.gmailAppPasswordSet,
+          copiaOcultaAcuse: data.copiaOcultaAcuse !== false,
         })
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error al cargar')
@@ -263,6 +269,7 @@ export default function PlantillaMailPage() {
           panel_opacidad: form.panelOpacidad,
           gmail_user: form.gmailUser,
           from_name: form.fromName,
+          copia_oculta_acuse: form.copiaOcultaAcuse,
           ...(form.gmailAppPassword.trim()
             ? { gmail_app_password: form.gmailAppPassword }
             : {}),
@@ -478,6 +485,31 @@ export default function PlantillaMailPage() {
                         ? 'Ya hay una App Password guardada. Dejá el campo vacío para mantenerla, o escribí una nueva para reemplazarla.'
                         : 'Generala en myaccount.google.com/apppasswords (la cuenta necesita verificación en 2 pasos).'}
                     </p>
+                  </div>
+
+                  {/* Copia oculta de los acuses de eventos. Vive acá, con la
+                      casilla, porque es una decisión sobre ESA casilla: lo que
+                      se elige es si el buzón guarda una copia de cada mail. */}
+                  <div className="pt-2 border-t border-line">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={form.copiaOcultaAcuse}
+                        onChange={(e) => patch({ copiaOcultaAcuse: e.target.checked })}
+                      />
+                      <span>
+                        <span className="block text-[15px]">
+                          Copia oculta de los acuses de inscripción
+                        </span>
+                        <span className="font-mono text-[11px] text-ink-3 leading-relaxed block mt-1">
+                          {form.copiaOcultaAcuse
+                            ? 'Cada inscripción a un evento deja una copia en esta casilla. En un evento masivo pueden ser cientos: se puede apagar por evento en Configuración → Eventos.'
+                            : 'No se guarda copia de los acuses en esta casilla. Las inscripciones se siguen viendo en el desktop, que es el registro real.'}
+                          {' '}El saludo de cumpleaños se copia siempre, no lo afecta este tilde.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 </section>
 

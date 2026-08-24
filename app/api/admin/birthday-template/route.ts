@@ -85,6 +85,8 @@ export async function GET(req: NextRequest) {
       soloActivos: row?.solo_activos !== false,
       gmailUser: row?.gmail_user ?? '',
       fromName: row?.from_name ?? '',
+      // Sin columna (base vieja) = copiarse, que es como venía funcionando.
+      copiaOcultaAcuse: row?.copia_oculta_acuse !== false,
       // Nunca se devuelve la App Password — solo si está cargada.
       gmailAppPasswordSet: !!row?.gmail_app_password,
     })
@@ -114,6 +116,7 @@ interface PutBody {
   gmail_user?: unknown
   from_name?: unknown
   gmail_app_password?: unknown
+  copia_oculta_acuse?: unknown
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -174,6 +177,10 @@ export async function PUT(req: NextRequest) {
     typeof body.gmail_app_password === 'string'
       ? body.gmail_app_password.replace(/\s+/g, '')
       : ''
+  // Copia oculta de los acuses de inscripción. Default true: quien no manda el
+  // campo (o guarda desde un editor viejo) sigue recibiendo la copia.
+  const copiaOcultaAcuse =
+    typeof body.copia_oculta_acuse === 'boolean' ? body.copia_oculta_acuse : true
 
   if (!asunto || asunto.length > 200) {
     return NextResponse.json(
@@ -240,6 +247,7 @@ export async function PUT(req: NextRequest) {
         solo_activos: soloActivos,
         gmail_user: gmailUser || null,
         from_name: fromName || null,
+        copia_oculta_acuse: copiaOcultaAcuse,
         // Solo se escribe la App Password si el editor mandó una nueva.
         ...(gmailAppPassword ? { gmail_app_password: gmailAppPassword } : {}),
         actualizado_en: new Date().toISOString(),

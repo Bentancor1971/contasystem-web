@@ -44,7 +44,7 @@ export const DEFAULT_HORA_ENVIO = 9
 // Debe ser UN string literal (sin concatenar) para que el cliente de
 // Supabase pueda inferir el tipo de las filas.
 export const TEMPLATE_COLUMNS =
-  'empresa_id, asunto, denominacion, cuerpo, imagen_fondo_path, texto_color, panel_color, panel_opacidad, activo, solo_activos, gmail_user, gmail_app_password, from_name'
+  'empresa_id, asunto, denominacion, cuerpo, imagen_fondo_path, texto_color, panel_color, panel_opacidad, activo, solo_activos, gmail_user, gmail_app_password, from_name, copia_oculta_acuse'
 
 export interface TemplateRow {
   empresa_id: string
@@ -60,6 +60,8 @@ export interface TemplateRow {
   gmail_user: string | null
   gmail_app_password: string | null
   from_name: string | null
+  /** Copia oculta de los acuses de inscripción. Puede faltar en bases viejas. */
+  copia_oculta_acuse?: boolean | null
 }
 
 /**
@@ -82,6 +84,12 @@ export interface GmailAccount {
   user: string
   appPassword: string
   fromName: string
+  /**
+   * Mandarse copia oculta de cada acuse de inscripción a la propia casilla.
+   * Default de la empresa: un evento puede pisarlo (evento_web_config).
+   * No afecta al saludo de cumpleaños, que sigue copiándose siempre.
+   */
+  copiaOcultaAcuse: boolean
 }
 
 /** Una empresa activa: su plantilla + su casilla Gmail (null si incompleta). */
@@ -227,7 +235,9 @@ export function rowToGmailAccount(row: TemplateRow): GmailAccount | null {
   const appPassword = row.gmail_app_password?.trim()
   const fromName = row.from_name?.trim()
   if (!user || !appPassword || !fromName) return null
-  return { user, appPassword, fromName }
+  // Sin columna (base vieja) = copiarse, que es como venía funcionando.
+  const copiaOcultaAcuse = row.copia_oculta_acuse !== false
+  return { user, appPassword, fromName, copiaOcultaAcuse }
 }
 
 /**
