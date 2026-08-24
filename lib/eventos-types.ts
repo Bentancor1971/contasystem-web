@@ -363,6 +363,60 @@ export function elegibleParaSorteo(
 }
 
 /**
+ * Eventos que corren en modo "solo sorteo", por slug.
+ *
+ * Es una lista a mano, y es deliberado: la condición estructural (sin costo +
+ * sorteo + sin servicios) también da true en "Evento Imagenología Agosto 2026",
+ * que SÍ es un evento al que se va y donde el sorteo es un extra opcional.
+ * Distinguir los dos casos pide un flag por evento —columna en
+ * evento_web_config con su toggle en /configuracion/eventos, que es donde
+ * termina yendo—; mientras tanto se nombra el único evento que lo necesita.
+ * Para agregar otro alcanza con sumar su slug acá.
+ */
+const SLUGS_SOLO_SORTEO = new Set([
+  // Grupo GREI — Sorteo de Becas: Diplomado en Resonancia Magnética (ago/2026).
+  'sorteo-de-becas-diplomado-en-resonancia-magnetica-d67d65e4',
+])
+
+/**
+ * El evento existe SÓLO para el sorteo: no se cobra nada y no hay ningún
+ * servicio que reservar, así que registrarse no significa "voy a ir a algo"
+ * sino "quiero entrar al sorteo".
+ *
+ * Cambia tres cosas, y las tres son de honestidad, no de estética:
+ *   - la participación deja de ser opt-in: la casilla "Quiero participar del
+ *     sorteo" era la única forma de quedar afuera de lo único que el evento
+ *     hace, y quien no la veía se iba convencido de que participaba;
+ *   - los textos hablan del sorteo y no del evento ("te esperamos" es falso:
+ *     no hay adónde ir);
+ *   - agotado el rango de números el registro se cierra, porque anotarse sin
+ *     número ya no deja nada.
+ *
+ * La condición estructural se exige IGUAL que el slug: si al evento le agregan
+ * un costo o un servicio, el modo se apaga solo en vez de mentir.
+ *
+ * Se resuelve con lo que la persona VE, no con lo que el evento tiene cargado:
+ * un transporte que la config web oculta no existe para quien completa el
+ * formulario. El form y /inscribir aplican los mismos flags (evento + cfg), así
+ * que los dos llegan al mismo veredicto.
+ */
+export function esSoloSorteo(v: {
+  slug: string
+  tipo: 'con_costo' | 'sin_costo'
+  sorteoVisible: boolean
+  transporteVisible: boolean
+  alimentacionVisible: boolean
+}): boolean {
+  if (!SLUGS_SOLO_SORTEO.has(v.slug)) return false
+  return (
+    v.tipo !== 'con_costo' &&
+    v.sorteoVisible &&
+    !v.transporteVisible &&
+    !v.alimentacionVisible
+  )
+}
+
+/**
  * Categoría agrupada para el formulario público: una fila por categoría Y
  * MONEDA, con la tarifa socio y no socio de esa moneda.
  *

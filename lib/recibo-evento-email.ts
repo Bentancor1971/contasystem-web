@@ -97,6 +97,13 @@ export interface ReciboEventoEmailData {
    */
   registroSinCosto?: boolean
   /**
+   * El evento existe sólo para el sorteo (ver `esSoloSorteo`). Manda sobre
+   * `registroSinCosto` y sobre `confirmada` en el saludo y el asunto: los dos
+   * dicen "te esperamos", y a un sorteo no se va a ningún lado. El número
+   * —abajo, en su recuadro— pasa a ser el contenido del mail.
+   */
+  soloSorteo?: boolean
+  /**
    * La organización ya confirmó la inscripción (estado 'importado' del puente).
    * Manda sobre `modalidad`: sin esto, la copia que pide alguien ya confirmado
    * sale con el texto del trámite pendiente —"registrá tu pago", "vamos a
@@ -212,6 +219,7 @@ export function renderReciboEventoEmail(
   // moneda —la de la inscripción—, así que se resuelve una sola vez.
   const M = d.monedaSimbolo?.trim() || d.monedaCodigo
   const registroSinCosto = d.registroSinCosto === true
+  const soloSorteo = d.soloSorteo === true
   const esTransferencia = d.modalidad === 'pago_transferencia'
   const fecha = fechaLarga(d.eventoFecha)
   // El 0 es un número de sorteo válido (el rango arranca ahí por defecto).
@@ -226,7 +234,11 @@ export function renderReciboEventoEmail(
           <tr>
             <td style="padding:28px 32px 8px;">
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
-              <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${confirmada
+              <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${soloSorteo
+                ? (tieneSorteo
+                  ? 'Quedaste anotado al sorteo. Abajo va tu número: guardalo, es el que participa.'
+                  : 'Tu registro quedó guardado.')
+                : confirmada
                 ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`
                 : registroSinCosto
                 ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'
@@ -363,7 +375,9 @@ export function renderReciboEventoEmail(
 
           <tr><td style="height:16px;"></td></tr>`
 
-  const subject = confirmada
+  const subject = soloSorteo
+    ? `Quedaste anotado al sorteo — ${d.eventoNombre}`
+    : confirmada
     ? `Inscripción confirmada — ${d.eventoNombre}`
     : registroSinCosto
     ? `Inscripción registrada — ${d.eventoNombre}`
@@ -374,10 +388,14 @@ export function renderReciboEventoEmail(
   const html = baseLayout(d.empresa, contenido, b)
 
   const lineas: string[] = [
-    `${confirmada ? 'Inscripción confirmada' : registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
+    `${soloSorteo ? 'Quedaste anotado al sorteo' : confirmada ? 'Inscripción confirmada' : registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
     '',
     `Hola ${d.socioNombre},`,
-    confirmada
+    soloSorteo
+      ? (tieneSorteo
+        ? 'Quedaste anotado al sorteo. Abajo va tu número: guardalo, es el que participa.'
+        : 'Tu registro quedó guardado.')
+      : confirmada
       ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`
       : registroSinCosto
       ? 'Tu inscripción quedó registrada. No tenés que hacer nada más; te esperamos. Próximamente recibirás confirmación definitiva.'

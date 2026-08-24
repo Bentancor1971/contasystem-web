@@ -15,7 +15,7 @@ import type {
   EventoWebConfig,
   ModalidadInscripcion,
 } from '@/lib/eventos-types'
-import { datosDepositoDe, simboloDe } from '@/lib/eventos-types'
+import { datosDepositoDe, esSoloSorteo, simboloDe } from '@/lib/eventos-types'
 import { normalizarDatosDepositoMonedas, normalizarMonedas } from '@/lib/eventos'
 import { buscarEntradaEmitida } from '@/lib/entradas'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
@@ -152,6 +152,17 @@ export async function enviarAcuseInscripcion(
     // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
     const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
 
+    // Evento que existe sólo para el sorteo: el comprobante habla del sorteo y
+    // no del evento. Se resuelve con los mismos flags que el formulario público
+    // y /inscribir, para que los tres cuenten la misma historia.
+    const soloSorteo = esSoloSorteo({
+      slug: evento.slug,
+      tipo: evento.tipo,
+      sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
+      transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,
+      alimentacionVisible: !!evento.alimentacion_disponible && cfg.mostrar_alimentacion,
+    })
+
     // Confirmada por la organización: el comprobante cambia de naturaleza. Ya no
     // hay trámite pendiente que reclamar, y si el desktop emitió la entrada, ESA
     // es la parte útil del mail (ver el bloque de entrada en el recibo).
@@ -237,6 +248,7 @@ export async function enviarAcuseInscripcion(
         monedaSimbolo,
         modalidad: inscripcion.modalidad,
         registroSinCosto,
+        soloSorteo,
         confirmada,
         entrada: entrada?.recibo ?? null,
         datosDeposito,

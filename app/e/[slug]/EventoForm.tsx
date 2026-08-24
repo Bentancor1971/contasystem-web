@@ -25,6 +25,7 @@ import {
   ALIMENTACION_SIN_RESTRICCION,
   datosDepositoDe,
   elegibleParaSorteo,
+  esSoloSorteo,
   motivoNoPuedeInscribirse,
   precioExtra,
   simboloDe,
@@ -493,7 +494,18 @@ export function EventoForm({
   // Rango agotado: se muestra pero bloqueado (igual que el cupo de transporte).
   // La inscripción al evento sigue disponible, sin número.
   const sorteoMarcable = sorteoElegible && !sorteo.completo
-  const participaSorteoEfectivo = sorteoMarcable && participaSorteo
+  // Evento que existe SÓLO para el sorteo: registrarse ES anotarse. El opt-in
+  // deja de ser una casilla —la persona nunca quiso "el evento sin el sorteo"—
+  // y `participaSorteo` queda sin uso en esta rama. La elegibilidad se sigue
+  // exigiendo igual: a un socio con deuda no lo anota nadie.
+  const soloSorteo = esSoloSorteo({
+    slug: evento.slug,
+    tipo: evento.tipo,
+    sorteoVisible,
+    transporteVisible,
+    alimentacionVisible,
+  })
+  const participaSorteoEfectivo = sorteoMarcable && (soloSorteo || participaSorteo)
 
   // Opciones de categoría según el tipo de evento:
   //   - con costo: las categorías con precio del evento (tarifa socio/no_socio).
@@ -580,6 +592,10 @@ export function EventoForm({
         <p className="text-ink-2 mb-6">
           {resultado.modalidad === 'pago_transferencia' ? (
             <>Recibimos tu inscripción a <strong>{evento.nombre}</strong> y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos el recibo con la confirmación definitiva.</>
+          ) : soloSorteo ? (
+            /* No hay a qué asistir: lo que la persona hizo fue entrar al sorteo,
+               y eso —no un "te esperamos"— es lo que tiene que leer. */
+            <>Quedaste anotado al sorteo de <strong>{evento.nombre}</strong>. Guardá tu número: es el que participa.</>
           ) : registroSinCosto ? (
             <>Te inscribiste a <strong>{evento.nombre}</strong>. Tu registro quedó confirmado; te esperamos.</>
           ) : (
@@ -604,7 +620,10 @@ export function EventoForm({
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-status-warn" />
             <p className="text-sm text-ink-2">
               Los números del sorteo se agotaron justo antes de tu inscripción, así que
-              esta vez quedaste fuera del sorteo. Tu inscripción al evento sí quedó registrada.
+              esta vez quedaste fuera del sorteo.
+              {soloSorteo
+                ? ' Escribinos si querés que lo revisemos.'
+                : ' Tu inscripción al evento sí quedó registrada.'}
             </p>
           </div>
         )}
@@ -1680,6 +1699,32 @@ export function EventoForm({
                 )
               )}
 
+              {soloSorteo ? (
+                /* Modo solo sorteo: no hay casilla que tildar. Lo único que el
+                   evento hace es el sorteo, así que en lugar de ofrecer un
+                   opt-in se afirma lo que va a pasar al enviar el formulario.
+                   La leyenda propia del evento se respeta igual. */
+                <div className="flex items-start gap-3">
+                  <Gift className="w-4 h-4 mt-1 shrink-0 text-amber-deep" />
+                  <span>
+                    <span className="font-medium">Al registrarte entrás al sorteo</span>
+                    {leyendas.sorteo ? (
+                      <span
+                        className="block text-sm text-ink-2 mt-0.5 evento-html"
+                        dangerouslySetInnerHTML={{ __html: leyendas.sorteo }}
+                      />
+                    ) : (
+                      <span className="block text-sm text-ink-2 mt-0.5">
+                        Te asignamos un número y te lo enviamos por correo. No hay
+                        nada más que hacer.
+                      </span>
+                    )}
+                    {sorteo.descripcion && (
+                      <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
+                    )}
+                  </span>
+                </div>
+              ) : (
               <label
                 className={`flex items-start gap-3 ${sorteo.completo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
               >
@@ -1713,6 +1758,7 @@ export function EventoForm({
                   )}
                 </span>
               </label>
+              )}
             </div>
           )}
 

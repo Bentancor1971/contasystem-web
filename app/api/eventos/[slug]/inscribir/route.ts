@@ -29,6 +29,7 @@ import {
   datosDepositoDe,
   elegibleParaSorteo,
   esMonedaDelEvento,
+  esSoloSorteo,
   motivoNoPuedeInscribirse,
   precioExtra,
   puedeInscribirse,
@@ -346,8 +347,21 @@ export async function POST(
     //
     // El número NO se asigna todavía: se resuelve junto al insert, porque dos
     // inscripciones simultáneas pueden calcular el mismo y hay que reintentar.
+    //
+    // En un evento "solo sorteo" el opt-in es implícito: registrarse ES
+    // anotarse, y el formulario ya no muestra casilla que tildar. No se confía
+    // en el body para eso —se re-decide acá con los mismos flags que usa el
+    // form (ver `esSoloSorteo`)—, así que un cliente viejo en caché, que sigue
+    // mandando `participa_sorteo: false`, anota igual.
+    const soloSorteo = esSoloSorteo({
+      slug: evento.slug,
+      tipo: evento.tipo,
+      sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
+      transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,
+      alimentacionVisible: !!evento.alimentacion_disponible && cfg.mostrar_alimentacion,
+    })
     const participaSorteo =
-      body.participa_sorteo === true &&
+      (soloSorteo || body.participa_sorteo === true) &&
       elegibleParaSorteo(
         {
           disponible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
@@ -356,6 +370,17 @@ export async function POST(
         },
         part.tipo_participante,
       )
+
+    // Solo sorteo y esta persona no puede participar: no se guarda una fila que
+    // no significa nada. Con `registro_permitido = 'socios_al_dia'` —lo normal
+    // en un sorteo para socios— ya quedó afuera más arriba con su mensaje
+    // propio; esto cubre el evento abierto cuyo sorteo sí es sólo para socios.
+    if (soloSorteo && !participaSorteo) {
+      return NextResponse.json(
+        { error: 'El sorteo es sólo para socios al día.' },
+        { status: 403 },
+      )
+    }
 
     // Modalidad efectiva: "pago_transferencia" (= "pago realizado") sólo si el
     // evento habilita esa modalidad, la config web la permite, publica datos de
@@ -452,6 +477,16 @@ export async function POST(
       // Se recalcula en cada vuelta: si perdimos la carrera, el máximo cambió.
       // null = el rango se agotó; la inscripción sigue, pero sin número.
       const numero = participaSorteo ? await proximoNumeroSorteo(admin, evento) : null
+      // Solo sorteo y sin número: el registro no dejaría nada. En un evento
+      // normal el rango agotado sólo saca del sorteo (la inscripción vale por sí
+      // sola); acá se rechaza. La página pública ya cierra el evento en este
+      // caso, así que llegar hasta acá es perder la carrera por el último número.
+      if (soloSorteo && numero == null) {
+        return NextResponse.json(
+          { error: 'Se agotaron los números del sorteo' },
+          { status: 409 },
+        )
+      }
       // Invariante que consume el desktop: participa_sorteo ⟺ numero_sorteo != NULL.
       // Si el rango se agotó, no participa (no habría número que sortearle).
       const { data, error: insErr } = await admin

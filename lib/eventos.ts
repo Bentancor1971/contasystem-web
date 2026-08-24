@@ -23,7 +23,12 @@ import type {
   ResolucionPublica,
   TipoParticipante,
 } from '@/lib/eventos-types'
-import { esEstadoSocio, opcionesConSinRestriccion, puedeInscribirse } from '@/lib/eventos-types'
+import {
+  esEstadoSocio,
+  esSoloSorteo,
+  opcionesConSinRestriccion,
+  puedeInscribirse,
+} from '@/lib/eventos-types'
 import { fechaYaPaso, simboloMoneda } from '@/lib/format'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
@@ -408,6 +413,15 @@ export async function loadEventoPublico(
   const sorteoTotal = rango ? rango.hasta - rango.desde + 1 : 0
   // Rango mal configurado (rango null con sorteo prendido) = sin números que dar.
   const sorteoCompleto = !!ev.sorteo_disponible && (!rango || sorteoAsignados >= sorteoTotal)
+  // Evento "solo sorteo": el registro ES la participación (ver `esSoloSorteo`).
+  // Se evalúa con la config web ya cargada, igual que en el formulario.
+  const soloSorteo = esSoloSorteo({
+    slug: ev.slug,
+    tipo: ev.tipo,
+    sorteoVisible: !!ev.sorteo_disponible && config.mostrar_sorteo,
+    transporteVisible: !!ev.transporte_disponible && config.mostrar_transporte,
+    alimentacionVisible: !!ev.alimentacion_disponible && config.mostrar_alimentacion,
+  })
   /**
    * Por qué no se puede inscribir. Tres noticias distintas, y dos de ellas se
    * contaban con la misma frase: un evento que se hizo el mes pasado se leía
@@ -437,6 +451,13 @@ export async function loadEventoPublico(
   } else if (cupoCompleto) {
     titulo = 'Inscripciones cerradas'
     motivo = 'Se completó el cupo del evento'
+  } else if (soloSorteo && sorteoCompleto) {
+    // Evento que existe sólo para el sorteo y sin números que dar: registrarse
+    // ya no deja nada. En un evento normal el rango agotado no cierra nada —la
+    // inscripción vale por sí sola y el sorteo era un extra—, pero acá dejarlo
+    // abierto sería juntar gente para una rifa sin boletas.
+    titulo = 'Sorteo cerrado'
+    motivo = 'Se agotaron los números del sorteo y no se reciben más registros.'
   }
 
   return {
