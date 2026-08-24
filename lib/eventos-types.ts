@@ -551,6 +551,14 @@ export interface EventoPublico {
   descripcion: string | null
   lugar: string | null
   fecha: string | null
+  /**
+   * Cierre del evento. En un evento normal es cuándo termina; en uno "solo
+   * sorteo" (ver `esSoloSorteo`) `fecha`–`fecha_fin` es el período en que se
+   * reciben registros, y es ESO lo que la página y el acuse muestran: la fecha
+   * de inicio sola es el día que se abrió el formulario, un dato que no le
+   * sirve a nadie. null = el evento no tiene cierre cargado.
+   */
+  fecha_fin: string | null
   /** Moneda base (= `monedas[0].codigo`). Es la preseleccionada en el selector. */
   moneda_codigo: string
   /**
@@ -593,6 +601,12 @@ export interface EventoPublico {
   transporte: TransportePublico
   alimentacion: AlimentacionPublica
   sorteo: SorteoPublico
+  /**
+   * El evento existe sólo para el sorteo. Lo resuelve el server con
+   * `esSoloSorteo` y viaja resuelto para que la página, el formulario y
+   * /inscribir no puedan discrepar.
+   */
+  solo_sorteo: boolean
   /** Config web del evento (visibilidad + HTML propio). Nunca null: cae a defaults. */
   config: EventoWebConfig
   /** Datos de depósito/transferencia (null si el evento no los tiene cargados). */

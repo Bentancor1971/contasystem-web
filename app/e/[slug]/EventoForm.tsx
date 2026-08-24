@@ -25,7 +25,6 @@ import {
   ALIMENTACION_SIN_RESTRICCION,
   datosDepositoDe,
   elegibleParaSorteo,
-  esSoloSorteo,
   motivoNoPuedeInscribirse,
   precioExtra,
   simboloDe,
@@ -498,13 +497,10 @@ export function EventoForm({
   // deja de ser una casilla —la persona nunca quiso "el evento sin el sorteo"—
   // y `participaSorteo` queda sin uso en esta rama. La elegibilidad se sigue
   // exigiendo igual: a un socio con deuda no lo anota nadie.
-  const soloSorteo = esSoloSorteo({
-    slug: evento.slug,
-    tipo: evento.tipo,
-    sorteoVisible,
-    transporteVisible,
-    alimentacionVisible,
-  })
+  //
+  // Lo decide el server (ver `esSoloSorteo`) y viaja en el payload: acá se lee,
+  // no se recalcula, para que la página y el formulario no puedan discrepar.
+  const soloSorteo = evento.solo_sorteo
   const participaSorteoEfectivo = sorteoMarcable && (soloSorteo || participaSorteo)
 
   // Opciones de categoría según el tipo de evento:

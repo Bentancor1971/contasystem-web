@@ -67,6 +67,13 @@ export interface ReciboEventoEmailData {
   empresa: DatoEmpresa
   eventoNombre: string
   eventoFecha: string | null // ISO
+  /**
+   * Cierre del evento (ISO). Sólo se usa en el modo `soloSorteo`, donde
+   * `eventoFecha`–`eventoFechaFin` es el período en que se reciben registros:
+   * ahí el recibo muestra el rango, porque la fecha de inicio sola es el día
+   * que se abrió el formulario y no le dice nada a quien se anota.
+   */
+  eventoFechaFin?: string | null
   socioNombre: string
   socioDocumento: string
   categoriaNombre: string | null
@@ -147,12 +154,27 @@ function formatImporte(n: number, moneda: string): string {
   return `${moneda} ${n.toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
 function fechaLarga(iso: string | null): string {
   if (!iso) return ''
   const [y, m, d] = iso.split('-').map(Number)
   if (!y || !m || !d) return iso
-  const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-  return `${d} de ${meses[m - 1]} de ${y}`
+  return `${d} de ${MESES[m - 1]} de ${y}`
+}
+
+/**
+ * Período "del X al Y", sin repetir lo que las dos puntas comparten. Devuelve
+ * '' si no hay dos fechas distintas: ahí el recibo cae a la fecha sola.
+ */
+function fechaPeriodo(desdeIso: string | null, hastaIso: string | null): string {
+  if (!desdeIso || !hastaIso || desdeIso >= hastaIso) return ''
+  const [y1, m1, d1] = desdeIso.split('-').map(Number)
+  const [y2, m2, d2] = hastaIso.split('-').map(Number)
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return ''
+  if (y1 !== y2) return `del ${d1} de ${MESES[m1 - 1]} de ${y1} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
+  if (m1 !== m2) return `del ${d1} de ${MESES[m1 - 1]} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
+  return `del ${d1} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
 }
 
 function getColors(b: BrandingConfig) {
@@ -221,7 +243,11 @@ export function renderReciboEventoEmail(
   const registroSinCosto = d.registroSinCosto === true
   const soloSorteo = d.soloSorteo === true
   const esTransferencia = d.modalidad === 'pago_transferencia'
-  const fecha = fechaLarga(d.eventoFecha)
+  // Solo sorteo: la fila de fecha pasa a ser el período de registro (ver
+  // `eventoFechaFin`). Sin período cargado se muestra la fecha sola, como siempre.
+  const periodoRegistro = soloSorteo ? fechaPeriodo(d.eventoFecha, d.eventoFechaFin ?? null) : ''
+  const fechaEtiqueta = periodoRegistro ? 'Registros' : 'Fecha'
+  const fecha = periodoRegistro || fechaLarga(d.eventoFecha)
   // El 0 es un número de sorteo válido (el rango arranca ahí por defecto).
   const tieneSorteo = d.numeroSorteo != null
   // Ya confirmada: no hay trámite pendiente que reclamarle a nadie. Apaga los
@@ -323,7 +349,7 @@ export function renderReciboEventoEmail(
             <td style="padding:0 32px 8px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.grayLight};border-radius:6px;overflow:hidden;">
                 <tr style="background-color:${C.accent};"><td colspan="2" style="padding:10px 16px;color:${C.white};font-size:14px;font-weight:bold;">Evento: ${esc(d.eventoNombre)}</td></tr>
-                ${fecha ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">Fecha</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(fecha)}</td></tr>` : ''}
+                ${fecha ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;width:160px;">${fechaEtiqueta}</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(fecha)}</td></tr>` : ''}
                 <tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Participante</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};font-weight:bold;">${esc(d.socioNombre)}</td></tr>
                 ${b.mostrar_documento ? `<tr><td style="padding:10px 16px;font-size:13px;color:#94949b;">Documento</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.socioDocumento)}</td></tr>` : ''}
                 ${d.categoriaNombre ? `<tr style="background-color:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#94949b;">Categoría</td><td style="padding:10px 16px;font-size:14px;color:${C.grayText};">${esc(d.categoriaNombre)} · ${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'}</td></tr>` : ''}
@@ -402,7 +428,7 @@ export function renderReciboEventoEmail(
       : esTransferencia
       ? 'Recibimos tu inscripción y tu declaración de pago. Vamos a verificar la transferencia y te enviaremos recibo con la confirmación definitiva.'
       : `Tu preinscripción quedó registrada. Recuerda realizar el pago correspondiente y registrar el mismo en${d.urlPago ? `:\n${d.urlPago}` : ' el formulario de inscripción del evento.'}`,
-    fecha ? `Fecha: ${fecha}` : '',
+    fecha ? `${fechaEtiqueta}: ${fecha}` : '',
     d.categoriaNombre ? `Categoría: ${d.categoriaNombre} (${d.tipoParticipante === 'socio' ? 'Socio' : 'No socio'})` : '',
     `Modalidad: ${registroSinCosto ? 'Registro sin costo' : esTransferencia ? (confirmada ? 'Pago realizado' : 'Pago realizado (a verificar)') : 'Preinscripción (pago después)'}`,
     confirmada ? 'Estado: Confirmada' : '',

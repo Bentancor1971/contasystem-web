@@ -58,15 +58,32 @@ const BARRA_CUPO = {
   alta:  { texto: 'Casi completo',     fill: '92%', texto_cls: 'text-status-no',   barra_cls: 'bg-status-no' },
 } as const
 
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+] as const
+
 function formatFechaLarga(iso: string | null): string | null {
   if (!iso) return null
   const [y, m, d] = iso.split('-').map(Number)
   if (!y || !m || !d) return iso
-  const meses = [
-    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-  ]
-  return `${d} de ${meses[m - 1]} de ${y}`
+  return `${d} de ${MESES[m - 1]} de ${y}`
+}
+
+/**
+ * Período "del X al Y", sin repetir lo que las dos puntas comparten: dentro del
+ * mismo mes queda "del 24 al 27 de agosto de 2026", y cruzando el mes o el año
+ * se repite sólo la parte que cambia. Devuelve null si no hay dos fechas
+ * distintas que mostrar — ahí el llamador cae a la fecha sola.
+ */
+function formatPeriodoLargo(desdeIso: string | null, hastaIso: string | null): string | null {
+  if (!desdeIso || !hastaIso || desdeIso >= hastaIso) return null
+  const [y1, m1, d1] = desdeIso.split('-').map(Number)
+  const [y2, m2, d2] = hastaIso.split('-').map(Number)
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return null
+  if (y1 !== y2) return `del ${d1} de ${MESES[m1 - 1]} de ${y1} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
+  if (m1 !== m2) return `del ${d1} de ${MESES[m1 - 1]} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
+  return `del ${d1} al ${d2} de ${MESES[m2 - 1]} de ${y2}`
 }
 
 export default async function EventoPublicoPage({
@@ -90,7 +107,13 @@ export default async function EventoPublicoPage({
     notFound()
   }
 
-  const fecha = formatFechaLarga(evento.fecha)
+  // En un evento "solo sorteo" no hay una fecha a la que ir: lo que importa es
+  // hasta cuándo se puede entrar al sorteo, y eso es el período del evento. La
+  // fecha de inicio sola era el día en que se abrió el formulario.
+  const periodoRegistro = evento.solo_sorteo
+    ? formatPeriodoLargo(evento.fecha, evento.fecha_fin)
+    : null
+  const fecha = periodoRegistro ?? formatFechaLarga(evento.fecha)
   const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado)
   const htmlPie = sanitizeHtml(evento.config.pagina_html_pie)
   // Leyendas propias del formulario. Se sanean acá (server) igual que el resto
@@ -120,7 +143,7 @@ export default async function EventoPublicoPage({
             {evento.nombre}
           </h1>
           <div className="font-mono text-sm text-ink-2 space-y-1">
-            {fecha && <div>📅 {fecha}</div>}
+            {fecha && <div>📅 {periodoRegistro ? `Registros ${periodoRegistro}` : fecha}</div>}
             {evento.lugar && <div>📍 {evento.lugar}</div>}
           </div>
           {/* Barra de cupo — sólo con evento abierto y cupo definido. */}

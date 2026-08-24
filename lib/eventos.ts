@@ -466,6 +466,7 @@ export async function loadEventoPublico(
     descripcion: ev.descripcion,
     lugar: ev.lugar,
     fecha: ev.fecha_inicio,
+    fecha_fin: ev.fecha_fin,
     // La base es la primera de la lista, no `ev.moneda_codigo`: si el evento
     // publica en otra moneda primero, esa es la que preselecciona el selector.
     moneda_codigo: monedas[0].codigo,
@@ -513,6 +514,7 @@ export async function loadEventoPublico(
         rango && sorteoMax != null ? nivelOcupacion(sorteoAsignados, sorteoTotal) : null,
       completo: sorteoCompleto,
     },
+    solo_sorteo: soloSorteo,
   }
 }
 

@@ -233,6 +233,7 @@ export async function enviarAcuseInscripcion(
         empresa: { nombre: cuenta.fromName },
         eventoNombre: evento.nombre,
         eventoFecha: evento.fecha_inicio,
+        eventoFechaFin: evento.fecha_fin,
         socioNombre: `${nombre} ${apellido}`.trim(),
         socioDocumento: documento,
         categoriaNombre: inscripcion.categoria_nombre,
