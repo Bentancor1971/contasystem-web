@@ -31,9 +31,13 @@ export type CampoPlantilla = Exclude<
 >
 
 export const PLANTILLAS_EJEMPLO: Record<CampoPlantilla, string> = {
-  pagina_html_encabezado: `<p>Te esperamos en esta nueva edición. Completá el formulario con tu cédula
+  // El encabezado de ejemplo es invitación de punta a punta —"te esperamos",
+  // "completá el formulario", "el cupo es limitado"—, así que va marcado entero:
+  // arriba del cartel de inscripciones cerradas no hay una sola frase que siga
+  // siendo cierta.
+  pagina_html_encabezado: `<p data-solo-abierto>Te esperamos en esta nueva edición. Completá el formulario con tu cédula
 y en un minuto quedás inscripto.</p>
-<p><strong>Importante:</strong> el cupo es limitado y se asigna por orden de inscripción.</p>`,
+<p data-solo-abierto><strong>Importante:</strong> el cupo es limitado y se asigna por orden de inscripción.</p>`,
 
   // El párrafo de la confirmación va marcado: con las inscripciones cerradas se
   // recorta solo (ver MARCA_SOLO_ABIERTO en lib/sanitize-html). El del contacto
