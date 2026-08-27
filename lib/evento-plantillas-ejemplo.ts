@@ -35,8 +35,11 @@ export const PLANTILLAS_EJEMPLO: Record<CampoPlantilla, string> = {
 y en un minuto quedás inscripto.</p>
 <p><strong>Importante:</strong> el cupo es limitado y se asigna por orden de inscripción.</p>`,
 
+  // El párrafo de la confirmación va marcado: con las inscripciones cerradas se
+  // recorta solo (ver MARCA_SOLO_ABIERTO en lib/sanitize-html). El del contacto
+  // no, porque ahí es cuando más falta hace.
   pagina_html_pie: `<p>Por consultas escribinos a <a href="mailto:contacto@ejemplo.com">contacto@ejemplo.com</a>.</p>
-<p>Vas a recibir la confirmación por correo. Si no te llega, revisá la carpeta de spam.</p>`,
+<p data-solo-abierto>Vas a recibir la confirmación por correo. Si no te llega, revisá la carpeta de spam.</p>`,
 
   mail_acuse_asunto: 'Preinscripción registrada — {evento}',
 

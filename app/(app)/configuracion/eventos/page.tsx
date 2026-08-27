@@ -566,6 +566,18 @@ export default function ConfiguracionEventosPage() {
                   gusto. Si borrás el campo, la sección no se muestra. Acá el HTML sale tal
                   cual, sin variables.
                 </p>
+                <p className="text-[12px] text-ink-2 mb-4 flex items-start gap-2">
+                  <Info size={14} className="mt-0.5 shrink-0" />
+                  <span>
+                    Lo que sólo valga mientras se pueda inscribir —por ejemplo &laquo;vas a
+                    recibir la confirmación por correo&raquo;— marcalo con{' '}
+                    <code className="font-mono text-[11px] bg-paper-3 px-1 rounded">
+                      &lt;p data-solo-abierto&gt;
+                    </code>
+                    : con las inscripciones cerradas ese bloque no se muestra. Lo que no esté
+                    marcado se ve siempre, como el mail de consultas.
+                  </span>
+                </p>
                 <div className="space-y-5">
                   <div>
                     <LabelPlantilla

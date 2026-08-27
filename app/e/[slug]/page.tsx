@@ -114,8 +114,15 @@ export default async function EventoPublicoPage({
     ? formatPeriodoLargo(evento.fecha, evento.fecha_fin)
     : null
   const fecha = periodoRegistro ?? formatFechaLarga(evento.fecha)
-  const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado)
-  const htmlPie = sanitizeHtml(evento.config.pagina_html_pie)
+  // El encabezado y el pie son HTML libre de la institución y mezclan lo que
+  // siempre vale con lo que sólo vale mientras se pueda entrar ("vas a recibir la
+  // confirmación por correo"). Con las inscripciones cerradas, eso último es
+  // mentira, así que se recortan los bloques marcados `data-solo-abierto`. Lo que
+  // no está marcado —el mail de consultas, típicamente— se queda: es justo el
+  // dato que busca quien abre el link tarde.
+  const recorte = { inscripcionAbierta: evento.abierto }
+  const htmlEncabezado = sanitizeHtml(evento.config.pagina_html_encabezado, recorte)
+  const htmlPie = sanitizeHtml(evento.config.pagina_html_pie, recorte)
   // Leyendas propias del formulario. Se sanean acá (server) igual que el resto
   // del HTML de config: al form llegan listas para inyectar. '' = sin leyenda
   // propia, y el formulario usa su texto por defecto.

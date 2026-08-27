@@ -11,6 +11,11 @@
  * Implementación: tokenizador que respeta comillas (un `>` dentro de un valor
  * no termina la etiqueta). Todo `<` que no abra una etiqueta válida se escapa,
  * de modo que la salida siempre es HTML bien formado.
+ *
+ * Además del saneado hace un recorte: los elementos marcados
+ * `data-solo-abierto` se descartan cuando el llamador avisa que la inscripción
+ * ya está cerrada (ver `OpcionesSaneado`). Vive acá y no en la página porque es
+ * el único lugar que ya sabe leer estas etiquetas sin volver a parsear el HTML.
  */
 
 /** Tags permitidos (texto, inline básico y estructura simple). */
@@ -39,8 +44,33 @@ const ATTRS_POR_TAG: Record<string, Set<string>> = {
   th: new Set(['colspan', 'rowspan']),
 }
 
-/** Atributos permitidos en cualquier tag. `style` y `class` quedan fuera. */
-const ATTRS_GLOBALES = new Set(['title'])
+/**
+ * Marca de "esto vale sólo mientras se pueda inscribir".
+ *
+ * El pie y el encabezado de la página pública son HTML libre de la institución y
+ * mezclan dos cosas: lo que siempre es cierto (a quién escribirle) y lo que sólo
+ * es cierto mientras la inscripción está abierta ("vas a recibir la confirmación
+ * por correo"). Con el evento cerrado, lo segundo es mentira. Como el HTML lo
+ * escribe cada institución, la página no puede adivinar qué frase es cuál: se
+ * marca el bloque y listo.
+ */
+export const MARCA_SOLO_ABIERTO = 'data-solo-abierto'
+
+export interface OpcionesSaneado {
+  /**
+   * `false` descarta los elementos marcados `data-solo-abierto` junto con su
+   * contenido. Por defecto `true`: quien no sabe nada de esto no pierde nada.
+   */
+  inscripcionAbierta?: boolean
+}
+
+/**
+ * Atributos permitidos en cualquier tag. `style` y `class` quedan fuera.
+ *
+ * `data-solo-abierto` es la marca del recorte: no hace nada en el navegador y se
+ * deja pasar para que siga estando en el HTML que se ve y se edita.
+ */
+const ATTRS_GLOBALES = new Set(['title', MARCA_SOLO_ABIERTO])
 
 const HREF_OK = /^(https?:|mailto:|tel:|#|\/)/i
 const SRC_OK = /^(https?:\/\/|\/|data:image\/(png|jpe?g|gif|webp);base64,)/i
@@ -164,9 +194,39 @@ function saltaOpaco(s: string, desde: number, tag: string): number {
   return m ? desde + m.index + m[0].length : s.length
 }
 
+/**
+ * Salta un elemento entero —etiqueta de apertura ya consumida— hasta su cierre,
+ * contando los anidados del mismo nombre. `saltaOpaco` corta en el primer
+ * `</tag>`, que alcanza para `<script>` pero no para un `<div>` con otro `<div>`
+ * adentro.
+ */
+function saltaElemento(s: string, desde: number, nombre: string): number {
+  let profundidad = 1
+  let i = desde
+  while (i < s.length) {
+    const lt = s.indexOf('<', i)
+    if (lt === -1) return s.length
+    const t = parseTag(s, lt)
+    if (!t) {
+      i = lt + 1
+      continue
+    }
+    if (t.nombre === nombre && !t.autoCierre && !TAGS_VACIOS.has(nombre)) {
+      profundidad += t.esCierre ? -1 : 1
+      if (profundidad === 0) return t.fin
+    }
+    i = t.fin
+  }
+  return s.length
+}
+
 /** Sanea un fragmento de HTML. Devuelve '' si la entrada es vacía/nula. */
-export function sanitizeHtml(input: string | null | undefined): string {
+export function sanitizeHtml(
+  input: string | null | undefined,
+  opts?: OpcionesSaneado,
+): string {
   if (!input) return ''
+  const recortaCerrados = opts?.inscripcionAbierta === false
   const s = String(input)
   const n = s.length
   let out = ''
@@ -205,6 +265,18 @@ export function sanitizeHtml(input: string | null | undefined): string {
 
     if (TAGS_OPACOS.has(tag.nombre)) {
       i = tag.esCierre ? tag.fin : saltaOpaco(s, tag.fin, tag.nombre)
+      continue
+    }
+
+    // Bloque que sólo vale con la inscripción abierta: se va con su contenido.
+    if (
+      recortaCerrados
+      && !tag.esCierre
+      && tag.attrs.some((a) => a.nombre === MARCA_SOLO_ABIERTO)
+    ) {
+      i = tag.autoCierre || TAGS_VACIOS.has(tag.nombre)
+        ? tag.fin
+        : saltaElemento(s, tag.fin, tag.nombre)
       continue
     }
 
