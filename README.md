@@ -163,7 +163,7 @@ contasystem-web-carga/
 │   ├── page.tsx                # redirect → /login o /empresa según sesión
 │   ├── login/page.tsx          # signIn Supabase
 │   ├── empresa/page.tsx        # selector + localStorage
-│   ├── carga/page.tsx          # form + lista últimos 20
+│   ├── (app)/carga/page.tsx    # form + lista últimos 20
 │   ├── a/[token]/page.tsx      # vista PÚBLICA de una entrada (destino del QR)
 │   ├── (app)/checkin/          # escáner del staff (cámara + control manual)
 │   └── api/checkin/            # eventos · marcar · desmarcar · entradas
@@ -183,7 +183,7 @@ contasystem-web-carga/
 │       ├── client.ts           # createBrowserClient
 │       ├── server.ts           # createServerClient (Server Components)
 │       └── middleware.ts       # updateSession para middleware.ts
-├── middleware.ts               # gate de auth global
+├── proxy.ts                    # gate de auth (middleware de Next 16; excluye las rutas públicas)
 ├── design/                     # ← mockup HTML, design system doc, primitivos JSX
 └── .env.local.example
 ```
@@ -194,7 +194,7 @@ contasystem-web-carga/
 
 1. Push a un repo de GitHub.
 2. En Vercel: **Add New Project → Import**.
-3. Variables de entorno: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+3. Variables de entorno: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (formulario público de eventos, tracking, elecciones) y `CRON_SECRET` (cron de cumpleaños). Ver `.env.local.example`.
 4. Deploy.
 
 ## Troubleshooting

@@ -169,6 +169,21 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         tono: 'alto',
       }
 
+    case 'cerrada_web':
+      // La terminal está EN el local: desde 61_ (E5a) el kiosco vota exento
+      // del cierre del canal web, así que esto sólo puede llegar a pantalla
+      // contra una base sin ese script aplicado (el camino de siempre no
+      // tiene la exención). El texto de `/v/{token}` — "se vota en el
+      // local, en persona" — no tiene sentido para alguien que YA está ahí.
+      return {
+        titulo: 'Avisale al operador de la mesa',
+        detalle:
+          'El sistema todavía no habilitó esta terminal para votar por este camino. No es tu ' +
+          'código: esperá un momento y avisale a quien atiende la mesa.',
+        terminal: true,
+        tono: 'medio',
+      }
+
     case 'no_abierta':
       return {
         titulo: 'La votación todavía no está abierta',
@@ -243,6 +258,14 @@ export const INACTIVIDAD_MS = 90_000
 
 /** Cuánto antes del corte se avisa, para que nadie pierda la boleta sin verlo. */
 export const AVISO_MS = 20_000
+
+/**
+ * Segundo umbral, más urgente, dentro de la ventana de `AVISO_MS`. Existe
+ * para el aviso accesible: el texto anunciado por lector de pantalla cambia
+ * sólo acá y en `AVISO_MS` —dos veces—, no en cada segundo que corre el
+ * reloj visual.
+ */
+export const AVISO_URGENTE_MS = 5_000
 
 /** Cuánto queda en pantalla la constancia antes de volver sola al inicio. */
 export const VUELTA_MS = 20_000

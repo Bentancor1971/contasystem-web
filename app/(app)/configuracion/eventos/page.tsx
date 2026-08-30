@@ -26,7 +26,11 @@ import {
   leyendasPorDefecto,
   type EventoWebConfig,
 } from '@/lib/eventos-types'
-import { PLANTILLAS_EJEMPLO, conPlantillasEjemplo } from '@/lib/evento-plantillas-ejemplo'
+import {
+  PLANTILLAS_EJEMPLO,
+  conPlantillasEjemplo,
+  type CampoPlantilla,
+} from '@/lib/evento-plantillas-ejemplo'
 
 interface EventoRow {
   id: string
@@ -112,12 +116,14 @@ function Check({
  * del componente, React lo remontaría en cada tecla y se perdería el foco.
  */
 function HtmlArea({
+  id,
   value,
   onChange,
   rows = 6,
   placeholder,
   disabled,
 }: {
+  id?: string
   value: string | null
   onChange: (v: string) => void
   rows?: number
@@ -126,6 +132,7 @@ function HtmlArea({
 }) {
   return (
     <textarea
+      id={id}
       className={`field font-mono text-[13px] leading-relaxed ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       rows={rows}
       placeholder={placeholder}
@@ -141,11 +148,13 @@ function HtmlArea({
  * El botón sólo aparece si lo que hay escrito difiere del ejemplo.
  */
 function LabelPlantilla({
+  htmlFor,
   label,
   actual,
   ejemplo,
   onRestaurar,
 }: {
+  htmlFor?: string
   label: string
   actual: string | null
   ejemplo: string
@@ -153,7 +162,7 @@ function LabelPlantilla({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-2">
-      <label className="label-mono">{label}</label>
+      <label htmlFor={htmlFor} className="label-mono">{label}</label>
       {(actual ?? '') !== ejemplo && (
         <button
           type="button"
@@ -165,6 +174,23 @@ function LabelPlantilla({
       )}
     </div>
   )
+}
+
+/**
+ * E12: si un campo quedó IGUAL al ejemplo (nunca se tocó), se persiste como
+ * `null` en vez del texto de ejemplo. Sin esto, el primer "Guardar" de un
+ * evento nuevo — aunque sólo se haya tildado o destildado un checkbox de otra
+ * pestaña — deja grabado "contacto@ejemplo.com" y el resto del texto de
+ * relleno como si fuera la redacción real, y la leyenda "vacío usa el diseño
+ * por defecto" (ver más abajo, pestaña Página pública) deja de ser cierta.
+ * Borrar el campo y guardar sigue siendo la forma de volver al default.
+ */
+function sinEjemplos(cfg: EventoWebConfig): EventoWebConfig {
+  const out = { ...cfg }
+  for (const k of Object.keys(PLANTILLAS_EJEMPLO) as CampoPlantilla[]) {
+    if (out[k] === PLANTILLAS_EJEMPLO[k]) out[k] = null
+  }
+  return out
 }
 
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -248,7 +274,7 @@ export default function ConfiguracionEventosPage() {
         body: JSON.stringify({
           empresa_id: empresa.empresa_id,
           evento_id: eventoId,
-          ...cfg,
+          ...sinEjemplos(cfg),
         }),
       })
       const data = await res.json()
@@ -508,8 +534,9 @@ export default function ConfiguracionEventosPage() {
                 </p>
                 <div className="space-y-5">
                   <div>
-                    <label className="label-mono block mb-2">Socio al día</label>
+                    <label htmlFor="leyenda-socio" className="label-mono block mb-2">Socio al día</label>
                     <HtmlArea
+                      id="leyenda-socio"
                       rows={2}
                       value={cfg.leyenda_socio}
                       onChange={(v) => setHtml('leyenda_socio', v)}
@@ -517,8 +544,9 @@ export default function ConfiguracionEventosPage() {
                     />
                   </div>
                   <div>
-                    <label className="label-mono block mb-2">No socio</label>
+                    <label htmlFor="leyenda-no-socio" className="label-mono block mb-2">No socio</label>
                     <HtmlArea
+                      id="leyenda-no-socio"
                       rows={3}
                       value={cfg.leyenda_no_socio}
                       onChange={(v) => setHtml('leyenda_no_socio', v)}
@@ -526,10 +554,11 @@ export default function ConfiguracionEventosPage() {
                     />
                   </div>
                   <div>
-                    <label className="label-mono block mb-2">
+                    <label htmlFor="leyenda-datos-ficha" className="label-mono block mb-2">
                       Aviso de datos ya registrados
                     </label>
                     <HtmlArea
+                      id="leyenda-datos-ficha"
                       rows={4}
                       value={cfg.leyenda_datos_ficha}
                       onChange={(v) => setHtml('leyenda_datos_ficha', v)}
@@ -537,8 +566,9 @@ export default function ConfiguracionEventosPage() {
                     />
                   </div>
                   <div>
-                    <label className="label-mono block mb-2">Sorteo</label>
+                    <label htmlFor="leyenda-sorteo" className="label-mono block mb-2">Sorteo</label>
                     <HtmlArea
+                      id="leyenda-sorteo"
                       rows={2}
                       value={cfg.leyenda_sorteo}
                       onChange={(v) => setHtml('leyenda_sorteo', v)}
@@ -581,6 +611,7 @@ export default function ConfiguracionEventosPage() {
                 <div className="space-y-5">
                   <div>
                     <LabelPlantilla
+                      htmlFor="pagina-html-encabezado"
                       label="Encabezado (arriba del formulario)"
                       actual={cfg.pagina_html_encabezado}
                       ejemplo={PLANTILLAS_EJEMPLO.pagina_html_encabezado}
@@ -589,6 +620,7 @@ export default function ConfiguracionEventosPage() {
                       }
                     />
                     <HtmlArea
+                      id="pagina-html-encabezado"
                       value={cfg.pagina_html_encabezado}
                       onChange={(v) => setHtml('pagina_html_encabezado', v)}
                       placeholder="<p>Bienvenidos…</p>"
@@ -596,12 +628,14 @@ export default function ConfiguracionEventosPage() {
                   </div>
                   <div>
                     <LabelPlantilla
+                      htmlFor="pagina-html-pie"
                       label="Pie (debajo del formulario)"
                       actual={cfg.pagina_html_pie}
                       ejemplo={PLANTILLAS_EJEMPLO.pagina_html_pie}
                       onRestaurar={() => setHtml('pagina_html_pie', PLANTILLAS_EJEMPLO.pagina_html_pie)}
                     />
                     <HtmlArea
+                      id="pagina-html-pie"
                       value={cfg.pagina_html_pie}
                       onChange={(v) => setHtml('pagina_html_pie', v)}
                       placeholder="<p>Consultas: …</p>"
@@ -679,6 +713,7 @@ export default function ConfiguracionEventosPage() {
                 <div className="space-y-5">
                   <div>
                     <LabelPlantilla
+                      htmlFor="mail-acuse-asunto"
                       label="Asunto"
                       actual={cfg.mail_acuse_asunto}
                       ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_asunto}
@@ -687,6 +722,7 @@ export default function ConfiguracionEventosPage() {
                       }
                     />
                     <input
+                      id="mail-acuse-asunto"
                       className="field"
                       placeholder="Preinscripción registrada — {evento}"
                       value={cfg.mail_acuse_asunto ?? ''}
@@ -696,12 +732,14 @@ export default function ConfiguracionEventosPage() {
                   </div>
                   <div>
                     <LabelPlantilla
+                      htmlFor="mail-acuse-html"
                       label="Cuerpo (HTML)"
                       actual={cfg.mail_acuse_html}
                       ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_html}
                       onRestaurar={() => setHtml('mail_acuse_html', PLANTILLAS_EJEMPLO.mail_acuse_html)}
                     />
                     <HtmlArea
+                      id="mail-acuse-html"
                       value={cfg.mail_acuse_html}
                       onChange={(v) => setHtml('mail_acuse_html', v)}
                       rows={8}
@@ -724,6 +762,7 @@ export default function ConfiguracionEventosPage() {
                 <div className="space-y-5">
                   <div>
                     <LabelPlantilla
+                      htmlFor="mail-acuse-pago-asunto"
                       label="Asunto"
                       actual={cfg.mail_acuse_pago_asunto}
                       ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_asunto}
@@ -732,6 +771,7 @@ export default function ConfiguracionEventosPage() {
                       }
                     />
                     <input
+                      id="mail-acuse-pago-asunto"
                       className="field"
                       placeholder="Inscripción con pago declarado — {evento}"
                       value={cfg.mail_acuse_pago_asunto ?? ''}
@@ -741,6 +781,7 @@ export default function ConfiguracionEventosPage() {
                   </div>
                   <div>
                     <LabelPlantilla
+                      htmlFor="mail-acuse-pago-html"
                       label="Cuerpo (HTML)"
                       actual={cfg.mail_acuse_pago_html}
                       ejemplo={PLANTILLAS_EJEMPLO.mail_acuse_pago_html}
@@ -749,6 +790,7 @@ export default function ConfiguracionEventosPage() {
                       }
                     />
                     <HtmlArea
+                      id="mail-acuse-pago-html"
                       value={cfg.mail_acuse_pago_html}
                       onChange={(v) => setHtml('mail_acuse_pago_html', v)}
                       rows={8}
@@ -768,12 +810,14 @@ export default function ConfiguracionEventosPage() {
             <Seccion titulo="Página de certificado">
               <div>
                 <LabelPlantilla
+                  htmlFor="certificado-html"
                   label="HTML de /c/[token]"
                   actual={cfg.certificado_html}
                   ejemplo={PLANTILLAS_EJEMPLO.certificado_html}
                   onRestaurar={() => setHtml('certificado_html', PLANTILLAS_EJEMPLO.certificado_html)}
                 />
                 <HtmlArea
+                  id="certificado-html"
                   value={cfg.certificado_html}
                   onChange={(v) => setHtml('certificado_html', v)}
                   placeholder="<p>Certificado válido…</p>"

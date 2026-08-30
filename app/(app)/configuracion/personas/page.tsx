@@ -18,9 +18,10 @@ import {
   Building2,
   Mail,
   MailX,
+  RotateCcw,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
+import { fetchApi } from '@/lib/api-client'
 import { canSeeConfig } from '@/lib/roles'
 import { formatFecha } from '@/lib/format'
 import { esEstadoActivo } from '@/lib/birthday-template-store'
@@ -93,6 +94,7 @@ export default function PersonasPage() {
 
   const [data, setData] = useState<Respuesta | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [filterEmpresa, setFilterEmpresa] = useState<string>('')
   const [mes, setMes] = useState<string>('')
   const [estado, setEstado] = useState<string>('')
@@ -111,6 +113,7 @@ export default function PersonasPage() {
 
   const cargar = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const params = new URLSearchParams({ empresa_id: empresa.empresa_id })
       if (filterEmpresa) params.set('filter_empresa', filterEmpresa)
@@ -118,19 +121,10 @@ export default function PersonasPage() {
       if (estado) params.set('estado', estado)
       if (qDebounced) params.set('q', qDebounced)
 
-      const res = await fetch(`/api/admin/socios?${params.toString()}`, {
-        cache: 'no-store',
-      })
-      const json = (await res.json().catch(() => ({}))) as
-        | Respuesta
-        | { error?: string }
-      if (!res.ok) {
-        toast.error((json as { error?: string }).error ?? `Error · ${res.status}`)
-        return
-      }
-      setData(json as Respuesta)
+      const json = await fetchApi<Respuesta>(`/api/admin/socios?${params.toString()}`)
+      setData(json)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al cargar')
+      setError(err instanceof Error ? err.message : 'Error al cargar')
     } finally {
       setLoading(false)
     }
@@ -245,8 +239,22 @@ export default function PersonasPage() {
         </div>
       )}
 
+      {/* Error de la última carga — separado de "sin resultados": un fallo de
+          red o de permisos no es lo mismo que un filtro sin coincidencias
+          (U7). Se muestra encima de la lista anterior en vez de taparla, así
+          un refetch fallido (ej: al cambiar de filtro) no borra lo que ya se
+          había traído bien. */}
+      {error && (
+        <div className="card p-5 mb-4 text-center">
+          <p className="text-sm text-status-no mb-3">{error}</p>
+          <button type="button" className="btn-secondary mx-auto" onClick={() => void cargar()}>
+            <RotateCcw size={14} /> Reintentar
+          </button>
+        </div>
+      )}
+
       {/* Lista */}
-      {data === null ? (
+      {data === null && error ? null : data === null ? (
         <div className="py-16 flex justify-center">
           <Loader2 size={24} className="animate-spin text-amber" />
         </div>

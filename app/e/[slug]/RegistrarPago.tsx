@@ -35,23 +35,33 @@ interface Resultado {
   mail_mask: string | null
 }
 
+/** A nivel módulo: mismo criterio que EventoForm.tsx (no hace falta crearlo por llamada). */
+const NF_IMPORTE = new Intl.NumberFormat('es-UY', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 /**
  * Importe con el símbolo de SU moneda. Acá no se elige moneda: la inscripción
  * ya está hecha y su importe está en la moneda en que se registró.
  */
 function formatImporte(n: number, codigo: string, monedas: MonedaEvento[]): string {
-  const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${simboloDe(monedas, codigo)} ${nf.format(n)}`
+  return `${simboloDe(monedas, codigo)} ${NF_IMPORTE.format(n)}`
 }
 
-/** Sólo la preinscripción impaga tiene un pago para declarar. */
+/**
+ * Sólo la preinscripción sin pago verificado tiene un pago para declarar
+ * (E1): 'pendiente' (todavía ni siquiera la recibió el desktop) e 'importado'
+ * (la recibió, pero eso no es lo mismo que haber validado una transferencia) —
+ * mismo criterio que `ESTADOS_CON_PAGO_PENDIENTE` en pago/route.ts.
+ */
 function tienePagoParaDeclarar(p: InscripcionPrevia): boolean {
-  return p.modalidad === 'reserva' && p.estado === 'pendiente'
+  return p.modalidad === 'reserva' && (p.estado === 'pendiente' || p.estado === 'importado')
 }
 
 /** Por qué NO se le pide la referencia a este registro. */
 function motivoSinPago(p: InscripcionPrevia): string {
-  if (p.estado === 'importado') {
+  if (p.estado === 'confirmado') {
     return 'Tu inscripción ya está confirmada por la organización. No tenés que registrar ningún pago.'
   }
   if (p.estado === 'rechazado') {
@@ -291,6 +301,13 @@ export function RegistrarPago({
               // Otra cédula = otro registro: se cierra el paso 2.
               setPrevia(null)
               setReferencia('')
+            }}
+            // U2: mismo criterio que en EventoForm — Enter dispara "Verificar".
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                verificar()
+              }
             }}
             disabled={verificando || enviando}
           />

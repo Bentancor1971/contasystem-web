@@ -11,7 +11,14 @@ import { Comprobante } from '@/components/Comprobante'
 
 const DEV_AUTO_EMAIL = process.env.NEXT_PUBLIC_DEV_AUTO_LOGIN_EMAIL
 const DEV_AUTO_PASSWORD = process.env.NEXT_PUBLIC_DEV_AUTO_LOGIN_PASSWORD
-const DEV_AUTO_LOGIN = Boolean(DEV_AUTO_EMAIL && DEV_AUTO_PASSWORD)
+// Guard de NODE_ENV: el middleware (lib/supabase/middleware.ts) ya lo tiene y
+// promete "imposible en producción aunque las variables se filtraran" — pero
+// esa promesa la tiene que cumplir también el cliente, porque esta página lee
+// las env vars directo del bundle sin pasar por el middleware. Sin este check,
+// si las NEXT_PUBLIC_DEV_AUTO_LOGIN_* llegaran a colarse en un build de
+// producción, la contraseña quedaría viajando en el JS público igual.
+const DEV_AUTO_LOGIN =
+  process.env.NODE_ENV !== 'production' && Boolean(DEV_AUTO_EMAIL && DEV_AUTO_PASSWORD)
 
 export default function LoginPage() {
   const router = useRouter()
@@ -37,7 +44,6 @@ export default function LoginPage() {
           return
         }
         router.replace('/empresa')
-        router.refresh()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Error de conexión')
         setAutoLoading(false)
@@ -63,7 +69,6 @@ export default function LoginPage() {
         return
       }
       router.push('/empresa')
-      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error de conexión')
     } finally {

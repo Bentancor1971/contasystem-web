@@ -191,7 +191,7 @@ function getColors(b: BrandingConfig) {
 function baseLayout(empresa: DatoEmpresa, contenido: string, b: BrandingConfig): string {
   const C = getColors(b)
   const logoHtml = b.logo_url
-    ? `<img src="${b.logo_url}" alt="${esc(empresa.nombre)}" width="180" style="display:block;margin:0 auto 8px;max-width:180px;height:auto;" />`
+    ? `<img src="${esc(b.logo_url)}" alt="${esc(empresa.nombre)}" width="180" style="display:block;margin:0 auto 8px;max-width:180px;height:auto;" />`
     : ''
   const razon = empresa.razon_social || empresa.nombre
   const headerContent = `${logoHtml}<p style="margin:0;font-size:22px;font-weight:bold;color:${C.white};letter-spacing:1px;">${esc(empresa.nombre)}</p>${razon && razon !== empresa.nombre ? `<p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,0.8);">${esc(razon)}</p>` : ''}`

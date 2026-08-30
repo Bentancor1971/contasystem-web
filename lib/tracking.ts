@@ -72,10 +72,25 @@ export function hashHex(valor: string): string {
   return createHash('sha256').update(valor).digest('hex')
 }
 
+/**
+ * Cache en memoria de slug → empresa. Son 3-4 filas que cambian casi nunca
+ * (se da de alta una empresa por año, con suerte), y cada pixel/click pagaba
+ * un round-trip a Supabase sólo para resolverla. En serverless el cache es por
+ * instancia: el primer hit de una instancia fría paga la consulta, el resto no.
+ * El TTL corto para el negativo evita que un slug recién dado de alta quede
+ * "inexistente" media hora en las instancias calientes.
+ */
+const TTL_SLUG_MS = 5 * 60_000
+const TTL_SLUG_NEGATIVO_MS = 60_000
+const cacheSlug = new Map<string, { empresa: EmpresaTracking | null; hasta: number }>()
+
 export async function empresaPorSlug(
   admin: SupabaseClient,
   slug: string,
 ): Promise<EmpresaTracking | null> {
+  const cacheada = cacheSlug.get(slug)
+  if (cacheada && cacheada.hasta > Date.now()) return cacheada.empresa
+
   const { data, error } = await admin
     .from('empresas_api_keys')
     .select('empresa_slug, empresa_id, nombre')
@@ -83,10 +98,16 @@ export async function empresaPorSlug(
     .eq('activo', true)
     .maybeSingle()
   if (error) {
+    // Un error de red NO se cachea: el próximo hit vuelve a intentar.
     console.error('[tracking] empresaPorSlug:', error.message)
     return null
   }
-  return (data as EmpresaTracking) ?? null
+  const empresa = (data as EmpresaTracking) ?? null
+  cacheSlug.set(slug, {
+    empresa,
+    hasta: Date.now() + (empresa ? TTL_SLUG_MS : TTL_SLUG_NEGATIVO_MS),
+  })
+  return empresa
 }
 
 /** Resuelve la empresa a partir del header `x-api-key` que manda el desktop. */
@@ -128,12 +149,44 @@ export function esDestinoSeguro(url: string): boolean {
 }
 
 /**
+ * Patrones de user-agent que identifican antispam corporativos y bots — NO
+ * aperturas ni clicks humanos. Copiados del desktop (`src/lib/modules/
+ * tracking.ts`, `BOT_UA_PATTERNS`): mantener las dos listas iguales.
+ *
+ * IMPORTANTE: NO se filtra GoogleImageProxy/ggpht ni MSOffice, por lo mismo
+ * que el desktop: Gmail cachea la imagen tras el primer fetch del proxy y
+ * Outlook usa el mismo UA para escanear y para mostrar — filtrarlos dejaría
+ * invisible a la mayoría de los destinatarios reales.
+ *
+ * A diferencia del desktop (que sólo limpiaba opens, y retroactivamente), acá
+ * se filtra AL INSERTAR y también para los clicks: un click de Proofpoint /
+ * SafeLinks —que abren todos los links de un mail antes de entregarlo— no es
+ * una persona y quedaba contado como tal para siempre.
+ */
+const BOT_UA_PATTERNS: RegExp[] = [
+  // Antispam / security scanners corporativos
+  /BarracudaCentral/i,
+  /Mimecast/i,
+  /Proofpoint/i,
+  // Bots genéricos
+  /(?:^|\s)bot[\s\/]/i,
+  /crawler/i,
+  /spider/i,
+]
+
+function esBot(ua: string | null | undefined): boolean {
+  if (!ua) return false
+  return BOT_UA_PATTERNS.some((re) => re.test(ua))
+}
+
+/**
  * Registra un evento. Nunca lanza: si la escritura falla se logea y se sigue.
  *
  * Es deliberado y aplica a los dos endpoints públicos. Un problema de base no
  * puede dejar un mail con la imagen rota ni —mucho peor— dejar a alguien que
  * hizo click mirando un error en vez de llegar a donde iba. La métrica es lo
- * prescindible de los tres.
+ * prescindible de los tres. (Desde P1 los endpoints además la difieren con
+ * `after()`: la respuesta sale antes de que esto corra.)
  *
  * `lote_id` queda siempre en NULL: la URL pública sólo trae slug e historial_id.
  * El desktop no lo necesita —agrupa por lote leyendo `historial_mensajes`—, así
@@ -150,6 +203,9 @@ export async function registrarEvento(
   },
 ): Promise<void> {
   try {
+    const userAgent = datos.req.headers.get('user-agent')
+    if (esBot(userAgent)) return
+
     const { error } = await admin.from('tracking_events').insert({
       empresa_slug: empresa.empresa_slug,
       empresa_id: empresa.empresa_id,
@@ -157,7 +213,7 @@ export async function registrarEvento(
       lote_id: null,
       tipo: datos.tipo,
       url_destino: datos.urlDestino ?? null,
-      user_agent: datos.req.headers.get('user-agent'),
+      user_agent: userAgent,
       // Hasheada: alcanza para distinguir aperturas sin guardar de quién.
       ip_hash: hashHex(clientIp(datos.req)),
     })

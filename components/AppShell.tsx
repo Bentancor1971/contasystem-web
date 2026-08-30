@@ -1,20 +1,15 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
 import { Header } from './Header'
 import { Sidenav } from './Sidenav'
 import { AppProvider } from '@/lib/app-context'
-import {
-  isRolValido,
-  permisosConDefaults,
-  ROLES,
-  type PermisosRol,
-  type Rol,
-} from '@/lib/roles'
+import { getPermisosEfectivos } from '@/lib/permisos'
+import type { PermisosRol, Rol } from '@/lib/roles'
 import type { EmpresaOnline } from '@/lib/types'
 
 const LS_KEY = 'cs-carga-empresa-id'
@@ -31,6 +26,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null)
   const [navOpen, setNavOpen] = useState(false)
+  // Error de RED (o cualquier falla que no sea "esta empresa no es tuya"):
+  // antes cualquier error acá te mandaba a /empresa con el mensaje crudo de
+  // PostgREST en un toast. Un problema transitorio no debería sacarte de la
+  // pantalla — con "Reintentar" el usuario vuelve a intentar sin recargar.
+  const [error, setError] = useState<string | null>(null)
+  const [intento, setIntento] = useState(0)
+
+  const reintentar = useCallback(() => {
+    setError(null)
+    setIntento((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -54,50 +60,50 @@ export function AppShell({ children }: { children: ReactNode }) {
         return
       }
 
-      const [empRes, rolRes] = await Promise.all([
+      // P6: un solo Promise.all para las dos cosas que hacían falta antes de
+      // mostrar algo (empresa + permisos) — eran 3 consultas en cascada
+      // (empresa, rol, rol_permisos); `getPermisosEfectivos` de por sí intenta
+      // resumir rol+permisos en un solo viaje con la RPC `mis_permisos`
+      // (P4, SQL 63) y sólo si no existe cae a las consultas sueltas.
+      const [empRes, permisosResult] = await Promise.all([
         supabase
           .from('empresas_online_remoto')
           .select('*')
           .eq('empresa_id', empresaId)
+          // Antes no se miraba `habilitada`: una empresa apagada seguía
+          // siendo usable si ya estaba en localStorage.
+          .eq('habilitada', 1)
           .single(),
-        supabase
-          .from('user_empresas')
-          .select('rol')
-          .eq('user_id', user.id)
-          .eq('empresa_id', empresaId)
-          .single(),
+        getPermisosEfectivos(supabase, user.id, empresaId),
       ])
 
       if (cancelled) return
 
-      if (empRes.error || !empRes.data) {
+      if (empRes.error) {
+        if (empRes.error.code === 'PGRST116') {
+          // 0 filas: no existe, está deshabilitada, o la RLS la esconde
+          // porque el user no tiene acceso — en los tres casos la lectura
+          // correcta es "no es tuya", no un error para reintentar.
+          toast.error('No tenés acceso a esa empresa')
+          router.replace('/empresa')
+          return
+        }
+        // Cualquier otro código es un problema real (red, 5xx): mostrar y
+        // dejar reintentar en vez de expulsar a /empresa con el texto crudo.
+        setError(empRes.error.message)
+        return
+      }
+
+      if (!permisosResult) {
         toast.error('No tenés acceso a esa empresa')
         router.replace('/empresa')
         return
       }
 
-      const rolRaw = rolRes.data?.rol
-      const rol: Rol = isRolValido(rolRaw) ? rolRaw : ROLES.USUARIO
-
-      // Permisos efectivos: si la empresa tiene fila para este rol, la usamos;
-      // si no, caemos a los defaults definidos en lib/roles.ts.
-      const { data: permRow } = await supabase
-        .from('rol_permisos')
-        .select(
-          'puede_cargar, puede_ver_config, puede_gestionar_usuarios, puede_gestionar_roles',
-        )
-        .eq('empresa_id', empresaId)
-        .eq('rol', rol)
-        .maybeSingle()
-
-      if (cancelled) return
-
-      const permisos = permisosConDefaults(rol, permRow ?? null)
-
       setBootstrap({
         empresa: empRes.data as EmpresaOnline,
-        rol,
-        permisos,
+        rol: permisosResult.rol,
+        permisos: permisosResult.permisos,
         userEmail: user.email ?? '',
         userId: user.id,
       })
@@ -107,7 +113,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [router, intento])
+
+  if (error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <p className="font-display text-2xl font-medium mb-2">
+            No pudimos cargar la empresa
+          </p>
+          <p className="text-ink-2 text-sm font-mono break-all mb-6">{error}</p>
+          <button onClick={reintentar} className="btn-ghost mx-auto">
+            <RefreshCw size={14} /> Reintentar
+          </button>
+        </div>
+      </main>
+    )
+  }
 
   if (!bootstrap) {
     return (

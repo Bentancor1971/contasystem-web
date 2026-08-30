@@ -6,10 +6,16 @@
  *   body: { empresa_id, email, password, rol }
  *   → Crea cuenta en auth.users + asocia a la empresa con el rol indicado.
  *
- * Ambos endpoints exigen que el caller sea admin en la empresa indicada.
+ * Ambos endpoints exigen que el caller tenga `puede_gestionar_usuarios` en la
+ * empresa indicada — NO que sea admin: ese permiso es editable en la matriz de
+ * /configuracion/roles y el rol contador lo tiene por default (ver
+ * lib/roles.ts DEFAULT_PERMISOS). Por eso asignar el rol `admin` en sí mismo
+ * tiene un chequeo aparte y más estricto (E8, ver POST): "gestionar usuarios"
+ * no alcanza para crear otro admin, sólo un admin puede hacerlo.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPermisosEfectivos } from '@/lib/permisos'
@@ -24,7 +30,7 @@ interface UsuarioRow {
 }
 
 async function assertCallerPuedeGestionarUsuarios(empresaId: string): Promise<
-  | { ok: true; userId: string }
+  | { ok: true; userId: string; rol: Rol }
   | { ok: false; status: number; error: string }
 > {
   if (!empresaId || typeof empresaId !== 'string') {
@@ -52,7 +58,7 @@ async function assertCallerPuedeGestionarUsuarios(empresaId: string): Promise<
     }
   }
 
-  return { ok: true, userId: user.id }
+  return { ok: true, userId: user.id, rol: efectivos.rol }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -80,32 +86,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: rowsErr.message }, { status: 500 })
     }
 
-    // 2) Email + nombre (de user_metadata) desde auth.users (vía admin.listUsers)
-    const userIds = new Set((rows ?? []).map((r) => r.user_id as string))
+    // 2) Email + nombre (de user_metadata) desde auth.users.
+    //    Antes esto paginaba listUsers de a 200 hasta cubrir el set entero
+    //    (hasta 50 páginas = 10.000 usuarios recorridos para resolver, en el
+    //    caso típico, un puñado de ids). Con el id ya conocido alcanza un
+    //    getUserById por usuario, y como son independientes van en paralelo.
+    const userIds = [...new Set((rows ?? []).map((r) => r.user_id as string))]
     const metaById = new Map<
       string,
       { email: string | null; nombre: string | null }
     >()
-
-    // listUsers pagina; pedimos páginas hasta cubrir el set
-    let page = 1
-    const perPage = 200
-    while (metaById.size < userIds.size) {
-      const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      if (!data || data.users.length === 0) break
-      for (const u of data.users) {
-        if (userIds.has(u.id)) {
-          const meta = (u.user_metadata ?? {}) as Record<string, unknown>
-          const nombre = typeof meta.nombre === 'string' ? meta.nombre : null
-          metaById.set(u.id, { email: u.email ?? null, nombre })
-        }
-      }
-      if (data.users.length < perPage) break
-      page++
-      if (page > 50) break // safety net
+    const metaResultados = await Promise.all(
+      userIds.map(async (id) => {
+        const { data, error } = await admin.auth.admin.getUserById(id)
+        if (error || !data?.user) return null
+        const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>
+        const nombre = typeof meta.nombre === 'string' ? meta.nombre : null
+        return [id, { email: data.user.email ?? null, nombre }] as const
+      }),
+    )
+    for (const entry of metaResultados) {
+      if (entry) metaById.set(entry[0], entry[1])
     }
 
     const usuarios: UsuarioRow[] = (rows ?? []).map((r) => {
@@ -185,6 +186,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: check.error }, { status: check.status })
   }
 
+  // E8: crear (o promover a) un admin es el cambio de máximo privilegio del
+  // sistema. "Gestionar usuarios" es un permiso editable en la matriz de roles
+  // y el rol contador lo tiene por default — con sólo eso, antes se podía
+  // crear un admin nuevo. Ahora hace falta SER admin para poder nombrar uno.
+  if (rol === ROLES.ADMIN && check.rol !== ROLES.ADMIN) {
+    return NextResponse.json(
+      { error: 'Sólo un admin puede crear usuarios con rol admin' },
+      { status: 403 },
+    )
+  }
+
   const admin = createAdminClient()
 
   // 1) Crear usuario en auth.users (email_confirm:true para login inmediato)
@@ -198,9 +210,23 @@ export async function POST(req: NextRequest) {
   })
 
   if (createErr || !created.user) {
-    const msg = createErr?.message ?? 'No se pudo crear el usuario'
-    // Errores típicos: email ya existe, password débil
-    return NextResponse.json({ error: msg }, { status: 400 })
+    // El caso típico de "falla" acá no es un error: es que la persona ya
+    // tiene cuenta en Auth por OTRA empresa (mismo Supabase Auth para todo el
+    // proyecto). Antes esto le devolvía el mensaje crudo de GoTrue y no había
+    // forma de asociarla desde acá — había que ir a SQL. Detectamos el
+    // duplicado y, si ya existe, la asociamos a esta empresa en vez de fallar.
+    const yaExiste =
+      createErr?.code === 'email_exists' ||
+      /already registered|already exists|already been registered/i.test(
+        createErr?.message ?? '',
+      )
+    if (!yaExiste) {
+      return NextResponse.json(
+        { error: createErr?.message ?? 'No se pudo crear el usuario' },
+        { status: 400 },
+      )
+    }
+    return await asociarUsuarioExistente(admin, { email, empresaId, rol, nombre })
   }
 
   // 2) Asociar a la empresa con el rol indicado
@@ -225,5 +251,79 @@ export async function POST(req: NextRequest) {
     email: created.user.email,
     nombre,
     rol,
+  })
+}
+
+/**
+ * Busca por email un usuario que ya existe en Auth (de otra empresa) y lo
+ * asocia a `empresaId` con `rol`, en vez de dejar que la creación falle con
+ * el mensaje crudo de GoTrue.
+ *
+ * `listUsers` no filtra por email (ver GoTrueAdminApi), así que acá sí hay que
+ * paginar — pero es el camino de excepción (un alta que pisa un email
+ * existente), no el listado de cada carga de pantalla como era antes en GET.
+ */
+async function asociarUsuarioExistente(
+  admin: SupabaseClient,
+  args: { email: string; empresaId: string; rol: Rol; nombre: string },
+) {
+  const emailNorm = args.email.toLowerCase()
+  let encontrado: { id: string; nombre: string | null } | null = null
+  for (let page = 1; page <= 50 && !encontrado; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) {
+      return NextResponse.json(
+        { error: `No se pudo buscar el usuario existente: ${error.message}` },
+        { status: 500 },
+      )
+    }
+    if (!data || data.users.length === 0) break
+    const u = data.users.find((x) => (x.email ?? '').toLowerCase() === emailNorm)
+    if (u) {
+      const meta = (u.user_metadata ?? {}) as Record<string, unknown>
+      encontrado = { id: u.id, nombre: typeof meta.nombre === 'string' ? meta.nombre : null }
+    }
+    if (data.users.length < 200) break
+  }
+
+  if (!encontrado) {
+    return NextResponse.json(
+      { error: 'Ese email ya existe en Auth pero no se pudo encontrar para asociarlo' },
+      { status: 409 },
+    )
+  }
+
+  const { data: yaAsociado } = await admin
+    .from('user_empresas')
+    .select('user_id')
+    .eq('user_id', encontrado.id)
+    .eq('empresa_id', args.empresaId)
+    .maybeSingle()
+  if (yaAsociado) {
+    return NextResponse.json(
+      { error: 'Ese usuario ya tiene acceso a esta empresa' },
+      { status: 409 },
+    )
+  }
+
+  const { error: linkErr } = await admin.from('user_empresas').insert({
+    user_id: encontrado.id,
+    empresa_id: args.empresaId,
+    rol: args.rol,
+  })
+  if (linkErr) {
+    return NextResponse.json(
+      { error: `No se pudo asociar el usuario existente: ${linkErr.message}` },
+      { status: 500 },
+    )
+  }
+
+  return NextResponse.json({
+    ok: true,
+    asociado: true,
+    user_id: encontrado.id,
+    email: args.email,
+    nombre: encontrado.nombre ?? args.nombre,
+    rol: args.rol,
   })
 }

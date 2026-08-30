@@ -39,7 +39,6 @@ export function Header({ empresa, userEmail, onMenuClick }: HeaderProps) {
     await supabase.auth.signOut()
     localStorage.removeItem(LS_KEY)
     router.replace('/login')
-    router.refresh()
   }
 
   const initials = (userEmail ?? 'US').slice(0, 2).toUpperCase()

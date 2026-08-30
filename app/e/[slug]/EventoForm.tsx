@@ -13,7 +13,7 @@ import toast from 'react-hot-toast'
 import { CheckCircle2, Loader2, Search, Ticket, Info, X, Landmark, CalendarClock, AlertCircle, Mail, Receipt, Gift } from 'lucide-react'
 import type {
   ClaveLeyenda,
-  EventoPublico,
+  EventoFormProps,
   InscripcionPrevia,
   ModalidadElegida,
   ModalidadInscripcion,
@@ -32,13 +32,22 @@ import {
 import { RegistrarPago } from './RegistrarPago'
 
 /**
+ * A nivel módulo: el formato no depende de nada por request y crearlo de nuevo
+ * en cada llamada (antes vivía dentro de `formatImporte`) es trabajo tirado —
+ * esta función se llama por cada importe que se pinta en la pantalla de éxito.
+ */
+const NF_IMPORTE = new Intl.NumberFormat('es-UY', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/**
  * Importe con el símbolo de SU moneda. El símbolo sale de las monedas del
  * evento (`$`, `U$S`…), nunca fijo: un importe en dólares rotulado con `$` es
  * el error más caro que puede cometer esta pantalla.
  */
 function formatImporte(n: number, codigo: string, monedas: MonedaEvento[]): string {
-  const nf = new Intl.NumberFormat('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${simboloDe(monedas, codigo)} ${nf.format(n)}`
+  return `${simboloDe(monedas, codigo)} ${NF_IMPORTE.format(n)}`
 }
 
 /**
@@ -81,10 +90,14 @@ function describirInscripcionPrevia(
       rechazada: true,
     }
   }
-  if (p.estado === 'importado') {
+  // 'confirmado' es el ÚNICO estado que significa que la organización validó
+  // el pago (o dio por buena la inscripción, en un registro sin costo). Ver
+  // docs/supabase/60_eventos_web_fixes.sql: el desktop todavía no lo escribe,
+  // así que hoy ninguna inscripción real llega a este branch.
+  if (p.estado === 'confirmado') {
     return {
       titulo: 'Tu inscripción está confirmada',
-      detalle: 'La organización ya confirmó tu inscripción. No tenés que hacer nada más.',
+      detalle: 'La organización confirmó tu inscripción. No tenés que hacer nada más.',
       pendientePago: false,
       rechazada: false,
     }
@@ -103,6 +116,20 @@ function describirInscripcionPrevia(
       titulo: 'Ya estás inscripto',
       detalle: 'Tu inscripción ya quedó registrada. No tenés que hacer nada más.',
       pendientePago: false,
+      rechazada: false,
+    }
+  }
+  // 'importado' (E1) = el desktop bajó la fila a su cola local: la
+  // organización YA LA RECIBIÓ, pero eso no es lo mismo que haber verificado
+  // un pago. Sigue en modalidad 'reserva', así que puede seguir sin abonar —
+  // se le sigue ofreciendo declarar el pago (ver RegistrarPago, que acepta
+  // 'pendiente' e 'importado').
+  if (p.estado === 'importado') {
+    return {
+      titulo: 'Tu inscripción fue recibida por la organización',
+      detalle:
+        'La organización ya recibió tu preinscripción. Todavía no verificamos ningún pago: si ya transferiste, declarálo abajo; si no, hacelo para confirmar tu lugar.',
+      pendientePago: true,
       rechazada: false,
     }
   }
@@ -183,7 +210,14 @@ interface Resultado {
   sorteo_completo: boolean
   total: number
   modalidad: ModalidadInscripcion
+  /** Cuenta a la que transferir, en la moneda de la inscripción. Ver `datosDepositoDe`. */
   datos_deposito: string | null
+  /**
+   * Mail ENMASCARADO al que salió (o va a salir) la confirmación. null cuando
+   * no hay casilla configurada o no se pudo resolver un destino: ahí NO se le
+   * promete un mail que no va a llegar (E9).
+   */
+  mail_mask: string | null
 }
 
 /**
@@ -200,7 +234,7 @@ export function EventoForm({
   leyendas,
   abrirRegistrarPago = false,
 }: {
-  evento: EventoPublico
+  evento: EventoFormProps
   /** Leyendas propias del evento, saneadas. '' en las que no tienen texto propio. */
   leyendas: Record<ClaveLeyenda, string>
   /** Viene de ?pago=1 (link del mail de preinscripción): arranca en el registro de pago. */
@@ -317,6 +351,11 @@ export function EventoForm({
   // Guarda el motivo para explicarlo en vez de abrir un formulario que el server
   // va a rechazar igual.
   const [rechazo, setRechazo] = useState<string | null>(null)
+  // U3: el cupo se completó justo antes de que terminara de enviar el
+  // formulario (409 de /inscribir). No tiene sentido devolverle el formulario
+  // entero para que lo reintente: se reemplaza por la misma tarjeta de
+  // "inscripciones cerradas" que ve quien llega después de que se cerró.
+  const [cupoAgotado, setCupoAgotado] = useState(false)
   // Reenvío de la copia del comprobante: pide confirmación antes de mandar el mail.
   const [confirmandoCopia, setConfirmandoCopia] = useState(false)
   const [enviandoCopia, setEnviandoCopia] = useState(false)
@@ -459,7 +498,7 @@ export function EventoForm({
   const categoriasMoneda = evento.categorias.filter((c) => c.moneda_codigo === moneda)
 
   // Precio visible por categoría según el tipo de participante resuelto.
-  const precioDe = (c: EventoPublico['categorias'][number]): number | null =>
+  const precioDe = (c: EventoFormProps['categorias'][number]): number | null =>
     tipo === 'socio' ? c.precio_socio : c.precio_no_socio
 
   // Transporte: costo según tipo de participante y moneda elegida (0 si sin
@@ -563,17 +602,32 @@ export function EventoForm({
         : 0
   const total = categoriaImporte + transporteImporte + alimentacionImporte
 
-  if (!evento.abierto) {
+  // U4: el evento cerrado NO le cierra la puerta a quien viene sólo a
+  // registrar el pago de una preinscripción que ya tiene (típicamente desde el
+  // link `?pago=1` del mail) — el server ya lo permite (ver el comentario de
+  // U4/U3 en pago/route.ts). Por eso esta decisión se evalúa DESPUÉS de mirar
+  // `modalidadElegida`, no antes.
+  if ((!evento.abierto || cupoAgotado) && modalidadElegida !== 'registrar_pago') {
     return (
       <div className="card p-8 text-center rise">
         {/* El título lo arma el server junto con el motivo (ver
             `loadEventoPublico`): "Inscripciones cerradas" era un título fijo, y
             bajo él un evento que ya se realizó se leía igual que uno al que se
-            le llenó el cupo. El fallback cubre un payload viejo en caché. */}
+            le llenó el cupo. El fallback cubre un payload viejo en caché.
+            `cupoAgotado` (U3) reusa el mismo texto de cupo lleno que ya arma el
+            server para el caso "normal" (evento.motivo_cerrado, cuando llega a
+            leer el payload DESPUÉS de que otro se lo llevó); acá es la misma
+            noticia enterada un segundo tarde, durante el envío. */}
         <p className="font-display text-2xl font-medium mb-2">
-          {evento.titulo_cerrado ?? 'Inscripciones cerradas'}
+          {cupoAgotado && evento.abierto
+            ? 'Inscripciones cerradas'
+            : (evento.titulo_cerrado ?? 'Inscripciones cerradas')}
         </p>
-        <p className="text-ink-2">{evento.motivo_cerrado}</p>
+        <p className="text-ink-2">
+          {cupoAgotado && evento.abierto
+            ? 'Se completó el cupo del evento justo antes de terminar de procesar tu inscripción.'
+            : evento.motivo_cerrado}
+        </p>
       </div>
     )
   }
@@ -598,6 +652,34 @@ export function EventoForm({
             <>Reservaste tu cupo para <strong>{evento.nombre}</strong>. Coordiná el pago con la organización para confirmar la inscripción.</>
           )}
         </p>
+
+        {/* E9: antes esta pantalla nunca decía A DÓNDE salía la confirmación —
+            ni siquiera cuando no salía a ningún lado. `mail_mask` viene del
+            server (ver POST /inscribir): null cuando la empresa no tiene
+            casilla configurada o no hay mail para esta inscripción, y ahí no
+            se promete un envío que no va a ocurrir. */}
+        {resultado.mail_mask ? (
+          <p className="flex items-start gap-2 text-sm text-status-ok rounded-lg border border-status-ok bg-status-ok-bg px-4 py-3 mb-6">
+            <Mail size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Te enviamos la confirmación a <strong className="break-all">{resultado.mail_mask}</strong>.
+              Puede tardar unos minutos; revisá también el correo no deseado.
+            </span>
+          </p>
+        ) : (
+          <p className="flex items-start gap-2 text-sm text-ink-2 rounded-lg border border-line bg-paper-2 px-4 py-3 mb-6">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <span>
+              No pudimos enviarte la confirmación por mail
+              {resultado.numero ? (
+                <> — guardá el número <strong>{resultado.numero}</strong> como comprobante</>
+              ) : (
+                ': guardá esta pantalla como comprobante'
+              )}
+              .
+            </span>
+          </p>
+        )}
         {/* El número de sorteo se destaca: es lo que la persona tiene que
             conservar. `!= null` y no truthiness — el 0 es un número válido. */}
         {resultado.numero_sorteo != null && (
@@ -672,7 +754,27 @@ export function EventoForm({
         </dl>
 
         {/* Quien declaró el pago ya transfirió: no se le muestran los datos de
-            depósito (ver el form de "Ya realicé el pago", mismo criterio). */}
+            depósito (ver el form de "Ya realicé el pago", mismo criterio).
+            Para la preinscripción SÍ hay algo pendiente de pagar, y el server
+            ya manda `datos_deposito` en la moneda de la inscripción (ver POST
+            /inscribir): antes esta pantalla se quedaba con la reserva
+            confirmada y sin decir a qué cuenta transferir. */}
+        {resultado.modalidad !== 'pago_transferencia' && !registroSinCosto && resultado.datos_deposito && resultado.total > 0 && (
+          <div className="mt-6 rounded-xl border border-ink bg-paper-2 p-5">
+            <p className="flex items-center gap-2 label-mono mb-3">
+              <Landmark size={15} /> Datos para la transferencia
+            </p>
+            <p className="font-mono text-sm text-ink-1 whitespace-pre-line">
+              {resultado.datos_deposito}
+            </p>
+            {resultado.numero && (
+              <p className="text-[12px] text-ink-3 mt-3">
+                Indicá la referencia <strong>{resultado.numero}</strong> en la transferencia para
+                que podamos identificar tu pago.
+              </p>
+            )}
+          </div>
+        )}
 
         {evento.texto_despues && (
           <p className="text-ink-3 text-sm mt-6 whitespace-pre-line">{evento.texto_despues}</p>
@@ -724,18 +826,22 @@ export function EventoForm({
             <dt className="text-ink-3">{registroSinCosto ? 'Estado' : 'Estado del pago'}</dt>
             <dd className={`text-right font-semibold ${info.rechazada ? 'text-status-no' : info.pendientePago ? 'text-status-warn' : 'text-status-ok'}`}>
               {registroSinCosto
-                ? yaInscripto.estado === 'importado'
+                ? yaInscripto.estado === 'confirmado'
                   ? 'Confirmada'
-                  : yaInscripto.estado === 'rechazado'
-                    ? 'Rechazada'
-                    : 'Registrada'
-                : yaInscripto.estado === 'importado'
+                  : yaInscripto.estado === 'importado'
+                    ? 'Recibida'
+                    : yaInscripto.estado === 'rechazado'
+                      ? 'Rechazada'
+                      : 'Registrada'
+                : yaInscripto.estado === 'confirmado'
                   ? 'Confirmado'
-                  : yaInscripto.estado === 'rechazado'
-                    ? 'Rechazado'
-                    : yaInscripto.estado === 'pagado'
-                      ? 'A verificar'
-                      : 'Pendiente de pago'}
+                  : yaInscripto.estado === 'importado'
+                    ? 'Recibido'
+                    : yaInscripto.estado === 'rechazado'
+                      ? 'Rechazado'
+                      : yaInscripto.estado === 'pagado'
+                        ? 'A verificar'
+                        : 'Pendiente de pago'}
             </dd>
           </div>
           {yaInscripto.categoria_nombre && (
@@ -999,8 +1105,10 @@ export function EventoForm({
     if (cfg.mostrar_email && cfg.email_obligatorio && !mail.trim() && !mailEnFicha) {
       faltan.push({ campo: 'mail', label: 'Email' })
     }
-    // Teléfono obligatorio para todos (salvo que ya esté en la ficha del socio).
-    if (cfg.mostrar_telefono && !telefono.trim() && !telefonoEnFicha) {
+    // Teléfono: obligatorio sólo si el evento lo configuró así (E11a — antes se
+    // exigía siempre, sin mirar `telefono_obligatorio`; salvo que ya esté en la
+    // ficha del socio).
+    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono.trim() && !telefonoEnFicha) {
       faltan.push({ campo: 'telefono', label: 'Celular' })
     }
     if (categoriaVisible && !categoriaId) {
@@ -1078,18 +1186,33 @@ export function EventoForm({
       if (!res.ok) {
         // 409 por cédula ya inscripta (se inscribió en otra pestaña / antes de
         // que verificara): mismo aviso que en el paso de verificación, no un
-        // toast que se va. Los otros 409 (cupo lleno) sí son un toast.
+        // toast que se va.
         if (res.status === 409) {
           const previa = await consultarInscripcionPrevia()
           if (previa) {
             setYaInscripto(previa)
             return
           }
+          // U3: el cupo del EVENTO se completó justo antes de terminar de
+          // procesar el envío (perdió la carrera contra otra inscripción). Un
+          // toast que se va deja el formulario entero esperando un reintento
+          // que sólo va a volver a fallar: se reemplaza por la tarjeta de
+          // "cerrado". El cupo de TRANSPORTE es distinto — ahí sí alcanza el
+          // toast, porque la persona puede reintentar sin marcarlo.
+          if (data.error === 'Se completó el cupo del evento') {
+            setCupoAgotado(true)
+            return
+          }
         }
         toast.error(data.error ?? 'No se pudo registrar')
         return
       }
-      setResultado(data.inscripcion as Resultado)
+      // `mail_mask` viaja aparte de `inscripcion` (E9): es del sobre de la
+      // respuesta, no del registro guardado.
+      setResultado({
+        ...(data.inscripcion as Resultado),
+        mail_mask: (data.mail_mask as string | null) ?? null,
+      })
     } catch {
       toast.error('Error de conexión')
     } finally {
@@ -1244,6 +1367,15 @@ export function EventoForm({
               setRechazo(null)
               limpiarDatosPersona()
             }}
+            // U2: Enter en el input dispara la misma acción que el botón — sin
+            // esto había que ir a buscar el mouse para algo tan básico como
+            // confirmar la cédula tipeada.
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                verificar()
+              }
+            }}
             disabled={verificando}
           />
           <button type="button" className="btn-primary shrink-0" onClick={verificar} disabled={verificando}>
@@ -1361,12 +1493,14 @@ export function EventoForm({
                   id="nombre"
                   className={claseField('nombre')}
                   aria-invalid={falta('nombre')}
+                  aria-describedby={falta('nombre') ? 'nombre-error' : undefined}
+                  autoComplete="given-name"
                   value={nombre}
                   onChange={(e) => { setNombre(e.target.value); limpiarFalta('nombre') }}
                   required
                 />
               )}
-              {falta('nombre') && <p className="msg-error">Completá tu nombre</p>}
+              {falta('nombre') && <p id="nombre-error" className="msg-error">Completá tu nombre</p>}
             </div>
             {cfg.mostrar_apellido && (
               <div>
@@ -1380,12 +1514,14 @@ export function EventoForm({
                     id="apellido"
                     className={claseField('apellido')}
                     aria-invalid={falta('apellido')}
+                    aria-describedby={falta('apellido') ? 'apellido-error' : undefined}
+                    autoComplete="family-name"
                     value={apellido}
                     onChange={(e) => { setApellido(e.target.value); limpiarFalta('apellido') }}
                     required={cfg.apellido_obligatorio}
                   />
                 )}
-                {falta('apellido') && <p className="msg-error">Completá tu apellido</p>}
+                {falta('apellido') && <p id="apellido-error" className="msg-error">Completá tu apellido</p>}
               </div>
             )}
             {cfg.mostrar_email && (
@@ -1401,35 +1537,43 @@ export function EventoForm({
                     type="email"
                     className={claseField('mail')}
                     aria-invalid={falta('mail')}
+                    aria-describedby={falta('mail') ? 'mail-error' : undefined}
+                    autoComplete="email"
                     value={mail}
                     onChange={(e) => { setMail(e.target.value); limpiarFalta('mail') }}
                     placeholder="tu@correo.com"
                     required={cfg.email_obligatorio}
                   />
                 )}
-                {falta('mail') && <p className="msg-error">Completá tu email</p>}
+                {falta('mail') && <p id="mail-error" className="msg-error">Completá tu email</p>}
               </div>
             )}
             {cfg.mostrar_telefono && (
               <div>
                 <label htmlFor="telefono" className="label-mono block mb-1">
-                  Celular{!telefonoEnFicha ? ' *' : ''}
+                  {/* E11a: el asterisco sigue la obligatoriedad que setea el
+                      evento (`telefono_obligatorio`), no un hardcode — antes se
+                      mostraba (y se exigía) siempre que no viniera de la ficha. */}
+                  Celular{cfg.telefono_obligatorio && !telefonoEnFicha ? ' *' : ''}
                 </label>
                 {telefonoEnFicha ? (
                   <DatoDeFicha id="telefono" valor={resuelto!.telefono_mask!} />
                 ) : (
                   <input
                     id="telefono"
+                    type="tel"
                     inputMode="tel"
                     className={claseField('telefono')}
                     aria-invalid={falta('telefono')}
+                    aria-describedby={falta('telefono') ? 'telefono-error' : undefined}
+                    autoComplete="tel"
                     value={telefono}
                     onChange={(e) => { setTelefono(e.target.value); limpiarFalta('telefono') }}
                     placeholder="099 123 456"
-                    required
+                    required={cfg.telefono_obligatorio}
                   />
                 )}
-                {falta('telefono') && <p className="msg-error">Completá tu celular</p>}
+                {falta('telefono') && <p id="telefono-error" className="msg-error">Completá tu celular</p>}
               </div>
             )}
           </div>
@@ -1515,13 +1659,14 @@ export function EventoForm({
                     id="categoria-otros"
                     className={claseField('categoria_otros')}
                     aria-invalid={falta('categoria_otros')}
+                    aria-describedby={falta('categoria_otros') ? 'categoria-otros-error' : undefined}
                     placeholder="Escribí tu categoría"
                     value={categoriaOtros}
                     onChange={(e) => { setCategoriaOtros(e.target.value); limpiarFalta('categoria_otros') }}
                     maxLength={60}
                     autoFocus
                   />
-                  {falta('categoria_otros') && <p className="msg-error">Escribí tu categoría</p>}
+                  {falta('categoria_otros') && <p id="categoria-otros-error" className="msg-error">Escribí tu categoría</p>}
                   {conCosto && precioMaxOtros != null && (
                     <p className="mt-2 text-[11px] font-mono text-ink-3">
                       Se aplica la tarifa {tipo === 'socio' ? 'Socio' : 'No socio'} más alta del evento
@@ -1646,6 +1791,7 @@ export function EventoForm({
                         id="alimentacion-otros"
                         className={claseField('alimentacion_otros', 'mt-2')}
                         aria-invalid={falta('alimentacion_otros')}
+                        aria-describedby={falta('alimentacion_otros') ? 'alimentacion-otros-error' : undefined}
                         placeholder="Especificá tu preferencia"
                         value={alimentacionOtros}
                         onChange={(e) => { setAlimentacionOtros(e.target.value); limpiarFalta('alimentacion_otros') }}
@@ -1653,7 +1799,7 @@ export function EventoForm({
                         autoFocus
                       />
                       {falta('alimentacion_otros') && (
-                        <p className="msg-error">Especificá tu preferencia</p>
+                        <p id="alimentacion-otros-error" className="msg-error">Especificá tu preferencia</p>
                       )}
                     </>
                   )}
@@ -1808,6 +1954,7 @@ export function EventoForm({
                   id="referencia"
                   className={claseField('referencia')}
                   aria-invalid={falta('referencia')}
+                  aria-describedby={falta('referencia') ? 'referencia-error' : undefined}
                   placeholder="N° de comprobante de la transferencia que hiciste"
                   value={referenciaTransferencia}
                   onChange={(e) => { setReferenciaTransferencia(e.target.value); limpiarFalta('referencia') }}
@@ -1815,7 +1962,7 @@ export function EventoForm({
                   disabled={enviando}
                 />
                 {falta('referencia') && (
-                  <p className="msg-error">Ingresá la referencia de la transferencia</p>
+                  <p id="referencia-error" className="msg-error">Ingresá la referencia de la transferencia</p>
                 )}
               </div>
 

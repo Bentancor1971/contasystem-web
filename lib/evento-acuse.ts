@@ -43,10 +43,13 @@ export interface InscripcionAcuse {
   moneda_codigo: string
   modalidad: ModalidadInscripcion
   /**
-   * Estado en el puente. Sólo 'importado' cambia el mail: es la confirmación de
-   * la organización, y a partir de ahí el comprobante deja de reclamar pagos y
-   * pasa a llevar la entrada al evento. Omitirlo = tratarlo como no confirmada,
-   * que es lo correcto para el alta y para la declaración de pago.
+   * Estado en el puente. Sólo 'confirmado' cambia el mail: es la confirmación
+   * de la organización (todavía no la escribe el desktop, ver
+   * docs/supabase/60_eventos_web_fixes.sql), y a partir de ahí el comprobante
+   * deja de reclamar pagos y pasa a llevar la entrada al evento. 'importado'
+   * sólo dice que el desktop RECIBIÓ la fila, no que la confirmó — se trata
+   * igual que 'pendiente'/'pagado' acá. Omitirlo = tratarlo como no
+   * confirmada, que es lo correcto para el alta y para la declaración de pago.
    */
   estado?: EstadoInscripcionRemota
   referencia_transferencia: string | null
@@ -138,16 +141,20 @@ export async function enviarAcuseInscripcion(
   if (!to) return { ok: false, motivo: 'sin_destino' }
 
   try {
-    // Sólo se puede enviar si la empresa tiene casilla Gmail configurada.
-    const cuenta = await loadGmailAccountForEmpresa(admin, evento.empresa_id)
+    // Las dos son independientes entre sí (P3): antes se esperaban en serie
+    // aunque ninguna depende del resultado de la otra.
+    const [cuenta, marca] = await Promise.all([
+      // Sólo se puede enviar si la empresa tiene casilla Gmail configurada.
+      loadGmailAccountForEmpresa(admin, evento.empresa_id),
+      // Identidad y colores de quien ORGANIZA, que no tienen por qué coincidir
+      // con el remitente: la casilla Gmail puede estar compartida entre
+      // empresas de un grupo (y el `from_name` elegido a propósito). Sin fila
+      // de branding se cae al comportamiento viejo —marca = nombre del
+      // remitente— para no romper a ninguna empresa a la que todavía no le
+      // corrió el push del desktop.
+      loadEmpresaBranding(admin, evento.empresa_id),
+    ])
     if (!cuenta) return { ok: false, motivo: 'sin_casilla' }
-
-    // Identidad y colores de quien ORGANIZA, que no tienen por qué coincidir con
-    // el remitente: la casilla Gmail puede estar compartida entre empresas de un
-    // grupo (y el `from_name` elegido a propósito). Sin fila de branding se cae
-    // al comportamiento viejo — marca = nombre del remitente — para no romper a
-    // ninguna empresa a la que todavía no le corrió el push del desktop.
-    const marca = await loadEmpresaBranding(admin, evento.empresa_id)
 
     // Copia oculta a la casilla remitente: default de la empresa, excepción por
     // evento. Un evento de inscripción masiva puede apagarla sin que la
@@ -179,7 +186,13 @@ export async function enviarAcuseInscripcion(
     // Confirmada por la organización: el comprobante cambia de naturaleza. Ya no
     // hay trámite pendiente que reclamar, y si el desktop emitió la entrada, ESA
     // es la parte útil del mail (ver el bloque de entrada en el recibo).
-    const confirmada = inscripcion.estado === 'importado'
+    //
+    // 'importado' NO es esto (E1): sólo dice que el desktop bajó la fila a su
+    // cola, no que alguien validó el pago. El desktop TODAVÍA NO ESCRIBE
+    // 'confirmado' (ver docs/supabase/60_eventos_web_fixes.sql), así que hoy
+    // este mail nunca sale como "confirmada" — se queda en "recibida" hasta que
+    // el desktop lo haga.
+    const confirmada = inscripcion.estado === 'confirmado'
     const entrada = confirmada
       ? await resolverEntrada(admin, evento, documento, origen)
       : null

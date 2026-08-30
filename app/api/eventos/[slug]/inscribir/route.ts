@@ -7,18 +7,21 @@
  * (socio/no_socio) y el importe se calculan server-side: NO se confía en el cliente.
  */
 
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  buscarInscripcionPrevia,
   contarConTransporte,
   contarInscriptos,
   loadEventoRemotoBySlug,
+  maskMail,
   nombreCategoriaSocio,
   normalizarDatosDepositoMonedas,
   normalizarExtrasPrecio,
   normalizarMonedas,
   normalizarRegistroPermitido,
   parseOpcionesAlimentacion,
+  permitirCategoriaOtros,
   precioCategoria,
   precioMaximoCategoria,
   proximoNumeroSorteo,
@@ -31,12 +34,14 @@ import {
   esMonedaDelEvento,
   esSoloSorteo,
   motivoNoPuedeInscribirse,
+  opcionesConSinRestriccion,
   precioExtra,
   puedeInscribirse,
 } from '@/lib/eventos-types'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
+import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
 import { enviarAcuseInscripcion, origenPublico } from '@/lib/evento-acuse'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 import type { CambioDato } from '@/lib/recibo-evento-email'
@@ -72,6 +77,15 @@ interface Body {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 
+// Topes de longitud (E20): sólo el cliente los exigía; un POST directo al
+// endpoint no tenía techo. `slice` en vez de rechazar — mismo criterio que
+// `referencia`, que ya se recortaba.
+const MAX_NOMBRE = 80
+const MAX_MAIL = 120
+const MAX_TELEFONO = 30
+const MAX_CATEGORIA_OTROS = 60
+const MAX_ALIMENTACION_OTROS = 60
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -87,12 +101,12 @@ export async function POST(
     }
 
     const documento = str(body.documento)
-    let nombre = str(body.nombre)
-    let apellido = str(body.apellido)
-    let mail = str(body.mail)
-    let telefono = str(body.telefono)
+    let nombre = str(body.nombre).slice(0, MAX_NOMBRE)
+    let apellido = str(body.apellido).slice(0, MAX_NOMBRE)
+    let mail = str(body.mail).slice(0, MAX_MAIL)
+    let telefono = str(body.telefono).slice(0, MAX_TELEFONO)
     const categoriaId = str(body.categoria_id)
-    const categoriaOtros = str(body.categoria_otros)
+    const categoriaOtros = str(body.categoria_otros).slice(0, MAX_CATEGORIA_OTROS)
     // Modalidad: reserva de cupo (default) o pago declarado por transferencia.
     // Sólo tiene sentido "pago_transferencia" si el evento tiene datos de depósito.
     const modalidad =
@@ -140,9 +154,41 @@ export async function POST(
       moneda,
     )
 
+    // P3: estas cuatro consultas dependen sólo de `evento`/`documento`, no entre
+    // sí — en serie eran ~4 viajes seguidos por nada. `previa` reemplaza al
+    // SELECT de dedupe suelto que había antes del INSERT (ver más abajo): es el
+    // mismo criterio (`buscarInscripcionPrevia`, el que ya usa /lookup) resuelto
+    // temprano, así el 409 sale antes de completar categoría/transporte/etc.
+    const [cfgCruda, inscriptosActuales, part, previa] = await Promise.all([
+      loadEventoWebConfig(admin, evento.id),
+      evento.cupo_maximo != null ? contarInscriptos(admin, evento.id) : Promise.resolve(0),
+      resolverParticipante(admin, evento, documento),
+      buscarInscripcionPrevia(admin, evento.id, documento),
+    ])
+
+    // Cupo global: chequeo temprano (no atómico) para no seguir armando la
+    // inscripción si ya está lleno. El cierre real de la carrera lo hace la RPC
+    // `inscribir_evento_web` (o el recuento posterior si todavía no se aplicó
+    // el SQL 60_) más abajo, en el INSERT.
+    if (evento.cupo_maximo != null && inscriptosActuales >= evento.cupo_maximo) {
+      return NextResponse.json({ error: 'Se completó el cupo del evento' }, { status: 409 })
+    }
+
+    // Ya inscripta (dedupe temprano, reemplaza al SELECT suelto que había antes
+    // del INSERT — el 23505 de idx_inscripciones_evento_remoto_unica sigue
+    // siendo la garantía real si dos requests se cruzan en el medio).
+    if (previa) {
+      return NextResponse.json(
+        { error: 'Esta cédula ya está inscripta a este evento' },
+        { status: 409 },
+      )
+    }
+
     // Config web del evento. NO se confía en el cliente: los campos ocultos se
-    // descartan y los obligatorios se exigen acá.
-    const cfg = await loadEventoWebConfig(admin, evento.id)
+    // descartan y los obligatorios se exigen acá. `permitir_categoria_otros` es
+    // el AND con lo que setea el desktop (E11): cualquiera de los dos lados
+    // puede apagar la categoría libre.
+    const cfg = { ...cfgCruda, permitir_categoria_otros: permitirCategoriaOtros(evento, cfgCruda) }
     if (!cfg.mostrar_apellido) apellido = ''
     if (!cfg.mostrar_email) mail = ''
     if (!cfg.mostrar_telefono) telefono = ''
@@ -162,17 +208,6 @@ export async function POST(
         { status: 400 },
       )
     }
-
-    // Cupo global
-    if (evento.cupo_maximo != null) {
-      const inscriptos = await contarInscriptos(admin, evento.id)
-      if (inscriptos >= evento.cupo_maximo) {
-        return NextResponse.json({ error: 'Se completó el cupo del evento' }, { status: 409 })
-      }
-    }
-
-    // Resolver participante (socio/no_socio según cuotas)
-    const part = await resolverParticipante(admin, evento, documento)
 
     // Cédula válida: se exige SÓLO a quien no está en el padrón. A los que ya
     // están se los deja pasar aunque su documento no verifique (hay documentos
@@ -206,10 +241,10 @@ export async function POST(
     // proponerle al contador un cambio que le vacíe datos al socio. El nombre
     // también: un socio verificado no necesita re-escribirlo.
     if (part.encontrado) {
-      if (!nombre) nombre = part.nombre
-      if (!apellido) apellido = part.apellido
-      if (!mail) mail = part.mail
-      if (!telefono) telefono = part.telefono
+      if (!nombre) nombre = part.nombre.slice(0, MAX_NOMBRE)
+      if (!apellido) apellido = part.apellido.slice(0, MAX_NOMBRE)
+      if (!mail) mail = part.mail.slice(0, MAX_MAIL)
+      if (!telefono) telefono = part.telefono.slice(0, MAX_TELEFONO)
     }
 
     // Recién ahora exigimos los datos obligatorios: para un socio ya vienen de la
@@ -224,10 +259,10 @@ export async function POST(
     if (cfg.mostrar_email && cfg.email_obligatorio && !mail) {
       return NextResponse.json({ error: 'El email es obligatorio' }, { status: 400 })
     }
-    // Teléfono: obligatorio para todos cuando el campo se muestra. Si es un socio
-    // con teléfono en la ficha ya se completó arriba; si no lo tenemos, hay que
-    // pedirlo sí o sí (es un dato de contacto que queremos siempre).
-    if (cfg.mostrar_telefono && !telefono) {
+    // Teléfono: obligatorio sólo si el evento lo configuró así (E11 —
+    // `telefono_obligatorio` se guardaba y nunca se leía). Si es un socio con
+    // teléfono en la ficha ya se completó arriba.
+    if (cfg.mostrar_telefono && cfg.telefono_obligatorio && !telefono) {
       return NextResponse.json({ error: 'El teléfono es obligatorio' }, { status: 400 })
     }
 
@@ -288,11 +323,11 @@ export async function POST(
         categoriaNombre = categoriaOtros
         categoriaIdFinal = null
       } else {
-        const nombre = await nombreCategoriaSocio(admin, evento.empresa_id, categoriaId)
-        if (!nombre) {
+        const nombreCat = await nombreCategoriaSocio(admin, evento.empresa_id, categoriaId)
+        if (!nombreCat) {
           return NextResponse.json({ error: 'Categoría no válida' }, { status: 400 })
         }
-        categoriaNombre = nombre
+        categoriaNombre = nombreCat
         categoriaIdFinal = categoriaId
       }
     }
@@ -303,7 +338,8 @@ export async function POST(
     let transporteImporte = 0
     if (evento.transporte_disponible && cfg.mostrar_transporte && body.lleva_transporte === true) {
       // Cupo de transporte: si tiene tope y ya se llenó, se rechaza (la persona
-      // puede reintentar sin transporte). Mismo criterio que el cupo del evento.
+      // puede reintentar sin transporte). Mismo criterio que el cupo del evento:
+      // chequeo temprano, no atómico — el cierre real lo hace la RPC/recuento.
       if (evento.transporte_cupo_maximo != null) {
         const conTransporte = await contarConTransporte(admin, evento.id)
         if (conTransporte >= evento.transporte_cupo_maximo) {
@@ -334,6 +370,12 @@ export async function POST(
       const tipoElegido = str(body.alimentacion_tipo)
       alimentacionTipo =
         tipoElegido || (opciones.length > 0 ? ALIMENTACION_SIN_RESTRICCION : null)
+      // E20: un tipo que coincide con una opción cargada por el desktop pasa tal
+      // cual (esas ya tienen su propio tope en el desktop); el texto libre de
+      // "Otros" se recorta — el cliente lo limita a 60, un POST directo no.
+      if (alimentacionTipo && !opcionesConSinRestriccion(opciones).includes(alimentacionTipo)) {
+        alimentacionTipo = alimentacionTipo.slice(0, MAX_ALIMENTACION_OTROS)
+      }
       if (evento.alimentacion_con_costo) {
         alimentacionImporte =
           precioExtra(extrasPrecio, 'alimentacion', part.tipo_participante, moneda) ?? 0
@@ -414,23 +456,6 @@ export async function POST(
     // confirme). 'pendiente' = preinscripción. Ver docs/supabase/29.
     const estadoInicial = modalidadFinal === 'pago_transferencia' ? 'pagado' : 'pendiente'
 
-    // Dedupe explícito + mensaje claro
-    const documentoHash = hashDocumento(documento)
-    const { data: ya } = await admin
-      .from('inscripciones_evento_remoto')
-      .select('id')
-      .eq('evento_id', evento.id)
-      .eq('documento_hash', documentoHash)
-      .neq('estado', 'anulado')
-      .limit(1)
-      .maybeSingle()
-    if (ya) {
-      return NextResponse.json(
-        { error: 'Esta cédula ya está inscripta a este evento' },
-        { status: 409 },
-      )
-    }
-
     const filaBase = {
       evento_id: evento.id,
       empresa_id: evento.empresa_id,
@@ -439,7 +464,7 @@ export async function POST(
       tipo_participante: part.tipo_participante,
       socio_id: part.socio_id,
       documento: normalizeDocumento(documento),
-      documento_hash: documentoHash,
+      documento_hash: hashDocumento(documento),
       nombre,
       apellido: apellido || null,
       mail: mail || null,
@@ -460,7 +485,7 @@ export async function POST(
       estado: estadoInicial,
     }
     const COLUMNAS_INSERTADAS =
-      'numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad, participa_sorteo, numero_sorteo'
+      'id, numero, importe, moneda_codigo, categoria_nombre, tipo_participante, lleva_transporte, transporte_importe, lleva_alimentacion, alimentacion_importe, alimentacion_tipo, modalidad, participa_sorteo, numero_sorteo'
 
     // Desde la migración 31 hay DOS índices únicos sobre esta tabla y ambos
     // devuelven 23505: el de (evento_id, documento_hash) —cédula repetida, error
@@ -470,9 +495,17 @@ export async function POST(
     // le mentiría a alguien que se está inscribiendo por primera vez.
     const IDX_SORTEO = 'uq_inscripciones_evento_sorteo_numero'
     const MAX_INTENTOS = 5
+    // La RPC todavía no aplicada da uno de estos dos códigos (según el cliente
+    // de PostgREST la resuelva antes o después de golpear la base).
+    const RPC_NO_APLICADA = new Set(['PGRST202', '42883'])
 
     let inserted: Record<string, unknown> | null = null
     let colisionSorteo = false
+    // Se apaga sólo si la RPC no está aplicada (ver docs/supabase/60_
+    // eventos_web_fixes.sql): ahí se cae al INSERT directo de siempre + un
+    // recuento posterior (ver el bloque de abajo).
+    let usarRpc = true
+
     for (let intento = 0; intento < MAX_INTENTOS; intento++) {
       // Se recalcula en cada vuelta: si perdimos la carrera, el máximo cambió.
       // null = el rango se agotó; la inscripción sigue, pero sin número.
@@ -489,30 +522,88 @@ export async function POST(
       }
       // Invariante que consume el desktop: participa_sorteo ⟺ numero_sorteo != NULL.
       // Si el rango se agotó, no participa (no habría número que sortearle).
-      const { data, error: insErr } = await admin
-        .from('inscripciones_evento_remoto')
-        .insert({ ...filaBase, participa_sorteo: numero != null, numero_sorteo: numero })
-        .select(COLUMNAS_INSERTADAS)
-        .single()
+      const filaCompleta = { ...filaBase, participa_sorteo: numero != null, numero_sorteo: numero }
 
-      if (!insErr) {
-        inserted = data as Record<string, unknown>
-        break
+      if (usarRpc) {
+        // E4/I3: cupo + transporte + INSERT en una sola transacción, serializada
+        // por evento (`pg_advisory_xact_lock`) — cierra la carrera de raíz en vez
+        // de sólo angostarla. Ver docs/supabase/60_eventos_web_fixes.sql.
+        const { data: rpcData, error: rpcErr } = await admin.rpc('inscribir_evento_web', {
+          p_row: filaCompleta,
+          p_cupo_maximo: evento.cupo_maximo,
+          p_transporte_cupo: llevaTransporte ? evento.transporte_cupo_maximo : null,
+        })
+
+        if (!rpcErr) {
+          const resultado = rpcData as (Record<string, unknown> & { error?: string }) | null
+          if (resultado?.error === 'cupo_completo') {
+            return NextResponse.json({ error: 'Se completó el cupo del evento' }, { status: 409 })
+          }
+          if (resultado?.error === 'transporte_completo') {
+            return NextResponse.json(
+              { error: 'Se completó el cupo de transporte' },
+              { status: 409 },
+            )
+          }
+          inserted = resultado
+          break
+        }
+
+        if (rpcErr.code === '23505' && rpcErr.message.includes(IDX_SORTEO)) {
+          colisionSorteo = true
+          continue
+        }
+        if (rpcErr.code === '23505') {
+          return NextResponse.json(
+            { error: 'Esta cédula ya está inscripta a este evento' },
+            { status: 409 },
+          )
+        }
+        if (RPC_NO_APLICADA.has(rpcErr.code ?? '')) {
+          usarRpc = false
+          console.warn(
+            '[inscribir] falta aplicar docs/supabase/60_eventos_web_fixes.sql ' +
+              '(RPC inscribir_evento_web no existe todavía): se usa el INSERT directo, ' +
+              'sin lock atómico de cupo — el recuento posterior actúa de red de contención.',
+          )
+          // Sigue en esta misma vuelta, por el camino sin RPC (no `continue`:
+          // ya se calculó `numero`, no hace falta recalcularlo).
+        } else {
+          console.error('[inscribir] error de la RPC inscribir_evento_web:', rpcErr)
+          return NextResponse.json(
+            { error: 'No se pudo registrar la inscripción. Reintentá en unos segundos.' },
+            { status: 500 },
+          )
+        }
       }
-      if (insErr.code === '23505' && insErr.message.includes(IDX_SORTEO)) {
-        colisionSorteo = true
-        continue
-      }
-      if (insErr.code === '23505') {
+
+      if (!usarRpc) {
+        const { data, error: insErr } = await admin
+          .from('inscripciones_evento_remoto')
+          .insert(filaCompleta)
+          .select(COLUMNAS_INSERTADAS)
+          .single()
+
+        if (!insErr) {
+          inserted = data as Record<string, unknown>
+          break
+        }
+        if (insErr.code === '23505' && insErr.message.includes(IDX_SORTEO)) {
+          colisionSorteo = true
+          continue
+        }
+        if (insErr.code === '23505') {
+          return NextResponse.json(
+            { error: 'Esta cédula ya está inscripta a este evento' },
+            { status: 409 },
+          )
+        }
+        console.error('[inscribir] error insertando la inscripción:', insErr)
         return NextResponse.json(
-          { error: 'Esta cédula ya está inscripta a este evento' },
-          { status: 409 },
+          { error: 'No se pudo registrar la inscripción. Reintentá en unos segundos.' },
+          { status: 500 },
         )
       }
-      return NextResponse.json(
-        { error: `No se pudo registrar la inscripción: ${insErr.message}` },
-        { status: 500 },
-      )
     }
     if (!inserted) {
       // Sólo se llega acá perdiendo la carrera del número MAX_INTENTOS veces
@@ -526,13 +617,50 @@ export async function POST(
         { status: 503 },
       )
     }
+
+    // Fallback sin la RPC (E4, versión "recontar y anular"): la ventana entre
+    // contar y el INSERT de arriba no estaba cerrada. Se recuenta YA con la fila
+    // recién insertada adentro y, si se pasó del cupo, se anula: angosta la
+    // carrera en vez de dejarla abierta del todo. Con la RPC aplicada este
+    // bloque no corre — el cupo ya quedó garantizado en la misma transacción.
+    if (!usarRpc) {
+      if (evento.cupo_maximo != null) {
+        const actual = await contarInscriptos(admin, evento.id)
+        if (actual > evento.cupo_maximo) {
+          await admin
+            .from('inscripciones_evento_remoto')
+            .update({ estado: 'anulado' })
+            .eq('id', inserted.id)
+          return NextResponse.json({ error: 'Se completó el cupo del evento' }, { status: 409 })
+        }
+      }
+      if (llevaTransporte && evento.transporte_cupo_maximo != null) {
+        const actualTransporte = await contarConTransporte(admin, evento.id)
+        if (actualTransporte > evento.transporte_cupo_maximo) {
+          await admin
+            .from('inscripciones_evento_remoto')
+            .update({ estado: 'anulado' })
+            .eq('id', inserted.id)
+          return NextResponse.json(
+            { error: 'Se completó el cupo de transporte' },
+            { status: 409 },
+          )
+        }
+      }
+    }
+
     const numeroSorteo =
       inserted.numero_sorteo == null ? null : Number(inserted.numero_sorteo)
 
-    // ── Acuse de inscripción por email (best-effort; no bloquea ni falla la
-    //    respuesta). Va al mail ingresado por la persona (que puede diferir del
-    //    de la ficha) o, si no puso, al de la ficha. El armado del mail es el
-    //    mismo que usa el reenvío de copia (ver lib/evento-acuse).
+    // ── Acuse de inscripción por email. Va al mail ingresado por la persona
+    //    (que puede diferir del de la ficha) o, si no puso, al de la ficha. El
+    //    armado del mail es el mismo que usa el reenvío de copia (lib/evento-acuse).
+    //
+    //    El envío en sí va con `after()` (P1/E9): el SMTP a Gmail sin pool son
+    //    1-3 s que no tienen por qué demorar la respuesta — la inscripción ya
+    //    está guardada. `mail_mask` se resuelve ANTES de responder con una
+    //    consulta liviana (¿hay casilla configurada?) para que la pantalla diga
+    //    la verdad sobre A DÓNDE va a salir el acuse, sin esperar a que salga.
     const cambios: CambioDato[] = []
     if (part.encontrado) {
       const dif = (campo: string, anterior: string, nuevo: string) => {
@@ -555,40 +683,55 @@ export async function POST(
         dif('Categoría', part.categoria_nombre, categoriaNombre)
       }
     }
-    const acuse = await enviarAcuseInscripcion(admin, {
-      evento,
-      cfg,
-      destino: mail || part.mail || '',
-      documento: normalizeDocumento(documento),
-      nombre,
-      apellido,
-      inscripcion: {
-        numero: (inserted.numero as string | null) ?? null,
-        categoria_nombre: (inserted.categoria_nombre as string | null) ?? null,
-        tipo_participante: part.tipo_participante,
-        importe: Number(inserted.importe),
-        lleva_transporte: !!inserted.lleva_transporte,
-        transporte_importe: Number(inserted.transporte_importe),
-        lleva_alimentacion: !!inserted.lleva_alimentacion,
-        alimentacion_importe: Number(inserted.alimentacion_importe),
-        alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
-        moneda_codigo: inserted.moneda_codigo as string,
-        modalidad: modalidadFinal,
-        // Recién nacida: 'pendiente' o 'pagado', nunca 'importado'. Va explícito
-        // igual para que el acuse del alta y el de la copia se lean del mismo dato.
-        estado: estadoInicial,
-        referencia_transferencia: referencia || null,
-        numero_sorteo: numeroSorteo,
-      },
-      cambios,
-      origen: origenPublico(req),
-    })
-    if (!acuse.ok && acuse.motivo === 'error') {
-      console.error('[inscribir] acuse no enviado:', acuse.error)
+
+    const destinoMail = (mail || part.mail || '').trim()
+    const casillaAcuse = destinoMail
+      ? await loadGmailAccountForEmpresa(admin, evento.empresa_id)
+      : null
+    const mailMask = casillaAcuse && destinoMail ? maskMail(destinoMail) : null
+
+    if (destinoMail && casillaAcuse) {
+      const origen = origenPublico(req)
+      after(() =>
+        enviarAcuseInscripcion(admin, {
+          evento,
+          cfg,
+          destino: destinoMail,
+          documento: normalizeDocumento(documento),
+          nombre,
+          apellido,
+          inscripcion: {
+            numero: (inserted.numero as string | null) ?? null,
+            categoria_nombre: (inserted.categoria_nombre as string | null) ?? null,
+            tipo_participante: part.tipo_participante,
+            importe: Number(inserted.importe),
+            lleva_transporte: !!inserted.lleva_transporte,
+            transporte_importe: Number(inserted.transporte_importe),
+            lleva_alimentacion: !!inserted.lleva_alimentacion,
+            alimentacion_importe: Number(inserted.alimentacion_importe),
+            alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
+            moneda_codigo: inserted.moneda_codigo as string,
+            modalidad: modalidadFinal,
+            // Recién nacida: 'pendiente' o 'pagado', nunca 'importado'/'confirmado'.
+            // Va explícito igual para que el acuse del alta y el de la copia se
+            // lean del mismo dato.
+            estado: estadoInicial,
+            referencia_transferencia: referencia || null,
+            numero_sorteo: numeroSorteo,
+          },
+          cambios,
+          origen,
+        }).then((acuse) => {
+          if (!acuse.ok && acuse.motivo === 'error') {
+            console.error('[inscribir] acuse no enviado:', acuse.error)
+          }
+        }),
+      )
     }
 
     return NextResponse.json({
       ok: true,
+      mail_mask: mailMask,
       inscripcion: {
         numero: inserted.numero as string | null,
         categoria_nombre: inserted.categoria_nombre as string | null,
@@ -611,13 +754,19 @@ export async function POST(
           Number(inserted.transporte_importe) +
           Number(inserted.alimentacion_importe),
         modalidad: (inserted.modalidad as string) ?? 'reserva',
-        datos_deposito:
-          inserted.modalidad === 'pago_transferencia' ? datosDeposito : null,
+        // Antes iba al revés (sólo si ya pagó, que es justo cuando no hace
+        // falta): una preinscripción sin mail configurado (E9) se quedaba sin
+        // saber a dónde transferir. Los datos de cuenta no son secretos —ya
+        // viajan en el payload público del evento— así que mandarlos siempre
+        // no agrega superficie.
+        datos_deposito: datosDeposito,
       },
     })
   } catch (err) {
     console.error('[POST /api/eventos/[slug]/inscribir] error:', err)
-    const msg = err instanceof Error ? err.message : 'Error interno'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json(
+      { error: 'No se pudo completar la inscripción. Reintentá en unos segundos.' },
+      { status: 503 },
+    )
   }
 }

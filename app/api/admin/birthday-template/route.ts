@@ -11,12 +11,16 @@
  * - `plantilla_empresa` = empresa del cron (socios_datos.empresa_id) cuya
  *                         plantilla se está leyendo/editando.
  *
- * Autorización: caller con `puede_ver_config` (ver lib/birthday-auth.ts).
+ * Autorización: caller con `puede_ver_config` en `empresa_id` (ver
+ * lib/birthday-auth.ts) Y con acceso a `plantilla_empresa` (E7: son
+ * empresas distintas — la activa autoriza "puede ver config", pero sin el
+ * segundo chequeo un contador de una empresa leía y ESCRIBÍA la plantilla y
+ * la casilla Gmail + App Password de cualquier otra).
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { assertPuedeVerConfig } from '@/lib/birthday-auth'
+import { assertPuedeVerConfig, assertAccesoEmpresaDestino } from '@/lib/birthday-auth'
 import { DEFAULT_BIRTHDAY_TEMPLATE } from '@/lib/birthday-email-template'
 import {
   TEMPLATE_TABLE,
@@ -47,6 +51,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { error: 'plantilla_empresa requerido' },
         { status: 400 },
+      )
+    }
+    if (!(await assertAccesoEmpresaDestino(auth.userId, plantillaEmpresa))) {
+      return NextResponse.json(
+        { error: 'Sin acceso a esa empresa' },
+        { status: 403 },
       )
     }
 
@@ -143,6 +153,12 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json(
       { error: 'plantilla_empresa requerido' },
       { status: 400 },
+    )
+  }
+  if (!(await assertAccesoEmpresaDestino(auth.userId, plantillaEmpresa))) {
+    return NextResponse.json(
+      { error: 'Sin acceso a esa empresa' },
+      { status: 403 },
     )
   }
 

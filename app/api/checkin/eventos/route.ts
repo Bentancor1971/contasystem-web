@@ -17,6 +17,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAccesoEmpresa } from '@/lib/checkin-auth'
+import { checkinEventosScoped } from '@/lib/entradas'
 import { ROL_ASISTENTE, esAsistente, type EventoCheckin } from '@/lib/entradas-types'
 
 export const runtime = 'nodejs'
@@ -56,6 +57,15 @@ export async function GET(req: NextRequest) {
     const desdeISO = desde.toISOString().slice(0, 10)
 
     const admin = createAdminClient()
+
+    // P5: GROUP BY en Postgres vía la RPC `checkin_eventos` (63_app_web_
+    // fixes.sql), en vez de traer hasta 20.000 filas y agrupar en memoria.
+    // Si el SQL no está aplicado, degrada sola al armado de siempre.
+    const viaRpc = await checkinEventosScoped(admin, empresaId, desdeISO)
+    if (viaRpc) {
+      return NextResponse.json({ eventos: viaRpc })
+    }
+
     const { data, error } = await admin
       .from('entradas_remoto')
       .select('evento_id, evento_nombre, evento_fecha, evento_lugar, estado, asistio_at, rol_nombre')
@@ -70,8 +80,9 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Agrupado en memoria: PostgREST no expone GROUP BY y la cantidad de
-    // eventos en la ventana es chica.
+    // Agrupado en memoria (fallback si 63_app_web_fixes.sql no está
+    // aplicado): PostgREST no expone GROUP BY y la cantidad de eventos en la
+    // ventana es chica.
     const porEvento = new Map<string, EventoCheckin>()
     // Roles por evento: se cuentan acá y viajan con el evento, así el control
     // manual arma sus filtros sin volver a barrer todas las entradas.

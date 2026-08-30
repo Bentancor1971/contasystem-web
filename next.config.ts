@@ -8,18 +8,20 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
   async headers() {
+    // Votación, postulación y mesa: la boleta, la deuda y el estado "ya voté" /
+    // "ya me anoté" no se guardan en el disco de un teléfono compartido. Se
+    // declara acá y no en el proxy porque Next reescribe el Cache-Control de
+    // las páginas dinámicas después del middleware (deja `no-cache` pero se
+    // come el `no-store`). `/p/` quedaba afuera —una convocatoria sin segundo
+    // factor dejaba nombre y deuda en el caché de disco— y `/mesa/` también,
+    // que además lleva documentos en el padrón.
+    const SIN_CACHE = [
+      { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+    ];
     return [
-      {
-        // Votación: la boleta y el estado "ya voté" no se guardan en el disco
-        // del navegador. Se declara acá y no en el proxy porque Next reescribe
-        // el Cache-Control de las páginas dinámicas después del middleware
-        // (deja `no-cache` pero se come el `no-store`), y muchos de estos
-        // teléfonos son compartidos.
-        source: "/v/:path*",
-        headers: [
-          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
-        ],
-      },
+      { source: "/v/:path*", headers: SIN_CACHE },
+      { source: "/p/:path*", headers: SIN_CACHE },
+      { source: "/mesa/:path*", headers: SIN_CACHE },
     ];
   },
 };

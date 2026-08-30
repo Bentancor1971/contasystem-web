@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2, Save, ShieldCheck, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
+import { fetchApi } from '@/lib/api-client'
 import {
   canManageRoles,
   DEFAULT_PERMISOS,
@@ -45,6 +46,7 @@ export default function RolesPage() {
   const { empresa, permisos } = useApp()
   const [matriz, setMatriz] = useState<Matriz | null>(null)
   const [original, setOriginal] = useState<Matriz | null>(null)
+  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -61,18 +63,16 @@ export default function RolesPage() {
   async function cargar() {
     setMatriz(null)
     setOriginal(null)
-    const res = await fetch(
-      `/api/admin/permisos?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
-      { cache: 'no-store' },
-    )
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '')
-      toast.error(`No pude cargar permisos · ${res.status} ${txt}`)
-      return
+    setError('')
+    try {
+      const data = await fetchApi<{ matriz: Matriz }>(
+        `/api/admin/permisos?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
+      )
+      setMatriz(cloneMatriz(data.matriz))
+      setOriginal(cloneMatriz(data.matriz))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar permisos')
     }
-    const data = (await res.json()) as { matriz: Matriz }
-    setMatriz(cloneMatriz(data.matriz))
-    setOriginal(cloneMatriz(data.matriz))
   }
 
   if (!canManageRoles(permisos)) return null
@@ -103,7 +103,7 @@ export default function RolesPage() {
     if (!matriz) return
     setBusy(true)
     try {
-      const res = await fetch('/api/admin/permisos', {
+      const data = await fetchApi<{ matriz?: Matriz }>('/api/admin/permisos', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -111,14 +111,6 @@ export default function RolesPage() {
           matriz,
         }),
       })
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string
-        matriz?: Matriz
-      }
-      if (!res.ok) {
-        toast.error(data.error ?? `Error · ${res.status}`)
-        return
-      }
       toast.success('Permisos guardados')
       if (data.matriz) {
         setMatriz(cloneMatriz(data.matriz))
@@ -153,7 +145,14 @@ export default function RolesPage() {
         </p>
       </div>
 
-      {matriz === null ? (
+      {error ? (
+        <div className="card p-8 text-center">
+          <p className="text-sm text-status-no mb-3">{error}</p>
+          <button type="button" className="btn-secondary mx-auto" onClick={() => void cargar()}>
+            <RotateCcw size={14} /> Reintentar
+          </button>
+        </div>
+      ) : matriz === null ? (
         <div className="py-16 flex justify-center">
           <Loader2 size={28} className="animate-spin text-amber" />
         </div>

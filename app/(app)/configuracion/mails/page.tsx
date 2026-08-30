@@ -22,9 +22,10 @@ import {
   RefreshCw,
   Pencil,
   ChevronRight,
+  RotateCcw,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
+import { fetchApi } from '@/lib/api-client'
 import { canSeeConfig } from '@/lib/roles'
 import { formatFecha } from '@/lib/format'
 
@@ -79,6 +80,7 @@ export default function MailsConfigPage() {
   const router = useRouter()
   const { empresa, permisos } = useApp()
   const [config, setConfig] = useState<BirthdayConfig | null>(null)
+  const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
@@ -87,22 +89,14 @@ export default function MailsConfigPage() {
 
   const cargar = useCallback(async () => {
     setRefreshing(true)
+    setError('')
     try {
-      const res = await fetch(
+      const cfg = await fetchApi<BirthdayConfig>(
         `/api/admin/birthday-config?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
-        { cache: 'no-store' },
       )
-      const data = (await res.json().catch(() => ({}))) as
-        | BirthdayConfig
-        | { error?: string }
-      if (!res.ok) {
-        toast.error((data as { error?: string }).error ?? `Error · ${res.status}`)
-        return
-      }
-      const cfg = data as BirthdayConfig
       setConfig(cfg)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al cargar')
+      setError(err instanceof Error ? err.message : 'Error al cargar')
     } finally {
       setRefreshing(false)
     }
@@ -153,7 +147,14 @@ export default function MailsConfigPage() {
         </button>
       </div>
 
-      {config === null ? (
+      {error ? (
+        <div className="card p-8 text-center">
+          <p className="text-sm text-status-no mb-3">{error}</p>
+          <button type="button" className="btn-secondary mx-auto" onClick={() => void cargar()}>
+            <RotateCcw size={14} /> Reintentar
+          </button>
+        </div>
+      ) : config === null ? (
         <div className="py-16 flex justify-center">
           <Loader2 size={24} className="animate-spin text-amber" />
         </div>

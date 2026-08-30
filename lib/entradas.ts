@@ -13,7 +13,9 @@ import type {
   BuscarEntradaResult,
   ConteoCheckin,
   EntradaRemota,
+  EventoCheckin,
   MarcarEntradaResult,
+  MarcarResponse,
   ResultadoDesmarca,
 } from '@/lib/entradas-types'
 
@@ -115,6 +117,41 @@ export async function leerEntradaCruda(
 }
 
 /**
+ * P5: intenta marcar la asistencia con UN viaje, vía la RPC
+ * `marcar_asistencia_scoped` (docs/supabase/63_app_web_fixes.sql). Reemplaza
+ * la secuencia leerEntradaCruda → marcarAsistencia → contarEvento (3 viajes)
+ * del route.
+ *
+ * Devuelve `undefined` si el RPC no existe todavía (PGRST202/42883): el
+ * caller tiene que degradar solo al camino de siempre. Cualquier otro error
+ * se propaga — no es un "no está la migración", es una falla real.
+ */
+export async function marcarAsistenciaScoped(
+  admin: SupabaseClient,
+  token: string,
+  empresaId: string,
+  eventoId: string,
+  por: string | null,
+): Promise<MarcarResponse | undefined> {
+  const { data, error } = await admin.rpc('marcar_asistencia_scoped', {
+    p_token: token,
+    p_empresa_id: empresaId,
+    p_evento_id: eventoId,
+    p_por: por || null,
+  })
+  if (error) {
+    if (error.code === PGRST_FUNCION_INEXISTENTE || error.code === '42883') {
+      console.warn(
+        '[entradas] RPC marcar_asistencia_scoped no existe todavía · aplicar 63_app_web_fixes.sql',
+      )
+      return undefined
+    }
+    throw new Error(`Error marcando la asistencia: ${error.message}`)
+  }
+  return (data ?? { resultado: 'no_encontrada', entrada: null, conteo: null }) as MarcarResponse
+}
+
+/**
  * Entrada ya emitida por el desktop para una inscripción concreta.
  *
  * `numero` es el número de RECIBO del desktop ('RC-042'), no el de la
@@ -177,6 +214,9 @@ export interface NombrePartido {
   apellido: string
 }
 
+/** Tamaño de tanda para el `.in()` de socios_datos: URLs de PostgREST no aguantan miles de valores en un filtro. */
+const RESOLVER_NOMBRES_CHUNK = 200
+
 /**
  * Resuelve nombre y apellido POR SEPARADO para una tanda de documentos.
  *
@@ -189,47 +229,105 @@ export interface NombrePartido {
  * Devuelve un Map documento → {nombre, apellido}. Los documentos sin ficha
  * simplemente no aparecen: el caller cae al `nombre_completo` del snapshot.
  *
- * No se filtra por empresa a propósito: el documento es la cédula, así que una
- * coincidencia en otra empresa del registro es la misma persona. Igual se
- * prefiere la ficha de la empresa del evento si hay más de una.
+ * P5: filtrado por tenant (la empresa del evento, o su grupo si tiene uno) —
+ * antes se buscaba SIN ningún filtro de empresa/grupo sobre `socios_datos`
+ * (comentario decía "es la misma persona en otra empresa", pero eso abría un
+ * seq scan cross-tenant en cada carga del control manual). Ahora el scope es
+ * [empresaPreferida] ∪ (las empresas del mismo grupo, si `grupoId` viene). Los
+ * `.in()` se parten de a 200 documentos: con un evento grande la URL de
+ * PostgREST podía superar los límites razonables de un GET.
  */
 export async function resolverNombres(
   admin: SupabaseClient,
   documentos: string[],
   empresaPreferida: string,
+  grupoId?: string | null,
 ): Promise<Map<string, NombrePartido>> {
   const docs = [...new Set(documentos.filter((d): d is string => Boolean(d?.trim())))]
   const out = new Map<string, NombrePartido>()
   if (docs.length === 0) return out
 
-  const { data, error } = await admin
-    .from('socios_datos')
-    .select('documento, nombre, apellido, empresa_id')
-    .in('documento', docs)
-    .is('deleted_at', null)
-
-  if (error) {
-    // Degradar es correcto acá: sin ficha la lista igual funciona, sólo que
-    // muestra el nombre completo sin partir. Romper la puerta por esto sería peor.
-    console.warn(`[entradas] no se pudieron resolver los apellidos · ${error.message}`)
-    return out
+  // Scope de tenant: la empresa del evento, y si pertenece a un grupo, las
+  // demás empresas del grupo (mismo padrón compartido).
+  let empresaIds: string[] = [empresaPreferida]
+  if (grupoId) {
+    const { data: hermanas } = await admin
+      .from('empresas_online_remoto')
+      .select('empresa_id')
+      .eq('grupo_id', grupoId)
+    for (const r of (hermanas ?? []) as { empresa_id: string | null }[]) {
+      if (r.empresa_id && !empresaIds.includes(r.empresa_id)) empresaIds.push(r.empresa_id)
+    }
   }
 
-  for (const r of (data ?? []) as {
-    documento: string | null
-    nombre: string | null
-    apellido: string | null
-    empresa_id: string | null
-  }[]) {
-    const doc = r.documento?.trim()
-    if (!doc || !r.apellido?.trim()) continue
-    // Sólo se pisa una ficha ya elegida cuando la nueva es de la empresa del
-    // evento; si no, gana la primera que llegó.
-    if (out.has(doc) && r.empresa_id !== empresaPreferida) continue
-    out.set(doc, { nombre: (r.nombre ?? '').trim(), apellido: r.apellido.trim() })
+  const chunks: string[][] = []
+  for (let i = 0; i < docs.length; i += RESOLVER_NOMBRES_CHUNK) {
+    chunks.push(docs.slice(i, i + RESOLVER_NOMBRES_CHUNK))
+  }
+
+  const resultados = await Promise.all(
+    chunks.map((chunk) =>
+      admin
+        .from('socios_datos')
+        .select('documento, nombre, apellido, empresa_id')
+        .in('documento', chunk)
+        .in('empresa_id', empresaIds)
+        .is('deleted_at', null),
+    ),
+  )
+
+  for (const { data, error } of resultados) {
+    if (error) {
+      // Degradar es correcto acá: sin ficha la lista igual funciona, sólo que
+      // muestra el nombre completo sin partir. Romper la puerta por esto sería peor.
+      console.warn(`[entradas] no se pudieron resolver los apellidos · ${error.message}`)
+      continue
+    }
+    for (const r of (data ?? []) as {
+      documento: string | null
+      nombre: string | null
+      apellido: string | null
+      empresa_id: string | null
+    }[]) {
+      const doc = r.documento?.trim()
+      if (!doc || !r.apellido?.trim()) continue
+      // Sólo se pisa una ficha ya elegida cuando la nueva es de la empresa del
+      // evento; si no, gana la primera que llegó.
+      if (out.has(doc) && r.empresa_id !== empresaPreferida) continue
+      out.set(doc, { nombre: (r.nombre ?? '').trim(), apellido: r.apellido.trim() })
+    }
   }
 
   return out
+}
+
+/**
+ * P5: eventos con QR emitidos + conteo + roles, con GROUP BY en Postgres vía
+ * la RPC `checkin_eventos` (63_app_web_fixes.sql), en vez de traer hasta
+ * 20.000 filas de `entradas_remoto` y agruparlas en memoria en el route.
+ *
+ * Devuelve `undefined` si el RPC no existe todavía: el caller degrada al
+ * armado en memoria de siempre.
+ */
+export async function checkinEventosScoped(
+  admin: SupabaseClient,
+  empresaId: string,
+  desdeISO: string,
+): Promise<EventoCheckin[] | undefined> {
+  const { data, error } = await admin.rpc('checkin_eventos', {
+    p_empresa_id: empresaId,
+    p_desde: desdeISO,
+  })
+  if (error) {
+    if (error.code === PGRST_FUNCION_INEXISTENTE || error.code === '42883') {
+      console.warn(
+        '[entradas] RPC checkin_eventos no existe todavía · aplicar 63_app_web_fixes.sql',
+      )
+      return undefined
+    }
+    throw new Error(`Error consultando entradas: ${error.message}`)
+  }
+  return (data ?? []) as EventoCheckin[]
 }
 
 /**

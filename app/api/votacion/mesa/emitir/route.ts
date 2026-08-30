@@ -8,18 +8,18 @@
  * —segundo factor, ventana horaria contra el NOW() de Postgres, y min/max por
  * papeleta—. Acá sólo se recorta el payload a una forma sana.
  *
- * Lo propio del modo mesa pasa DESPUÉS de emitir: marcar el voto con el nombre
- * de la terminal. `emitir_voto` no se toca —agregarle un parámetro dejaría
- * ambiguas las llamadas de tres argumentos que hace hoy la web y se caería la
- * votación entera—, así que la marca es una llamada aparte que puede fallar sin
- * consecuencias. Ver docs/supabase/46_voto_kiosco.sql.
+ * Usa `emitir_voto_kiosco` (61_, E5a): en la MISMA transacción, prende la
+ * exención del cierre del canal web, llama a `emitir_voto` y marca el voto con
+ * el nombre de esta terminal — antes eran dos llamadas separadas (`emitir_voto`
+ * + `marcar_voto_kiosco` aparte) y sin la exención, así que un voto de terminal
+ * después de cerrado el canal web se rechazaba igual que uno de `/v`. Sin 61_
+ * aplicado, `emitirVotoKiosco` cae sola a ese camino de siempre.
  */
 
 import { after } from 'next/server'
 import { enviarConstanciaVoto } from '@/lib/eleccion-constancia'
-import { emitirVoto, ocultarInexistente } from '@/lib/elecciones'
 import { digitosValidos, type SeleccionPapeleta } from '@/lib/elecciones-types'
-import { leerPase, marcarVotoKiosco } from '@/lib/kiosco'
+import { emitirVotoKiosco, leerPase } from '@/lib/kiosco'
 import { LIMITES, permitidoPorClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { claveTerminal, conTerminal, errorInterno, json } from '../_comun'
 
@@ -88,17 +88,8 @@ export async function POST(req: Request) {
     const selecciones = parseSelecciones(body.selecciones)
     if (selecciones === null) return json({ error: 'Selección inválida' }, 400)
 
-    const r = ocultarInexistente(await emitirVoto(t.admin, token, digitos, selecciones))
+    const r = await emitirVotoKiosco(t.admin, token, digitos, selecciones, t.sesion.terminal)
     if (!('ok' in r) || r.ok !== true) return json(r)
-
-    // La marca se espera, no se manda a `after()`: sólo se puede aplicar
-    // mientras el voto siga `pendiente`, y en cuanto el desktop lo baje deja de
-    // tener efecto. Son unos milisegundos y es la diferencia entre que el acta
-    // cuente este voto en el local o a distancia.
-    //
-    // Si falla, no pasa nada más: el voto está emitido y es válido. Nunca sale
-    // un error de acá a la pantalla de alguien que acaba de votar bien.
-    if (r.voto_id) await marcarVotoKiosco(t.admin, r.voto_id, t.sesion.terminal)
 
     // Constancia por mail, si la credencial tiene dirección. Va con `after()`:
     // corre una vez respondida esta petición, así la fila no espera al SMTP.

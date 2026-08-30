@@ -33,7 +33,24 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  buscarCredencial,
+  emitirVoto,
+  normalizarEstadoCredencial,
+  normalizarRespuestaValidar,
+  ocultarInexistente,
+  resolverCodigo,
+  validarCredencial,
+} from '@/lib/elecciones'
+import { esError } from '@/lib/elecciones-types'
+import type {
+  ErrorVotacion,
+  RespuestaEmitir,
+  RespuestaValidar,
+  SeleccionPapeleta,
+} from '@/lib/elecciones-types'
 import type { DatosTerminal, ErrorKiosco } from '@/lib/kiosco-types'
+import type { EstadoCredencial } from '@/lib/elecciones-types'
 
 export const COOKIE_KIOSCO = 'kiosco_sesion'
 
@@ -332,4 +349,155 @@ export async function marcarVotoKiosco(
     console.warn(`[kiosco] marcar_voto_kiosco falló (${votoId}):`, err)
     return false
   }
+}
+
+// ── E5a: kiosco vs. canal web cerrado (61_) ─────────────────────────────────
+//
+// El kiosco NO es "voto por internet" (decisión tomada: conviven). Las tres
+// funciones de acá abajo envuelven las de `lib/elecciones.ts` con las RPC de
+// `61_elecciones_web_fixes.sql`, que prenden un GUC transaction-local antes
+// de llamar a la de siempre: eso hace que el trigger de `47_` y el corte de
+// `validar_credencial` dejen pasar el voto del kiosco aunque el canal web ya
+// haya cerrado. Sin ese archivo aplicado, cada una cae al camino de siempre
+// —sin la exención— y avisa una vez por consola: nunca se cae la votación.
+
+class ErrorRpcKiosco extends Error {}
+
+/** PGRST202 / 42883: la función todavía no existe (falta aplicar 61_). */
+function esRpcNoAplicada(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false
+  return (
+    err.code === 'PGRST202' ||
+    err.code === '42883' ||
+    (err.message ?? '').includes('Could not find the function')
+  )
+}
+
+export interface CanjeKiosco {
+  ok: true
+  token: string
+  slug: string
+  estado: EstadoCredencial
+}
+
+/**
+ * `resolver_codigo` + `buscar_credencial` en un viaje (RPC `kiosco_canjear`,
+ * P8). Sin 61_ aplicado, hace lo mismo en dos llamadas — el camino que ya
+ * usaba `/api/votacion/mesa/codigo` antes de este archivo.
+ */
+export async function canjearCodigoKiosco(
+  admin: SupabaseClient,
+  codigo: string,
+): Promise<CanjeKiosco | ErrorVotacion> {
+  const { data, error } = await admin.rpc('kiosco_canjear', { p_codigo: codigo })
+
+  if (error) {
+    if (esRpcNoAplicada(error)) {
+      console.warn(
+        '[kiosco] kiosco_canjear no existe todavía: aplicar 61_elecciones_web_fixes.sql. ' +
+          'Sigue con resolver_codigo + buscar_credencial por separado (dos viajes).',
+      )
+      const canje = await resolverCodigo(admin, codigo)
+      if (esError(canje)) return canje
+      const estado = await buscarCredencial(admin, canje.token)
+      if (esError(estado)) return estado
+      return { ok: true, token: canje.token, slug: canje.slug, estado }
+    }
+    throw new ErrorRpcKiosco(`kiosco_canjear: ${error.message}`)
+  }
+  if (!data || typeof data !== 'object') {
+    throw new ErrorRpcKiosco('kiosco_canjear: respuesta vacía')
+  }
+
+  const d = data as Record<string, unknown>
+  if (d.ok !== true) return d as unknown as ErrorVotacion
+
+  const token = typeof d.token === 'string' ? d.token : ''
+  if (!token) throw new ErrorRpcKiosco('kiosco_canjear: ok sin token')
+
+  return {
+    ok: true,
+    token,
+    slug: typeof d.slug === 'string' ? d.slug : '',
+    estado: normalizarEstadoCredencial(d),
+  }
+}
+
+/**
+ * Segundo factor en la terminal (RPC `validar_credencial_kiosco`), con la
+ * exención del cierre del canal web. Sin 61_ aplicado, cae a
+ * `validar_credencial` de siempre — que sí corta con `cerrada_web`.
+ */
+export async function validarCredencialKiosco(
+  admin: SupabaseClient,
+  token: string,
+  digitos: string,
+): Promise<RespuestaValidar> {
+  const { data, error } = await admin.rpc('validar_credencial_kiosco', {
+    p_token: token,
+    p_digitos: digitos,
+  })
+
+  if (error) {
+    if (esRpcNoAplicada(error)) {
+      console.warn(
+        '[kiosco] validar_credencial_kiosco no existe todavía: aplicar ' +
+          '61_elecciones_web_fixes.sql. Sigue con validar_credencial de siempre, sin la ' +
+          'exención del cierre del canal web.',
+      )
+      return validarCredencial(admin, token, digitos)
+    }
+    throw new ErrorRpcKiosco(`validar_credencial_kiosco: ${error.message}`)
+  }
+  if (!data || typeof data !== 'object') {
+    throw new ErrorRpcKiosco('validar_credencial_kiosco: respuesta vacía')
+  }
+  return normalizarRespuestaValidar(data as Record<string, unknown>)
+}
+
+/**
+ * Emite el voto Y lo marca como salido de esta terminal en un solo viaje
+ * (RPC `emitir_voto_kiosco`), con la misma exención del cierre del canal web.
+ * Sin 61_ aplicado, cae al camino de siempre: `emitir_voto` seguido de
+ * `marcar_voto_kiosco` aparte, sin la exención — un voto de terminal después
+ * de cerrado el canal web se rechazaría ahí, tal como hoy.
+ */
+export async function emitirVotoKiosco(
+  admin: SupabaseClient,
+  token: string,
+  digitos: string,
+  selecciones: SeleccionPapeleta[],
+  terminal: string,
+): Promise<RespuestaEmitir> {
+  const { data, error } = await admin.rpc('emitir_voto_kiosco', {
+    p_token: token,
+    p_digitos: digitos,
+    p_selecciones: selecciones,
+    p_terminal: terminal,
+  })
+
+  if (error) {
+    if (esRpcNoAplicada(error)) {
+      console.warn(
+        '[kiosco] emitir_voto_kiosco no existe todavía: aplicar 61_elecciones_web_fixes.sql. ' +
+          'Sigue votando por el camino de siempre, sin la exención del cierre del canal web.',
+      )
+      const r = ocultarInexistente(await emitirVoto(admin, token, digitos, selecciones))
+      if ('ok' in r && r.ok === true && r.voto_id) {
+        await marcarVotoKiosco(admin, r.voto_id, terminal)
+      }
+      return r
+    }
+    throw new ErrorRpcKiosco(`emitir_voto_kiosco: ${error.message}`)
+  }
+  if (!data || typeof data !== 'object') {
+    throw new ErrorRpcKiosco('emitir_voto_kiosco: respuesta vacía')
+  }
+
+  const d = data as Record<string, unknown>
+  if (d.ok !== true) return ocultarInexistente(d as unknown as ErrorVotacion)
+
+  const emitido = typeof d.emitido_at === 'string' ? d.emitido_at : ''
+  if (!emitido) throw new ErrorRpcKiosco('emitir_voto_kiosco: ok sin emitido_at')
+  return { ok: true, voto_id: String(d.voto_id ?? ''), emitido_at: emitido }
 }

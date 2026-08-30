@@ -1,10 +1,23 @@
 # Cron de saludos de cumpleaños
 
-Cada día, a la **hora configurada** (zona Montevideo, editable desde la app —
-09:00 por defecto), el cron busca en `socios_datos` los socios que cumplen años
-hoy y les manda un saludo personalizado desde la casilla Gmail de su empresa.
-Vercel Cron llama a `GET /api/cron/birthdays` cada hora; el endpoint envía solo
-cuando llega la hora configurada.
+Dos veces por día, a **hora fija** (08:00 y 08:30 de Montevideo), el cron
+busca en `socios_datos` los socios que cumplen años hoy y les manda un saludo
+personalizado desde la casilla Gmail de su empresa. Vercel Cron llama a
+`GET /api/cron/birthdays` en cada uno de esos dos horarios (`vercel.json`); no
+hay un chequeo de hora dentro del endpoint — cuando lo llaman, envía. La
+segunda corrida (08:30) existe para terminar lo que la primera (08:00) haya
+dejado pendiente por el presupuesto de tiempo propio del endpoint (ver
+"Tandas y presupuesto de tiempo" más abajo); si la primera ya mandó todo, la
+segunda no reenvía nada — es idempotente contra `birthday_email_logs`.
+
+> La hora de envío **ya no se edita desde la app**: es fija, definida en
+> `vercel.json` + la constante `HORA_ENVIO_MONTEVIDEO` de
+> `app/api/admin/birthday-config/route.ts` (sólo para mostrarla en la
+> pantalla de estado). El endpoint `PUT /api/admin/birthday-settings` y la
+> tabla `birthday_settings` que usaba quedaron sin uso — no se borraron (la
+> tabla la sigue creando `supabase/birthday_email_templates.sql`) pero nada
+> los llama. Para cambiar el horario: editar los dos `schedule` de
+> `vercel.json`, `HORA_ENVIO_MONTEVIDEO` y redeployar.
 
 ## Cómo funciona
 
@@ -132,22 +145,40 @@ Después de cargar las variables, **redeploy** el proyecto para que tomen efecto
 
 ## 4. El schedule del cron
 
-[`vercel.json`](vercel.json) define un **heartbeat horario**:
+[`vercel.json`](vercel.json) define **dos corridas fijas por día**:
 
 ```json
-{ "crons": [ { "path": "/api/cron/birthdays", "schedule": "0 * * * *" } ] }
+{
+  "crons": [
+    { "path": "/api/cron/birthdays", "schedule": "0 11 * * *" },
+    { "path": "/api/cron/birthdays", "schedule": "30 11 * * *" }
+  ]
+}
 ```
 
-`0 * * * *` = el cron corre **cada hora** (a y 0). En cada ejecución el
-endpoint compara la hora de Montevideo con la **hora de envío configurada**
-(tabla `birthday_settings`) y solo manda los saludos cuando coinciden.
+`11 UTC` = `08:00 Montevideo` (UTC-3 todo el año, sin horario de verano). La
+segunda, 30 minutos después, es la red de contención: si la primera se cortó
+por el presupuesto de tiempo del endpoint (`has_more: true` en la respuesta,
+ver el comentario de cabecera de `route.ts`), la segunda termina lo que
+quedó — sin reenviar lo ya hecho, porque `birthday_email_logs` es la fuente
+de idempotencia, no el propio schedule.
 
-Así la **hora de envío es editable desde la app** —
-Configuración → Saludos de cumpleaños → tarjeta **Programación** — sin tener
-que tocar `vercel.json` ni redeployar. Valor por defecto: 09:00.
+Para cambiar el horario hay que editar **ambos** `schedule` de este archivo
+y, si corresponde, `HORA_ENVIO_MONTEVIDEO` en
+`app/api/admin/birthday-config/route.ts` (sólo texto informativo en la
+pantalla de estado — no controla nada), y redeployar.
 
-El cron se activa al hacer deploy en Vercel (requiere plan Pro para crons
-sub-diarios — ya lo tenés).
+El cron se activa al hacer deploy en Vercel (requiere plan Pro para más de
+un cron, o para crons sub-diarios).
+
+### Tandas y presupuesto de tiempo
+
+El endpoint manda los mails en **tandas de 4 en paralelo** (`BATCH_SIZE`,
+`Promise.allSettled` — un mail que tarda o falla no bloquea a los demás de su
+tanda) y se corta solo a los **45 segundos** (`TIME_BUDGET_MS`), por debajo
+del límite de la función (`maxDuration = 60`). Si se corta, la respuesta trae
+`has_more: true` y el log de Vercel lo dice explícito — la corrida de las
+08:30 se encarga del resto.
 
 ## 5. Probar el endpoint localmente
 
@@ -157,33 +188,31 @@ Levantá el server de desarrollo:
 npm run dev
 ```
 
-Y llamá al endpoint pasando el `CRON_SECRET` que tengas en `.env.local`.
-Agregá **`?force=true`** para saltear el chequeo de hora (si no, fuera de la
-hora configurada el endpoint no hace nada). En Windows usá `curl.exe` (el
-`curl` de PowerShell es otro comando):
+Y llamá al endpoint pasando el `CRON_SECRET` que tengas en `.env.local`. El
+endpoint no chequea ninguna hora: en cuanto lo llamás con el secret correcto,
+busca a quién saludar y manda. En Windows usá `curl.exe` (el `curl` de
+PowerShell es otro comando):
 
 ```powershell
-curl.exe -H "Authorization: Bearer TU_CRON_SECRET" "http://localhost:3000/api/cron/birthdays?force=true"
+curl.exe -H "Authorization: Bearer TU_CRON_SECRET" "http://localhost:3000/api/cron/birthdays"
 ```
 
 En bash / Mac / Linux:
 
 ```bash
-curl -H "Authorization: Bearer TU_CRON_SECRET" "http://localhost:3000/api/cron/birthdays?force=true"
+curl -H "Authorization: Bearer TU_CRON_SECRET" "http://localhost:3000/api/cron/birthdays"
 ```
 
 Respuesta esperada:
 
 ```json
-{ "ok": true, "fecha": "2026-05-22", "found": 0, "sent": 0, "skipped": 0, "errors": [] }
+{ "ok": true, "fecha": "2026-05-22", "found": 0, "sent": 0, "skipped": 0, "errors": [], "has_more": false }
 ```
 
-- Sin `?force=true` y fuera de la hora configurada → `{ "ok": true, "motivo":
-  "Fuera de la hora de envío...", "sent": 0, ... }`.
 - Sin el header o con un secret incorrecto → `401 { "ok": false, "error": "No autorizado" }`.
 - Para probar un envío real sin esperar a un cumpleaños, poné temporalmente la
-  `fecha_nacimiento` de un socio de prueba con el día y mes de hoy, marcá su
-  empresa como **Activa** en la editora de plantilla, y usá `?force=true`.
+  `fecha_nacimiento` de un socio de prueba con el día y mes de hoy, y marcá su
+  empresa como **Activa** en la editora de plantilla.
 
 En producción podés dispararlo manualmente desde
 **Vercel → Deployments → … → Crons**, o repitiendo el `curl` contra la URL
@@ -209,6 +238,12 @@ Cada ejecución loguea en los logs de Vercel una línea tipo:
 [cron/birthdays] 2026-05-22 · encontrados=3 enviados=3 salteados=0 errores=0
 ```
 
-y devuelve el mismo resumen en el JSON de respuesta. La tabla
-`birthday_email_logs` guarda el detalle fila por fila (incluido
+o, si se cortó por el presupuesto de tiempo:
+
+```
+[cron/birthdays] 2026-05-22 · encontrados=52 enviados=44 salteados=0 errores=0 · CORTADO POR TIEMPO (has_more) — lo termina la corrida de las 11:30 UTC
+```
+
+y devuelve el mismo resumen en el JSON de respuesta (más `has_more`). La
+tabla `birthday_email_logs` guarda el detalle fila por fila (incluido
 `error_message` cuando un envío falla).

@@ -183,10 +183,20 @@ export function motivoNoPuedeInscribirse(politica: RegistroPermitido): string {
 /** Modalidad de inscripción elegida en el formulario público. */
 export type ModalidadInscripcion = 'reserva' | 'pago_transferencia'
 
+/**
+ * 'importado' = el desktop bajó la fila a su cola local (la organización la
+ * RECIBIÓ), no que alguien validó el pago — el desktop la escribe en el mismo
+ * instante en que la fila entra a la cola, todavía 'pendiente' del lado
+ * desktop. 'confirmado' es el único estado que la web muestra como
+ * confirmada, y hoy el desktop TODAVÍA NO LO ESCRIBE (ver
+ * docs/supabase/60_eventos_web_fixes.sql): hasta que lo haga, ninguna
+ * inscripción llega a 'confirmado' por este puente.
+ */
 export type EstadoInscripcionRemota =
   | 'pendiente'
   | 'pagado'
   | 'importado'
+  | 'confirmado'
   | 'rechazado'
   | 'anulado'
 
@@ -256,6 +266,15 @@ export interface EventoRemoto {
   permitir_preinscripcion: boolean
   /** Política de admisión. La setea el desktop; default 'todos'. */
   registro_permitido: RegistroPermitido
+  /**
+   * Permite categoría libre ("Otros") al inscribirse. La setea el desktop
+   * (push, ver docs/supabase/38_eventos_multimoneda.sql); el efectivo que ve
+   * el formulario es el AND con `evento_web_config.permitir_categoria_otros`
+   * (ver `permitirCategoriaOtros`): cualquiera de los dos lados puede apagarlo.
+   * `!== false` porque una fila pusheada antes de la migración 38 no tiene la
+   * columna y COALESCE la deja en TRUE.
+   */
+  permitir_categoria_otros: boolean
   /** El evento incluye un sorteo (opt-in al inscribirse). Ver docs/supabase/31. */
   sorteo_disponible: boolean
   /**
@@ -633,6 +652,101 @@ export interface EventoPublico {
    * re-decide server-side al inscribir.
    */
   registro_permitido: RegistroPermitido
+}
+
+/**
+ * Lo que efectivamente lee `<EventoForm>` (y, a través suyo, `<RegistrarPago>`)
+ * de `EventoPublico` — verificado con grep sobre los dos componentes, no a ojo.
+ *
+ * Recorta a propósito TODO lo que el form no usa y que viajaría igual si se le
+ * pasara `EventoPublico` completo: `mail_acuse_html`, `mail_acuse_pago_html`,
+ * `certificado_html`, `pagina_html_encabezado/pie` y las leyendas CRUDAS (el
+ * form recibe las leyendas ya saneadas aparte, como prop `leyendas`). Esos
+ * campos son los que un evento con un logo de 300 KB en base64 pegado en el
+ * encabezado duplica en cada carga de `/e/{slug}` (ver P7c). `page.tsx` arma
+ * este objeto a mano en vez de pasar `evento` entero.
+ */
+export interface EventoFormProps {
+  slug: string
+  nombre: string
+  tipo: 'con_costo' | 'sin_costo'
+  moneda_codigo: string
+  monedas: MonedaEvento[]
+  extras_precio: ExtraPrecio[]
+  abierto: boolean
+  titulo_cerrado: string | null
+  motivo_cerrado: string | null
+  texto_despues: string | null
+  categorias: CategoriaEvento[]
+  categorias_socio: CategoriaSocioPublica[]
+  transporte: TransportePublico
+  alimentacion: AlimentacionPublica
+  sorteo: SorteoPublico
+  solo_sorteo: boolean
+  datos_deposito: string | null
+  datos_deposito_monedas: Record<string, string>
+  permitir_pago_realizado: boolean
+  permitir_preinscripcion: boolean
+  registro_permitido: RegistroPermitido
+  /** Sólo los flags de visibilidad/obligatoriedad que el form consulta. */
+  config: Pick<
+    EventoWebConfig,
+    | 'mostrar_apellido'
+    | 'apellido_obligatorio'
+    | 'mostrar_email'
+    | 'email_obligatorio'
+    | 'mostrar_telefono'
+    | 'telefono_obligatorio'
+    | 'mostrar_categoria'
+    | 'permitir_categoria_otros'
+    | 'mostrar_transporte'
+    | 'mostrar_alimentacion'
+    | 'mostrar_sorteo'
+    | 'mostrar_total'
+    | 'permitir_pago_transferencia'
+  >
+}
+
+/** Arma un `EventoFormProps` a partir del payload completo (ver su comentario). */
+export function proyectarEventoFormProps(evento: EventoPublico): EventoFormProps {
+  return {
+    slug: evento.slug,
+    nombre: evento.nombre,
+    tipo: evento.tipo,
+    moneda_codigo: evento.moneda_codigo,
+    monedas: evento.monedas,
+    extras_precio: evento.extras_precio,
+    abierto: evento.abierto,
+    titulo_cerrado: evento.titulo_cerrado,
+    motivo_cerrado: evento.motivo_cerrado,
+    texto_despues: evento.texto_despues,
+    categorias: evento.categorias,
+    categorias_socio: evento.categorias_socio,
+    transporte: evento.transporte,
+    alimentacion: evento.alimentacion,
+    sorteo: evento.sorteo,
+    solo_sorteo: evento.solo_sorteo,
+    datos_deposito: evento.datos_deposito,
+    datos_deposito_monedas: evento.datos_deposito_monedas,
+    permitir_pago_realizado: evento.permitir_pago_realizado,
+    permitir_preinscripcion: evento.permitir_preinscripcion,
+    registro_permitido: evento.registro_permitido,
+    config: {
+      mostrar_apellido: evento.config.mostrar_apellido,
+      apellido_obligatorio: evento.config.apellido_obligatorio,
+      mostrar_email: evento.config.mostrar_email,
+      email_obligatorio: evento.config.email_obligatorio,
+      mostrar_telefono: evento.config.mostrar_telefono,
+      telefono_obligatorio: evento.config.telefono_obligatorio,
+      mostrar_categoria: evento.config.mostrar_categoria,
+      permitir_categoria_otros: evento.config.permitir_categoria_otros,
+      mostrar_transporte: evento.config.mostrar_transporte,
+      mostrar_alimentacion: evento.config.mostrar_alimentacion,
+      mostrar_sorteo: evento.config.mostrar_sorteo,
+      mostrar_total: evento.config.mostrar_total,
+      permitir_pago_transferencia: evento.config.permitir_pago_transferencia,
+    },
+  }
 }
 
 /** Validación pública de un certificado (leído por /c/[token]). */

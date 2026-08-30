@@ -78,7 +78,18 @@ export function generarIdLocal(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export async function listarCola(empresaId: string): Promise<ColaItem[]> {
+/**
+ * Lista la cola de una empresa, filtrada por usuario.
+ *
+ * E2: antes filtraba sólo por `empresaId` — en un navegador compartido entre
+ * operadores (mismo dispositivo de carga), el segundo que entraba veía y
+ * sincronizaba los pendientes del primero, subiéndolos con su PROPIO
+ * `created_by` y su nombre en el número de borrador
+ * (14_numero_borrador_nombre.sql). El índice sigue siendo por `empresaId`
+ * (no hace falta un índice compuesto para filtrar en memoria una lista que,
+ * en la práctica, tiene a lo sumo un puñado de items).
+ */
+export async function listarCola(empresaId: string, userId: string): Promise<ColaItem[]> {
   try {
     const db = await open()
     return await new Promise<ColaItem[]>((resolve, reject) => {
@@ -86,7 +97,9 @@ export async function listarCola(empresaId: string): Promise<ColaItem[]> {
         .index('empresaId')
         .getAll(IDBKeyRange.only(empresaId))
       req.onsuccess = () => {
-        const items = (req.result as ColaItem[]) ?? []
+        const items = ((req.result as ColaItem[]) ?? []).filter(
+          (item) => item.userId === userId,
+        )
         // Más recientes primero
         items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
         resolve(items)
@@ -128,18 +141,26 @@ export async function eliminarDeCola(id: string): Promise<void> {
 /**
  * Heurística para detectar si un error de Supabase/fetch fue por red caída
  * (vs. error de validación/permisos del servidor).
+ *
+ * E2 (era "clasifica de más"): antes CUALQUIER `TypeError` o mensaje con
+ * "timeout"/"aborted" contaba como red — pero Postgres también dice
+ * "statement timeout" y un `AbortController` propio también dice "aborted".
+ * Con eso, un rechazo real del servidor podía terminar encolado como si fuera
+ * un corte de conexión, y el operador nunca se enteraba de que la carga tenía
+ * un problema de datos/permisos. Ahora:
+ *   1. `navigator.onLine === false` sigue siendo señal fuerte y directa.
+ *   2. Un error CON código (PostgREST/Postgres: RLS, 23505, JWT expirado…)
+ *      NUNCA es de red, sin importar qué diga el mensaje — un fetch fallido
+ *      a nivel de red no llega a tener `code`.
+ *   3. Si no, sólo cuenta como red un `TypeError` cuyo mensaje mencione
+ *      "fetch" — que es como los tres navegadores (Chrome, Firefox) redactan
+ *      la falla real de la capa de red ("Failed to fetch",
+ *      "NetworkError when attempting to fetch resource…").
  */
 export function esErrorDeRed(err: unknown): boolean {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return true
-  if (err instanceof TypeError) return true // fetch tira TypeError "Failed to fetch"
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return (
-    msg.includes('failed to fetch') ||
-    msg.includes('networkerror') ||
-    msg.includes('network error') ||
-    msg.includes('load failed') ||
-    msg.includes('fetch failed') ||
-    msg.includes('timeout') ||
-    msg.includes('aborted')
-  )
+  if (err && typeof err === 'object' && 'code' in err && (err as { code?: unknown }).code) {
+    return false
+  }
+  return err instanceof TypeError && /fetch/i.test(err.message)
 }

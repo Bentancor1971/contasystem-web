@@ -30,6 +30,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+/**
+ * "12345672" → "•••672". El link con el QR se reenvía por WhatsApp y mail sin
+ * ningún control de acceso (es justamente lo que esta pantalla es: pública por
+ * diseño), así que la cédula completa no tiene por qué viajar en claro acá —
+ * los últimos 3 dígitos alcanzan para que la organización, mirando la puerta,
+ * confirme que es la persona correcta sin exponer el documento entero.
+ */
+function maskDocumento(v: string): string {
+  const digitos = v.replace(/\D/g, '')
+  if (digitos.length <= 3) return v // muy corto: enmascararlo no protegería nada
+  return `•••${digitos.slice(-3)}`
+}
+
 function formatFechaLarga(iso: string | null): string | null {
   if (!iso) return null
   const [y, m, d] = iso.split('T')[0].split('-').map(Number)
@@ -191,7 +204,7 @@ export default async function EntradaPage({
                 {e.documento && (
                   <div className="flex justify-between gap-4">
                     <dt className="text-ink-3">Documento</dt>
-                    <dd className="text-right">{e.documento}</dd>
+                    <dd className="text-right">{maskDocumento(e.documento)}</dd>
                   </div>
                 )}
                 {e.numero && (

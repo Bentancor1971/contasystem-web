@@ -40,7 +40,7 @@ export function CodigoForm({ contacto }: { contacto: string | null }) {
       })
       const d = (await r.json()) as
         | { ok: true; token: string }
-        | { error: string }
+        | { error: string; email_contacto?: string | null }
 
       if ('ok' in d && d.ok) {
         // Reemplaza la entrada del historial: volver atrás desde la pantalla de
@@ -50,6 +50,12 @@ export function CodigoForm({ contacto }: { contacto: string | null }) {
       }
 
       const codigoError = 'error' in d ? d.error : ''
+      // Desde 61_, `resolver_codigo` trae el contacto de la elección en el
+      // error `no_habilitado`: esta es la única vía de entrada que antes se
+      // quedaba sin nadie a quién escribirle (`contacto` llega `null` porque
+      // esta página no consulta la base hasta que hay un código).
+      const contactoDeLaRespuesta = 'email_contacto' in d ? d.email_contacto : null
+      const aQuienEscribir = contactoDeLaRespuesta ?? contacto
       if (r.status === 429) {
         setEstado({
           fase: 'error',
@@ -60,7 +66,9 @@ export function CodigoForm({ contacto }: { contacto: string | null }) {
         setEstado({
           fase: 'error',
           titulo: 'Esa credencial fue dada de baja',
-          detalle: contacto ? `Escribinos a ${contacto}.` : 'Consultá con la comisión electoral.',
+          detalle: aQuienEscribir
+            ? `Escribinos a ${aQuienEscribir}.`
+            : 'Consultá con la comisión electoral.',
         })
       } else {
         setEstado({

@@ -57,6 +57,7 @@ import {
 } from '@/lib/elecciones-types'
 import {
   AVISO_MS,
+  AVISO_URGENTE_MS,
   INACTIVIDAD_MS,
   mensajeEnTerminal,
   VUELTA_MS,
@@ -173,9 +174,20 @@ export function Terminal({ info }: { info: InfoTerminal }) {
   /** El emitir no respondió: puede haberse registrado o no. */
   const [dudoso, setDudoso] = useState(false)
   const [ocupado, setOcupado] = useState(false)
+  /**
+   * Aviso para el OPERADOR, no para el votante (E21). Se prende cuando el
+   * timeout de inactividad borra una pantalla que había quedado `dudoso`: el
+   * voto puede no haber quedado registrado y nadie más se va a enterar.
+   * Deliberadamente NO se limpia en `reiniciar()` — sólo desaparece cuando la
+   * terminal se desmonta con la llave, porque es justo la clase de aviso que
+   * un toque accidental del siguiente votante no puede hacer desaparecer.
+   */
+  const [avisoOperador, setAvisoOperador] = useState<string | null>(null)
 
   // Doble toque en el botón: el estado de React puede no haber pintado todavía.
   const enVuelo = useRef(false)
+  /** El código que se está canjeando ahora mismo, para el aviso de arriba. */
+  const codigoActual = useRef('')
 
   // ── Reloj de la terminal ──────────────────────────────────────────────────
 
@@ -237,6 +249,13 @@ export function Terminal({ info }: { info: InfoTerminal }) {
       const desde = automatica ? inicioFase.current : ultimaActividad.current
       const queda = limite - (Date.now() - desde)
       if (queda <= 0) {
+        // El timeout se lleva puesta una pantalla `dudoso`: el voto anterior
+        // puede no haber quedado registrado, y sin este aviso nadie se entera
+        // hasta que alguien note el hueco en el padrón (E21).
+        if (dudoso) {
+          const codigo = codigoActual.current || '(sin código)'
+          setAvisoOperador(`El último voto no confirmó — código ${codigo}, verificalo.`)
+        }
         reiniciar()
         return
       }
@@ -252,7 +271,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     }, 250)
 
     return () => clearInterval(id)
-  }, [fase, reiniciar])
+  }, [fase, reiniciar, dudoso])
 
   const marcarActividad = useCallback(() => {
     ultimaActividad.current = Date.now()
@@ -323,6 +342,9 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     const r = await pedir<CanjeOk>('/api/votacion/mesa/codigo', { codigo })
 
     if (r.estado === 'ok') {
+      // Para el aviso al operador si esta persona termina en `dudoso` (E21):
+      // el código impreso es lo único que la mesa puede buscar en su planilla.
+      codigoActual.current = codigo.trim()
       setPase(r.data.pase)
       setDigitosPedidos(r.data.verificacion_digitos)
       setInstructivo(r.data.instructivo)
@@ -481,8 +503,15 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     }
 
     if (r.estado === 'error' && NO_SE_REGISTRO.has(String(r.err.error))) {
-      if (r.err.papeleta && boleta) {
-        const p = boleta.papeletas.find((x) => x.titulo === r.err.papeleta)
+      if (boleta) {
+        // Desde 61_: `emitir_voto` manda `papeleta_id`. Señalar por id no se
+        // rompe si dos papeletas comparten título; `papeleta` (el título)
+        // queda como respaldo contra una base sin ese script.
+        const p = r.err.papeleta_id
+          ? boleta.papeletas.find((x) => x.id === r.err.papeleta_id)
+          : r.err.papeleta
+            ? boleta.papeletas.find((x) => x.titulo === r.err.papeleta)
+            : undefined
         if (p) {
           setErrores((e) => ({ ...e, [p.id]: 'Revisá esta parte.' }))
           setFase('boleta')
@@ -525,14 +554,25 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     setErrorCierre(null)
     const r = await pedir<{ ok: true }>('/api/votacion/mesa/desmontar', { llave: llaveCierre })
     if (r.estado === 'ok') {
+      // El aviso al operador (E21) sólo se cierra con la llave: esta es esa
+      // llave. Se limpia acá y no en `reiniciar()`, que corre sin ella.
+      setAvisoOperador(null)
       router.refresh()
       return
     }
     setOcupado(false)
+    // No disfrazar de "llave incorrecta" lo que no lo es: `sin_respuesta` es la
+    // conexión del local, y `kiosco_no_disponible` es que la base de la web no
+    // tiene 46_ aplicado — las dos mandan al operador a un lado equivocado
+    // (probar de nuevo la llave) si se leen como una llave mal tipeada.
     setErrorCierre(
       r.estado === 'tope'
         ? 'Demasiados intentos. Esperá unos minutos.'
-        : 'La llave no sirve para esta terminal.',
+        : r.estado === 'sin_respuesta'
+          ? 'No se pudo conectar con el servidor. Probá de nuevo en un momento.'
+          : r.estado === 'error' && r.err.error === 'kiosco_no_disponible'
+            ? 'La terminal no está habilitada en el servidor. No es la llave: avisale a quien administra el sistema.'
+            : 'La llave no sirve para esta terminal.',
     )
   }
 
@@ -551,19 +591,48 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     </header>
   )
 
+  // El texto anunciado por el lector de pantalla sólo cambia dos veces —al
+  // entrar en los 20 s y al entrar en los 5 s—, no en cada segundo que corre
+  // el reloj visual: con `role="alert"` (asertivo) y el número cambiando cada
+  // segundo, un lector de pantalla lo anunciaba veinte veces seguidas.
+  const textoInactividad =
+    restante <= AVISO_URGENTE_MS
+      ? `Quedan ${Math.ceil(AVISO_URGENTE_MS / 1000)} segundos: la pantalla está por borrarse.`
+      : `Si no tocás nada, la pantalla se borra en ${Math.ceil(AVISO_MS / 1000)} segundos y hay que empezar de nuevo con el código.`
+
   const avisoInactividad = enCuentaRegresiva && restante <= AVISO_MS && (
-    <div className="voto-aviso voto-aviso--medio mb-5" role="alert">
+    <div className="voto-aviso voto-aviso--medio mb-5">
       <div className="flex gap-3">
         <Timer className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />
         <div className="min-w-0">
           <h3 className="font-medium text-[17px] leading-snug">¿Seguís ahí?</h3>
-          <p className="text-ink-2 text-[16px] leading-relaxed mt-1">
-            Si no tocás nada, la pantalla se borra en {segundos} segundos y hay que empezar de
-            nuevo con el código.
+          <p className="text-ink-2 text-[16px] leading-relaxed mt-1" aria-live="polite">
+            {textoInactividad}
+          </p>
+          <p className="text-ink-3 text-sm mt-1" aria-hidden="true">
+            {segundos} {segundos === 1 ? 'segundo' : 'segundos'} restantes.
           </p>
           <button type="button" className="btn-secondary mt-4" onClick={marcarActividad}>
             Sigo acá
           </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  /**
+   * Para el OPERADOR, no para quien está votando (E21). Sobrevive al
+   * `reiniciar()` del timeout y a que otra persona empiece a votar encima: se
+   * pinta arriba de la pantalla de espera y sólo se va cuando la terminal se
+   * desmonta con la llave.
+   */
+  const avisoOperadorVisible = avisoOperador && (
+    <div className="voto-aviso voto-aviso--alto mb-6" role="alert">
+      <div className="flex gap-3">
+        <AlertCircle className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />
+        <div>
+          <h3 className="font-medium text-[17px] leading-snug">Para el operador de la mesa</h3>
+          <p className="text-ink-2 text-[16px] leading-relaxed mt-1">{avisoOperador}</p>
         </div>
       </div>
     </div>
@@ -619,6 +688,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
             Es el código que te entregaron en la mesa. Nadie ve lo que marcás en esta pantalla.
           </p>
 
+          {avisoOperadorVisible}
           {avisoVisible}
 
           <form onSubmit={onCanjear} className="card p-6 sm:p-7">
@@ -739,9 +809,10 @@ export function Terminal({ info }: { info: InfoTerminal }) {
           <div className="card p-7 sm:p-8 text-center">
             <CheckCircle2 className="text-status-ok mx-auto mb-3" size={52} aria-hidden />
             <span className="label-mono text-status-ok">Voto registrado</span>
-            <h2 className="font-display text-3xl font-medium leading-tight mt-3 mb-4">
-              Listo{boleta?.votante ? `, ${boleta.votante}` : ''}
-            </h2>
+            {/* Sin nombre (U13): esta pantalla queda a la vista del siguiente
+                de la fila, y "Nadie ve lo que marcás" no puede convivir con el
+                nombre de quien acaba de votar en la pantalla anterior. */}
+            <h2 className="font-display text-3xl font-medium leading-tight mt-3 mb-4">Listo</h2>
             <div className="perforated mb-4" />
             {emitidoAt ? (
               <p className="font-mono text-[15px]">Emitido el {formatFechaHoraUY(emitidoAt)}</p>

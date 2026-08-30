@@ -27,7 +27,9 @@ export async function GET(
     return NextResponse.json(evento)
   } catch (err) {
     console.error('[GET /api/eventos/[slug]] error:', err)
-    const msg = err instanceof Error ? err.message : 'Error interno'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json(
+      { error: 'No se pudo cargar el evento. Reintentá en unos segundos.' },
+      { status: 503 },
+    )
   }
 }

@@ -39,8 +39,13 @@ export async function POST(req: Request) {
       return json(RESPUESTA_429, 429)
     }
 
-    // Un código con formato raro y un PIN equivocado salen por la misma puerta:
-    // nada de lo que responde este handler dice si el código existe.
+    // Un código con formato raro sale por el mismo `pin_incorrecto` genérico
+    // que uno bien formado con el PIN mal. Pero OJO: `mesa_login` (47_) SÍ
+    // revela si el código existe antes de validar el PIN — `bloqueado`,
+    // `mesa_inactiva` y `mesa_cerrada` salen sin haber comprobado el PIN, a
+    // diferencia de `codigo_inexistente` y `pin_incorrecto`. No es ideal, pero
+    // el bloqueo por mesa (5 intentos) y el tope por IP de acá cubren el
+    // riesgo real, que es barrer códigos al voleo, no distinguir uno de otro.
     if (!codigoMesaValido(body.codigo) || !pinValido(body.pin)) {
       return json({ error: 'pin_incorrecto' })
     }

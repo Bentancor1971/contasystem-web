@@ -8,6 +8,7 @@
  * NO importar desde Client Components (usar lib/eventos-types.ts).
  */
 
+import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   CategoriaEvento,
@@ -15,6 +16,7 @@ import type {
   ConceptoExtra,
   EventoPublico,
   EventoRemoto,
+  EventoWebConfig,
   ExtraPrecio,
   InscripcionPrevia,
   MonedaEvento,
@@ -32,14 +34,20 @@ import {
 import { fechaYaPaso, simboloMoneda } from '@/lib/format'
 import { hashDocumento, normalizeDocumento } from '@/lib/documento'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
+import { esTablaInexistente } from '@/lib/birthday-template-store'
 import { loadEventoWebConfig } from '@/lib/evento-web-config'
 
 /**
  * Estados de inscripción que ocupan cupo (evento y transporte).
- * Incluye 'pagado' (pago declarado, a verificar): reserva lugar igual que la
- * preinscripción. Sólo 'rechazado' y 'anulado' liberan el cupo.
+ * Incluye 'pagado' (pago declarado, a verificar) y 'confirmado' (validado por
+ * la organización): reservan lugar igual que la preinscripción. Sólo
+ * 'rechazado' y 'anulado' liberan el cupo.
+ *
+ * ⚠️ Esta misma lista está hardcodeada en el RPC `inscribir_evento_web`
+ * (docs/supabase/60_eventos_web_fixes.sql), porque plpgsql no puede importar
+ * esta constante: un cambio acá necesita el mismo cambio allá.
  */
-const ESTADOS_OCUPAN = ['pendiente', 'pagado', 'importado']
+export const ESTADOS_OCUPAN = ['pendiente', 'pagado', 'importado', 'confirmado']
 
 /** Trae el evento por slug (no anulado), o null. */
 export async function loadEventoRemotoBySlug(
@@ -142,6 +150,19 @@ export function normalizarExtrasPrecio(ev: EventoRemoto): ExtraPrecio[] {
     ev.alimentacion_importe_no_socio,
   )
   return extras
+}
+
+/**
+ * "Otros" (categoría libre) efectivo: AND de los dos dueños del flag (E11).
+ * El desktop lo setea en `eventos_remoto.permitir_categoria_otros` (push,
+ * default TRUE si la fila es de antes de la migración 38); la web lo repite en
+ * `evento_web_config` para poder apagarlo por evento sin tocar el desktop.
+ * Cualquiera de los dos apagándolo alcanza para ocultar la opción: antes de
+ * este helper la web sólo miraba su propia config y el toggle del desktop no
+ * hacía nada.
+ */
+export function permitirCategoriaOtros(ev: EventoRemoto, cfg: EventoWebConfig): boolean {
+  return cfg.permitir_categoria_otros && ev.permitir_categoria_otros !== false
 }
 
 /** Datos de cuenta por moneda, tolerante a un JSONB que no sea un objeto plano. */
@@ -372,8 +393,18 @@ function nivelOcupacion(
   return 'alta'
 }
 
-/** Arma el payload público. Devuelve null si el slug no existe. */
-export async function loadEventoPublico(
+/**
+ * Arma el payload público. Devuelve null si el slug no existe.
+ *
+ * Envuelta en `cache()` de React (ver el `export const` al pie del archivo):
+ * `/e/{slug}` la llama dos veces en el mismo request —`generateMetadata` para
+ * el `<title>` y la página para el cuerpo— y sin dedupe eso son las 6-7
+ * consultas de acá DUPLICADAS (P2). `createAdminClient()` devuelve siempre la
+ * misma instancia cacheada por proceso (ver lib/supabase/admin.ts), así que el
+ * `admin` que llega acá es el mismo objeto en las dos llamadas y `cache()` sí
+ * puede dedupelas por (admin, slug).
+ */
+async function loadEventoPublicoImpl(
   admin: SupabaseClient,
   slug: string,
 ): Promise<EventoPublico | null> {
@@ -488,7 +519,11 @@ export async function loadEventoPublico(
     registro_permitido: normalizarRegistroPermitido(ev.registro_permitido),
     categorias,
     categorias_socio: categoriasSocio,
-    config,
+    // El AND con el flag del desktop se resuelve UNA vez acá: todo lo que lea
+    // `evento.config.permitir_categoria_otros` de acá en más (EventoForm,
+    // /inscribir) ya recibe el valor efectivo, sin tener que conocer que hay
+    // dos dueños.
+    config: { ...config, permitir_categoria_otros: permitirCategoriaOtros(ev, config) },
     transporte: {
       disponible: !!ev.transporte_disponible,
       con_costo: !!ev.transporte_con_costo,
@@ -518,6 +553,10 @@ export async function loadEventoPublico(
   }
 }
 
+/** Ver el comentario de `loadEventoPublicoImpl`: dedupe por request entre
+ * `generateMetadata` y la página de `/e/{slug}`. */
+export const loadEventoPublico = cache(loadEventoPublicoImpl)
+
 /** Parsea el JSON de opciones de alimentación. Tolera null / texto inválido. */
 export function parseOpcionesAlimentacion(raw: string | null | undefined): string[] {
   if (!raw) return []
@@ -529,6 +568,41 @@ export function parseOpcionesAlimentacion(raw: string | null | undefined): strin
   }
   return []
 }
+
+// ────────────────────────────────────────────────────────────────
+// Caché en memoria de proceso (60 s) para `estadosSocioDeEmpresa` y
+// `padronDeEmpresa`: son config de empresa que casi nunca cambia y hoy se
+// releen en cada verificación de cédula Y en cada inscripción (P3) — con un
+// evento activo son decenas de lecturas idénticas por minuto.
+//
+// ⚠️ En serverless esto es caché POR INSTANCIA de función, no global: cada
+// cold start arranca vacío y dos instancias tibias en paralelo no comparten
+// nada entre sí. El ahorro es real igual (una instancia caliente atiende
+// muchas verificaciones seguidas del mismo evento), pero no reemplaza un
+// caché compartido (Redis, etc.) si el volumen lo pidiera algún día.
+// ────────────────────────────────────────────────────────────────
+const CACHE_CONFIG_EMPRESA_MS = 60_000
+
+function crearCacheTTL<T>() {
+  const mapa = new Map<string, { valor: T; vence: number }>()
+  return {
+    get(clave: string): { hit: true; valor: T } | { hit: false } {
+      const fila = mapa.get(clave)
+      if (!fila) return { hit: false }
+      if (Date.now() > fila.vence) {
+        mapa.delete(clave)
+        return { hit: false }
+      }
+      return { hit: true, valor: fila.valor }
+    },
+    set(clave: string, valor: T) {
+      mapa.set(clave, { valor, vence: Date.now() + CACHE_CONFIG_EMPRESA_MS })
+    },
+  }
+}
+
+const cacheEstadosSocio = crearCacheTTL<string[] | null>()
+const cachePadron = crearCacheTTL<{ empresaId: string; grupoId: string | null }>()
 
 /**
  * Estados de registro que cuentan como socio en esta empresa, o `null` si no lo
@@ -542,19 +616,30 @@ async function estadosSocioDeEmpresa(
   admin: SupabaseClient,
   empresaId: string,
 ): Promise<string[] | null> {
+  const cacheado = cacheEstadosSocio.get(empresaId)
+  if (cacheado.hit) return cacheado.valor
+
   const { data, error } = await admin
     .from('empresa_estados_socio_remoto')
     .select('estados')
     .eq('empresa_id', empresaId)
     .maybeSingle()
   if (error) {
-    console.warn(
-      `[estadosSocioDeEmpresa] no se pudo leer la config (${error.message}); se aplica el default`,
-    )
-    return null
+    // Tabla/columna que todavía no existe (migración sin aplicar): el default
+    // es exactamente el comportamiento de siempre, no un fallo. Cualquier OTRO
+    // error (timeout, PostgREST caído) se propaga: tragarlo acá cambiaba tarifa
+    // y admisión en silencio (E13) — un error transitorio en un evento de Grupo
+    // GREI hacía buscar la ficha en la empresa hija, "no encontrado", y de ahí
+    // tarifa de no socio o un 403 "sólo socios al día" sin que nadie se enterara.
+    // No se cachea el error: un timeout de un segundo no tiene por qué tapar la
+    // config real durante el minuto siguiente.
+    if (esTablaInexistente(error)) return null
+    throw new Error(`Error leyendo estados de socio de la empresa: ${error.message}`)
   }
   const estados = data?.estados
-  return Array.isArray(estados) ? estados.map((e) => String(e)) : null
+  const resultado = Array.isArray(estados) ? estados.map((e) => String(e)) : null
+  cacheEstadosSocio.set(empresaId, resultado)
+  return resultado
 }
 
 /**
@@ -578,6 +663,9 @@ async function padronDeEmpresa(
   admin: SupabaseClient,
   empresaId: string,
 ): Promise<{ empresaId: string; grupoId: string | null }> {
+  const cacheado = cachePadron.get(empresaId)
+  if (cacheado.hit) return cacheado.valor
+
   const propio = { empresaId, grupoId: null }
   const { data, error } = await admin
     .from('empresa_padron_remoto')
@@ -585,17 +673,23 @@ async function padronDeEmpresa(
     .eq('empresa_id', empresaId)
     .maybeSingle()
   if (error) {
-    console.warn(
-      `[padronDeEmpresa] no se pudo leer el padrón (${error.message}); se busca la ficha en la empresa del evento`,
-    )
-    return propio
+    // Mismo criterio que `estadosSocioDeEmpresa`: sin la tabla (migración 58 sin
+    // aplicar) el default es correcto — buscar en la empresa del evento, que es
+    // lo que se hacía antes de que existiera el padrón compartido. Cualquier
+    // otro error se propaga (sin cachear): tragarlo mandaba a buscar la ficha en
+    // el tenant equivocado sin avisar (ver E13).
+    if (esTablaInexistente(error)) return propio
+    throw new Error(`Error leyendo el padrón de la empresa: ${error.message}`)
   }
   const padronEmpresa = ((data?.padron_empresa_id as string | null) ?? '').trim()
-  if (!padronEmpresa) return propio
-  return {
-    empresaId: padronEmpresa,
-    grupoId: ((data?.padron_grupo_id as string | null) ?? '').trim() || null,
-  }
+  const resultado = !padronEmpresa
+    ? propio
+    : {
+        empresaId: padronEmpresa,
+        grupoId: ((data?.padron_grupo_id as string | null) ?? '').trim() || null,
+      }
+  cachePadron.set(empresaId, resultado)
+  return resultado
 }
 
 /**

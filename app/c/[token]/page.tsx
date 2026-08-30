@@ -14,7 +14,12 @@ import { sanitizeHtml } from '@/lib/sanitize-html'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const metadata: Metadata = { title: 'Validación de certificado' }
+export const metadata: Metadata = {
+  title: 'Validación de certificado',
+  // Igual que /a: es una página de validación, no algo que alguien busque en
+  // Google — que la indexen sólo expondría nombres y eventos en los resultados.
+  robots: { index: false, follow: false },
+}
 
 function formatFechaLarga(iso: string | null): string | null {
   if (!iso) return null

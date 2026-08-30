@@ -11,12 +11,17 @@
  *
  * NO devuelve nombre del votante ni boleta: eso sale de `validar_credencial`,
  * después del segundo factor.
+ *
+ * P8: la respuesta se recorta a `{ ok, ya_voto, emitido_at }` — antes viajaba
+ * el `EstadoCredencial` entero (instructivo, textos, imagen, varios KB) cuando
+ * `Votacion.tsx` sólo usa esos dos campos. Gemelo de
+ * `app/api/postulacion/[token]/estado/route.ts`, que ya lo hacía así.
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarCredencial } from '@/lib/elecciones'
-import { tokenValido } from '@/lib/elecciones-types'
+import { esError, tokenValido } from '@/lib/elecciones-types'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 import { SIN_CACHE } from '../_comun'
 
@@ -39,7 +44,12 @@ export async function POST(
     }
 
     const estado = await buscarCredencial(admin, token)
-    return NextResponse.json(estado, { headers: SIN_CACHE })
+    if (esError(estado)) return NextResponse.json(estado, { headers: SIN_CACHE })
+
+    return NextResponse.json(
+      { ok: true, ya_voto: estado.ya_voto, emitido_at: estado.emitido_at },
+      { headers: SIN_CACHE },
+    )
   } catch (err) {
     console.error('[POST /api/votacion/[token]/estado] error:', err)
     return NextResponse.json({ error: 'Error interno' }, { status: 500, headers: SIN_CACHE })

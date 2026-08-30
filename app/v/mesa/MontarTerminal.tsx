@@ -30,7 +30,14 @@ const SIN_RESPUESTA: MensajeKiosco = {
   detalle: 'Puede ser la conexión del local. Volvé a probar en un momento.',
 }
 
-export function MontarTerminal({ caida }: { caida: boolean }) {
+export function MontarTerminal({
+  caida,
+  errorServidor = false,
+}: {
+  caida: boolean
+  /** `createAdminClient()` falló al revalidar: es del despliegue, no de la llave. */
+  errorServidor?: boolean
+}) {
   const router = useRouter()
   const [llave, setLlave] = useState('')
   const [datos, setDatos] = useState<DatosTerminal | null>(null)
@@ -132,7 +139,24 @@ export function MontarTerminal({ caida }: { caida: boolean }) {
           </p>
         </header>
 
-        {caida && !datos && (
+        {errorServidor && !datos && (
+          <div className="voto-aviso voto-aviso--alto mb-5" role="status">
+            <div className="flex gap-3">
+              <AlertTriangle className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />
+              <div>
+                <h2 className="font-display text-xl font-medium leading-tight mb-1">
+                  No se pudo confirmar la terminal
+                </h2>
+                <p className="text-ink-2 text-[16px] leading-relaxed">
+                  Hay un problema de configuración del servidor, no de la llave. No llamés a la
+                  comisión por esto: avisale a quien administra el sistema.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {caida && !errorServidor && !datos && (
           <div className="voto-aviso voto-aviso--medio mb-5" role="status">
             <div className="flex gap-3">
               <AlertTriangle className="text-ink-2 shrink-0 mt-0.5" size={20} aria-hidden />

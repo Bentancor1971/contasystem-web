@@ -44,12 +44,16 @@ export default async function TerminalMesaPage() {
   // llamada de la API: es el camino por el que "Regenerar" y "Cerrar terminal"
   // del desktop tumban una tablet que está en otro edificio.
   let vigente = false
+  // Distinto de "no vigente": acá no se pudo ni preguntar. `createAdminClient`
+  // lanza cuando falta una variable de entorno del despliegue, y confundirlo
+  // con "la cerraron desde el sistema" manda al operador a llamar a la
+  // comisión por un problema que es del servidor, no de la llave.
+  let errorServidor = false
   if (sesion) {
     try {
       vigente = await terminalVigente(createAdminClient(), sesion)
     } catch {
-      // Sin cliente admin no hay votación posible; se muestra el montaje, que
-      // es la pantalla que puede explicar qué pasa en vez de fingir que anda.
+      errorServidor = true
       vigente = false
     }
   }
@@ -68,6 +72,7 @@ export default async function TerminalMesaPage() {
 
   // Con cookie pero sin vigencia, la terminal se cayó sola: la llave se
   // regeneró, la cerraron, o el acto terminó. El operador tiene que enterarse
-  // de eso y no de un "escribí la llave" a secas.
-  return <MontarTerminal caida={!!sesion} />
+  // de eso y no de un "escribí la llave" a secas — salvo que el problema haya
+  // sido no poder preguntarle a la nube, que es otro cartel.
+  return <MontarTerminal caida={!!sesion && !errorServidor} errorServidor={errorServidor} />
 }

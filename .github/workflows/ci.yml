@@ -1,0 +1,25 @@
+# Chequeo mínimo en cada push: tipos y build. Vercel ya hace el build, pero
+# recién al desplegar; acá se ve antes. Las variables públicas de Supabase son
+# de relleno: el build no le pega a la base (todas las páginas son dinámicas),
+# sólo necesita que existan para que `createBrowserClient` no tire al importar.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder

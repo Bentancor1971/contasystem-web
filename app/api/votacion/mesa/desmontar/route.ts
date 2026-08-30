@@ -46,9 +46,17 @@ export async function POST(req: Request) {
     if (llave === null) return json({ error: 'codigo_invalido' })
 
     const r = await abrirKiosco(admin, llave)
+    if ('error' in r) {
+      // `kiosco_no_disponible` (la función no existe: falta 46_) NO es "la
+      // llave está mal" — es un problema de despliegue, y colapsarlo en
+      // `codigo_invalido` mandaba al operador a revisar una llave que estaba
+      // bien. Se deja pasar tal cual; el resto de los errores de `abrirKiosco`
+      // sí se generalizan más abajo.
+      return json(r.error === 'kiosco_no_disponible' ? r : { error: 'codigo_invalido' })
+    }
     // La llave tiene que ser la de ESTA elección. Una llave válida de otra no
     // desmonta esta terminal: si no, alcanzaría con tener cualquier llave.
-    if ('error' in r || r.eleccion_id !== sesion.eleccion_id) {
+    if (r.eleccion_id !== sesion.eleccion_id) {
       return json({ error: 'codigo_invalido' })
     }
 

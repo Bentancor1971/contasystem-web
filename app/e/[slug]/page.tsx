@@ -15,10 +15,12 @@
  * repartidos ni tener dos prefijos que explicar.
  */
 
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadEventoPublico } from '@/lib/eventos'
+import { proyectarEventoFormProps } from '@/lib/eventos-types'
 import { eleccionPublica } from '@/lib/elecciones'
 import { sanitizeHtml } from '@/lib/sanitize-html'
 import { EleccionPublicaPage, metadataEleccion } from './EleccionPublica'
@@ -26,6 +28,17 @@ import { EventoForm } from './EventoForm'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/**
+ * `eleccionPublica` vive en lib/elecciones.ts (de otro agente: no se toca acá).
+ * `generateMetadata` y la página la llaman las dos cuando el slug no es de un
+ * evento — envolverla acá, LOCAL a este archivo, dedupea esas dos llamadas por
+ * request sin tocar el archivo de origen (mismo motivo que `loadEventoPublico`,
+ * ver su comentario en lib/eventos.ts). `createAdminClient()` siempre devuelve
+ * la misma instancia cacheada por proceso (lib/supabase/admin.ts), así que el
+ * `admin` de las dos llamadas es el mismo objeto y `cache()` sí puede dedupelas.
+ */
+const eleccionPublicaCacheada = cache(eleccionPublica)
 
 export async function generateMetadata({
   params,
@@ -39,7 +52,7 @@ export async function generateMetadata({
     if (evento) {
       return { title: `${evento.nombre} · Inscripción`, description: evento.descripcion ?? undefined }
     }
-    const eleccion = await eleccionPublica(admin, slug)
+    const eleccion = await eleccionPublicaCacheada(admin, slug)
     if (eleccion) return metadataEleccion(eleccion)
   } catch {
     /* ignora — cae al default */
@@ -102,7 +115,7 @@ export default async function EventoPublicoPage({
     // Segunda rama: el slug puede ser de una elección publicada. Una elección en
     // borrador da el mismo 404 que un slug inventado — distinguirlas confirmaría
     // que la institución tiene una elección a medio armar.
-    const eleccion = await eleccionPublica(admin, slug)
+    const eleccion = await eleccionPublicaCacheada(admin, slug)
     if (eleccion) return <EleccionPublicaPage pagina={eleccion} />
     notFound()
   }
@@ -165,6 +178,12 @@ export default async function EventoPublicoPage({
                 className="h-2 rounded-full bg-paper-3 overflow-hidden"
                 role="progressbar"
                 aria-label="Ocupación del cupo"
+                // La banda (34/70/92%), no el % real: mismo criterio de
+                // privacidad que el relleno visual — nunca se expone el conteo
+                // exacto, ni siquiera a un lector de pantalla (U4).
+                aria-valuenow={Number.parseInt(BARRA_CUPO[evento.ocupacion_nivel].fill, 10)}
+                aria-valuemin={0}
+                aria-valuemax={100}
               >
                 <div
                   className={`h-full rounded-full transition-all ${BARRA_CUPO[evento.ocupacion_nivel].barra_cls}`}
@@ -203,8 +222,18 @@ export default async function EventoPublicoPage({
 
         {/* Declarar el pago de una preinscripción vive DENTRO del formulario: se
             ofrece al verificar la cédula, sólo a quien tiene una preinscripción
-            impaga (ver EventoForm). En la portada era ruido para todos los demás. */}
-        <EventoForm evento={evento} leyendas={leyendas} abrirRegistrarPago={pago === '1'} />
+            impaga (ver EventoForm). En la portada era ruido para todos los demás.
+
+            `proyectarEventoFormProps` recorta `evento` a lo que el form
+            realmente lee (P7c): sin esto viajaban al cliente, dos veces,
+            `mail_acuse_html`/`mail_acuse_pago_html`/`certificado_html`/
+            `pagina_html_*` y las leyendas CRUDAS — un logo de 300 KB en base64
+            pegado en el encabezado son 600 KB extra por carga. */}
+        <EventoForm
+          evento={proyectarEventoFormProps(evento)}
+          leyendas={leyendas}
+          abrirRegistrarPago={pago === '1'}
+        />
 
         {/* HTML propio configurado en /configuracion/eventos (pie). Saneado. */}
         {htmlPie && (

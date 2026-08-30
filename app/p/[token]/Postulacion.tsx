@@ -21,6 +21,7 @@
  */
 
 import { useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   CheckCircle2,
@@ -207,6 +208,8 @@ export function Postulacion({
   /** Sólo cuando la convocatoria no pide segundo factor: la situación ya viene del server. */
   invitadoInicial: InvitadoValidado | null
 }) {
+  const router = useRouter()
+
   const inicial: Fase =
     modo === 'retirar'
       ? 'baja'
@@ -508,7 +511,8 @@ export function Postulacion({
               comprobante garantizado es la fecha y hora de arriba, que vino con
               el `ok` del servidor. */}
           <p className="text-ink-2 text-[17px] leading-relaxed mt-2">
-            Si tenés un mail registrado te estará llegando un acuse de recibo.
+            Si tenés un mail registrado, vas a recibir un acuse de recibo cuando la comisión lo
+            procese. No es automático: puede tardar.
           </p>
           {textoDespues && (
             <p className="text-ink-2 text-[17px] leading-relaxed mt-4 whitespace-pre-line">
@@ -536,7 +540,7 @@ export function Postulacion({
           <button
             type="button"
             className="btn-secondary mt-6 mx-auto"
-            onClick={() => window.location.reload()}
+            onClick={() => router.refresh()}
           >
             Volver a anotarme
           </button>

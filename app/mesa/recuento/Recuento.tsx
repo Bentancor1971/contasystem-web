@@ -12,7 +12,7 @@
  * esquivando en papel, y ahí sí se pierde el dato.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   esErrorMesa,
@@ -299,54 +299,101 @@ export function Recuento({
         <button
           type="button"
           className="btn-primary"
-          disabled={ocupado || sobresNum === null}
+          disabled={ocupado || sobresNum === null || (difiere && observacion.trim() === '')}
           onClick={() => setConfirmando(true)}
         >
           Cerrar la urna
         </button>
         <p className="text-ink-3 text-[13px] leading-relaxed">
-          Cerrar la urna no se deshace desde la web y termina la sesión de esta mesa, incluida la
-          tuya. Antes hay que guardar el recuento.
+          {difiere && observacion.trim() === ''
+            ? 'La cuenta no cierra: escribí una observación arriba para poder cerrar.'
+            : 'Cerrar la urna no se deshace desde la web y termina la sesión de esta mesa, incluida la tuya. Antes hay que guardar el recuento.'}
         </p>
       </div>
 
       {confirmando && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Cerrar la urna"
-        >
-          <div className="w-full sm:max-w-md bg-paper rounded-t-2xl sm:rounded-2xl border border-line p-5">
-            <span className="label-mono">Cerrar la urna</span>
-            <p className="font-display text-2xl font-medium leading-tight mt-3">
-              {control.marcas} {control.marcas === 1 ? 'marca' : 'marcas'} · {sobresNum}{' '}
-              {sobresNum === 1 ? 'sobre' : 'sobres'} · {totalRecuento} contados
-            </p>
-            {difiere && (
-              <p className="text-ink-2 text-[15px] leading-relaxed mt-3">
-                Los tres números no coinciden. Se puede cerrar igual, con la observación escrita.
-              </p>
-            )}
-            <p className="text-ink-2 text-[15px] leading-relaxed mt-3">
-              Es irreversible desde la web y cierra la sesión de esta mesa.
-            </p>
-            <div className="flex gap-2 mt-5">
-              <button type="button" className="btn-primary flex-1" disabled={ocupado} onClick={cerrar}>
-                {ocupado ? 'Cerrando…' : 'Cerrar la urna'}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={ocupado}
-                onClick={() => setConfirmando(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmarCierre
+          marcas={control.marcas}
+          sobresNum={sobresNum}
+          totalRecuento={totalRecuento}
+          difiere={difiere}
+          ocupado={ocupado}
+          onConfirmar={cerrar}
+          onCancelar={() => setConfirmando(false)}
+        />
       )}
+    </div>
+  )
+}
+
+// ── El diálogo de confirmación ──────────────────────────────────────────────
+
+function ConfirmarCierre({
+  marcas,
+  sobresNum,
+  totalRecuento,
+  difiere,
+  ocupado,
+  onConfirmar,
+  onCancelar,
+}: {
+  marcas: number
+  sobresNum: number | null
+  totalRecuento: number
+  difiere: boolean
+  ocupado: boolean
+  onConfirmar: () => void
+  onCancelar: () => void
+}) {
+  const cajaRef = useRef<HTMLDivElement>(null)
+
+  // Foco inicial y Escape, igual que los diálogos de Padron.tsx: quien abre
+  // esto con el teclado (notebook del presidente de mesa) tiene que poder
+  // cerrarlo sin ir a buscar el mouse, y un lector de pantalla tiene que
+  // anunciar que apareció un diálogo, no seguir leyendo la pantalla de atrás.
+  useEffect(() => {
+    cajaRef.current?.focus()
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancelar()
+    }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [onCancelar])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cerrar la urna"
+    >
+      <div
+        ref={cajaRef}
+        tabIndex={-1}
+        className="w-full sm:max-w-md bg-paper rounded-t-2xl sm:rounded-2xl border border-line p-5 outline-none"
+      >
+        <span className="label-mono">Cerrar la urna</span>
+        <p className="font-display text-2xl font-medium leading-tight mt-3">
+          {marcas} {marcas === 1 ? 'marca' : 'marcas'} · {sobresNum}{' '}
+          {sobresNum === 1 ? 'sobre' : 'sobres'} · {totalRecuento} contados
+        </p>
+        {difiere && (
+          <p className="text-ink-2 text-[15px] leading-relaxed mt-3">
+            Los tres números no coinciden. Se cierra igual, con la observación escrita.
+          </p>
+        )}
+        <p className="text-ink-2 text-[15px] leading-relaxed mt-3">
+          Es irreversible desde la web y cierra la sesión de esta mesa.
+        </p>
+        <div className="flex gap-2 mt-5">
+          <button type="button" className="btn-primary flex-1" disabled={ocupado} onClick={onConfirmar}>
+            {ocupado ? 'Cerrando…' : 'Cerrar la urna'}
+          </button>
+          <button type="button" className="btn-secondary" disabled={ocupado} onClick={onCancelar}>
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

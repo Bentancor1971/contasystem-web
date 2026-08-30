@@ -171,6 +171,9 @@ export async function mesaPadron(
           .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
           .map(persona)
       : [],
+    // Desde 61_. Sin ese script la clave no viene y queda `false`, que es el
+    // valor seguro: no mostrar el banner es preferible a mostrarlo mal.
+    canal_web_abierto: d.canal_web_abierto === true,
   }
 }
 
@@ -193,7 +196,13 @@ export async function mesaMarcarVoto(
   // persona se vaya sin votar y nadie se entere hasta el escrutinio.
   if (!emitido) throw new ErrorRpc('mesa_marcar_voto: ok sin emitido_at')
 
-  return { ok: true, habilitado_id: String(d.habilitado_id ?? habilitadoId), emitido_at: emitido }
+  return {
+    ok: true,
+    habilitado_id: String(d.habilitado_id ?? habilitadoId),
+    emitido_at: emitido,
+    // Desde 61_: aviso, no error. Sin ese script la clave no viene.
+    ...(d.advertencia === 'canal_web_abierto' ? { advertencia: 'canal_web_abierto' as const } : {}),
+  }
 }
 
 export async function mesaDesmarcarVoto(

@@ -2,9 +2,14 @@
  * La pantalla del token de prueba: qué respondió cada tramo del acceso.
  *
  * No es una pantalla para el socio —a esta URL sólo llega quien la abre desde el
- * mail de prueba que manda el desktop—, así que dice lo que un socio no
- * necesita: el nombre de la RPC, el mensaje de error crudo, la variable de
- * entorno que falta. Es lo que convierte "el link no anda" en algo accionable.
+ * mail de prueba que manda el desktop— pero tampoco tiene login: cualquiera que
+ * adivine el patrón `/v/prueba-acceso` o `/p/prueba-acceso` la ve. Por eso dice
+ * el nombre de la RPC que se probó (no es sensible, es sólo el nombre de una
+ * función), pero NO el mensaje de error crudo de Postgres/PostgREST ni el
+ * nombre de la variable de entorno que falta: eso queda en los logs del
+ * servidor (`console.error` en `lib/prueba-acceso.ts`), que es donde alguien
+ * con acceso al despliegue lo puede arreglar sin que quede escrito en una URL
+ * pública.
  *
  * Vive en `components/` y no dentro de una ruta porque la usan las dos: la de
  * votación y la de convocatorias. Lo único que cambia entre ellas es la etiqueta.

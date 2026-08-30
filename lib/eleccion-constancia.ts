@@ -121,6 +121,25 @@ export async function enviarConstanciaVoto(
 
     const c = data as unknown as ConstanciaPendiente
 
+    // NUEVO (61_): el intento se sella ACÁ, antes de tocar la red — antes de
+    // resolver la cuenta de Gmail y antes del SMTP. Si el proceso se corta
+    // entre este punto y `sellar()` de más abajo (Vercel mata la función a
+    // mitad del envío, por ejemplo), al menos queda un número en
+    // `constancia_intentos` que alguien puede leer después; antes de 61_ el
+    // único sellado era el de después de intentar mandar, y un corte a mitad
+    // de camino no dejaba ningún rastro del intento. Best-effort: si esto
+    // falla —o si la base no tiene 61_ aplicado, PGRST202/42883— se sigue
+    // igual, no se corta el envío por un problema de contabilidad.
+    const { error: intentoError } = await admin.rpc('marcar_intento_constancia', {
+      p_voto_id: votoId,
+    })
+    if (intentoError) {
+      console.warn(
+        `[constancia] marcar_intento_constancia no se pudo aplicar (${votoId}, ¿falta 61_?): ` +
+          intentoError.message,
+      )
+    }
+
     const cuenta = await loadGmailAccountForEmpresa(admin, c.empresa_id)
     if (!cuenta) {
       // Queda pendiente a propósito: el desktop la manda desde su propio SMTP.

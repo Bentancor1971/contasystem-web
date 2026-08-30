@@ -12,12 +12,19 @@
  *
  * NUNCA devuelve secretos: ni la App Password ni el valor de CRON_SECRET.
  *
- * Autorización: caller con `puede_ver_config`.
+ * Autorización: caller con `puede_ver_config`. La lista de empresas se
+ * restringe además a las del caller (E7, decisión: cerrar el cruce de
+ * tenant) — antes salía completa de `empresas_api_keys` ∪
+ * `empresas_online_remoto`, así que un contador de una empresa veía el
+ * estado de la casilla Gmail de TODAS.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { assertPuedeVerConfig } from '@/lib/birthday-auth'
+import {
+  assertPuedeVerConfig,
+  empresasAccesiblesParaUsuario,
+} from '@/lib/birthday-auth'
 import {
   TEMPLATE_TABLE,
   loadEmpresasParaMails,
@@ -48,20 +55,32 @@ interface LogRow {
 export async function GET(req: NextRequest) {
   try {
     const empresaId = req.nextUrl.searchParams.get('empresa_id') ?? ''
+    const soloEmpresas = req.nextUrl.searchParams.get('solo_empresas') === '1'
     const auth = await assertPuedeVerConfig(empresaId)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
     const admin = createAdminClient()
-    const cronSecretConfigurado = !!process.env.CRON_SECRET?.trim()
-    const horaEnvio = HORA_ENVIO_MONTEVIDEO
 
     // ── Empresas: registro (nombre) + plantilla / activo / casilla Gmail ──
     // Incluye las empresas online (dueñas de los eventos), no solo las que
     // tienen API key: la casilla configurada acá también manda los acuses de
-    // inscripción a eventos.
-    const registro = await loadEmpresasParaMails(admin)
+    // inscripción a eventos. Filtrado a las del caller (E7).
+    const accesibles = await empresasAccesiblesParaUsuario(auth.userId)
+    const registro = (await loadEmpresasParaMails(admin)).filter((e) =>
+      accesibles.has(e.empresaId),
+    )
+
+    // `/configuracion/mails/plantilla` sólo necesita el selector de empresas
+    // (P: antes traía esto + logs + plantillas en cada visita, sólo para
+    // poblar un <select>). Con ?solo_empresas=1 cortamos acá.
+    if (soloEmpresas) {
+      return NextResponse.json({ empresas: registro })
+    }
+
+    const cronSecretConfigurado = !!process.env.CRON_SECRET?.trim()
+    const horaEnvio = HORA_ENVIO_MONTEVIDEO
 
     interface DatosEmpresa {
       activo: boolean

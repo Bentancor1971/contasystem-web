@@ -56,7 +56,6 @@ export default function EmpresaPage() {
     await supabase.auth.signOut()
     localStorage.removeItem(LS_KEY)
     router.replace('/login')
-    router.refresh()
   }
 
   // El error se chequea ANTES que el spinner: si la query falla, `empresas`
@@ -134,23 +133,26 @@ export default function EmpresaPage() {
         {/* Lista */}
         <div className="space-y-3" role="list">
           {empresas.map((e) => (
-            <button
-              key={e.empresa_id}
-              type="button"
-              role="listitem"
-              className="emp-card"
-              onClick={() => elegir(e)}
-            >
-              <div>
-                <div className="font-display-tight text-xl font-medium">{e.nombre}</div>
-                <div className="font-mono text-xs text-ink-2 mt-1.5 flex items-center gap-3">
-                  {e.rut && <span>RUT {e.rut}</span>}
-                  {e.rut && <span className="text-ink-3">·</span>}
-                  <span>{e.moneda_base_codigo}</span>
+            // role="listitem" va en este wrapper, no en el <button>: ponerlo
+            // directo sobre el botón pisa su rol implícito ("button") y un
+            // lector de pantalla deja de anunciarlo como algo clickeable.
+            <div key={e.empresa_id} role="listitem">
+              <button
+                type="button"
+                className="emp-card"
+                onClick={() => elegir(e)}
+              >
+                <div>
+                  <div className="font-display-tight text-xl font-medium">{e.nombre}</div>
+                  <div className="font-mono text-xs text-ink-2 mt-1.5 flex items-center gap-3">
+                    {e.rut && <span>RUT {e.rut}</span>}
+                    {e.rut && <span className="text-ink-3">·</span>}
+                    <span>{e.moneda_base_codigo}</span>
+                  </div>
                 </div>
-              </div>
-              <ChevronRight size={22} className="text-ink-2 flex-shrink-0" />
-            </button>
+                <ChevronRight size={22} className="text-ink-2 flex-shrink-0" />
+              </button>
+            </div>
           ))}
         </div>
 

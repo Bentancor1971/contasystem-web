@@ -3,11 +3,18 @@
  *   body: { empresa_id: string, nombre?: string, rol?: 'admin'|'contador'|'usuario' }
  *
  * Actualiza el nombre (en auth.user_metadata) y/o el rol (en user_empresas)
- * de un usuario respecto de una empresa. Exige rol admin en esa empresa.
+ * de un usuario respecto de una empresa. Exige `puede_gestionar_usuarios` en
+ * esa empresa — NO admin: ver el comentario de cabecera de
+ * app/api/admin/usuarios/route.ts. Por eso hay dos guards, no uno:
  *
- * Guard: el caller no puede demoterse a sí mismo (cambiar su propio rol).
- *        Para promover/demoter al propio admin, otro admin debe hacerlo,
- *        o se hace por SQL directo.
+ * 1. El caller NUNCA puede cambiar su propio rol (a nada — ni siquiera a
+ *    admin). Antes el chequeo era `rol !== ROLES.ADMIN`, que bloqueaba
+ *    degradarse pero dejaba pasar auto-promoverse a admin (E8): con
+ *    "gestionar usuarios" alcanzaba para hacerse admin de un click.
+ * 2. Asignar o quitar el rol admin (a cualquiera, no sólo a uno mismo) exige
+ *    que el CALLER ya sea admin: "gestionar usuarios" es un permiso editable
+ *    de la matriz y el contador lo tiene por default, así que sin este guard
+ *    un contador podía nombrar (o sacarle el rol a) un admin.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
@@ -17,7 +24,7 @@ import { getPermisosEfectivos } from '@/lib/permisos'
 import { ROLES, isRolValido, type Rol } from '@/lib/roles'
 
 async function assertCallerPuedeGestionarUsuarios(empresaId: string): Promise<
-  | { ok: true; userId: string }
+  | { ok: true; userId: string; rol: Rol }
   | { ok: false; status: number; error: string }
 > {
   if (!empresaId || typeof empresaId !== 'string') {
@@ -45,7 +52,7 @@ async function assertCallerPuedeGestionarUsuarios(empresaId: string): Promise<
     }
   }
 
-  return { ok: true, userId: user.id }
+  return { ok: true, userId: user.id, rol: efectivos.rol }
 }
 
 interface PatchBody {
@@ -106,8 +113,10 @@ export async function PATCH(
     return NextResponse.json({ error: check.error }, { status: check.status })
   }
 
-  // Guard: el caller no puede cambiar su propio rol
-  if (rol !== undefined && check.userId === targetUserId && rol !== ROLES.ADMIN) {
+  // Guard 1: el caller NUNCA puede cambiar su propio rol — a nada, en
+  // ninguna dirección. Antes `rol !== ROLES.ADMIN` sólo bloqueaba degradarse;
+  // auto-promoverse a admin pasaba de largo.
+  if (rol !== undefined && check.userId === targetUserId) {
     return NextResponse.json(
       {
         error:
@@ -131,6 +140,20 @@ export async function PATCH(
     return NextResponse.json(
       { error: 'Ese usuario no pertenece a esta empresa' },
       { status: 404 },
+    )
+  }
+
+  // Guard 2: asignar o quitar el rol admin (de un tercero) es de máximo
+  // privilegio — sólo lo hace alguien que YA es admin.
+  const targetRolActual = isRolValido(existing.rol) ? (existing.rol as Rol) : ROLES.USUARIO
+  if (
+    rol !== undefined &&
+    (rol === ROLES.ADMIN || targetRolActual === ROLES.ADMIN) &&
+    check.rol !== ROLES.ADMIN
+  ) {
+    return NextResponse.json(
+      { error: 'Sólo un admin puede asignar o quitar el rol admin' },
+      { status: 403 },
     )
   }
 

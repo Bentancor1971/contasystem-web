@@ -108,9 +108,14 @@ export async function GET(req: NextRequest) {
       query = query.or(`nombre_completo.ilike.%${esc}%,documento.ilike.%${esc}%`)
     }
 
-    const [{ data, error, count }, conteo] = await Promise.all([
+    const [{ data, error, count }, conteo, empresaRow] = await Promise.all([
       query.order('nombre_completo', { ascending: true }).limit(FETCH_CAP),
       contarEvento(admin, empresaId, eventoId),
+      admin
+        .from('empresas_online_remoto')
+        .select('grupo_id')
+        .eq('empresa_id', empresaId)
+        .maybeSingle(),
     ])
 
     if (error) {
@@ -123,11 +128,14 @@ export async function GET(req: NextRequest) {
     const crudas = (data ?? []) as FilaCruda[]
 
     // Nombre y apellido separados: sólo hacen falta para ordenar y mostrar
-    // "APELLIDO, Nombre", así que se resuelven en una sola consulta por tanda.
+    // "APELLIDO, Nombre", así que se resuelven en una sola consulta por tanda,
+    // acotada a la empresa del evento y a las demás de su grupo (P5).
+    const grupoId = (empresaRow.data as { grupo_id: string | null } | null)?.grupo_id ?? null
     const fichas = await resolverNombres(
       admin,
       crudas.map((f) => f.documento ?? ''),
       empresaId,
+      grupoId,
     )
 
     const entradas: EntradaListada[] = crudas.map((f) => {

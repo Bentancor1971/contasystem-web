@@ -57,7 +57,10 @@ export async function POST(req: Request) {
     }
 
     const filas = parseFilas(body.filas)
-    if (filas === null) return json({ error: 'Recuento inválido' }, 400)
+    // Código, no una frase: así `mensajeErrorMesa` (lib/mesa-types.ts) le puede
+    // poner un texto que dice qué corregir, en vez del genérico "no pudimos
+    // completar la operación" al que cae cualquier código que no reconoce.
+    if (filas === null) return json({ error: 'recuento_invalido' }, 400)
 
     const s = await conSesion()
     if (!s.ok) return s.res

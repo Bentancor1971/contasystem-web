@@ -4,8 +4,8 @@
  * Empieza a atender a una persona: canjea el código impreso que le entregó el
  * operador por un pase para votar EN ESTA terminal.
  *
- * Dos controles que no existen en `/v` y son la razón de que esta ruta exista
- * en vez de reusar `/api/votacion/codigo`:
+ * Tres cosas que no existen en `/v` y son la razón de que esta ruta exista en
+ * vez de reusar `/api/votacion/codigo`:
  *
  *  1. **El código tiene que ser de la elección de la sesión.** Un código de otra
  *     elección, aunque sea perfectamente válido, se rechaza acá. Si no, la
@@ -16,16 +16,22 @@
  *     doscientas personas votando desde la conexión del club no pueden trancarse
  *     entre ellas, y sigue habiendo tope.
  *
+ *  3. **`cerrada_web` NO bloquea acá (E5a).** La terminal está EN el local: lo
+ *     que cerró es el canal de internet, no la votación, y el voto de esta
+ *     terminal sigue el camino de kiosco (`emitir_voto_kiosco`, 61_), exento de
+ *     ese cierre por el GUC `app.kiosco`. Tratarlo como abierto acá es lo que
+ *     hace que el resto del flujo (validar, emitir) tenga algo que emitir.
+ *
  * Lo que NO cambia: el segundo factor se pide igual. El operador ya vio la
  * cédula, pero la planilla de códigos está arriba de la mesa y sin dígitos quien
  * la agarra vota por toda la lista.
  */
 
-import { buscarCredencial, resolverCodigo } from '@/lib/elecciones'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { esError } from '@/lib/elecciones-types'
-import { firmarPase } from '@/lib/kiosco'
+import { canjearCodigoKiosco, firmarPase, leerSesionKiosco, terminalVigente } from '@/lib/kiosco'
 import { LIMITES, permitidoPorClave, RESPUESTA_429 } from '@/lib/rate-limit'
-import { claveTerminal, conTerminal, errorInterno, json } from '../_comun'
+import { claveTerminal, errorInterno, json } from '../_comun'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -35,8 +41,8 @@ const MAX_LARGO = 40
 
 export async function POST(req: Request) {
   try {
-    const t = await conTerminal()
-    if (!t.ok) return t.res
+    const sesion = await leerSesionKiosco()
+    if (!sesion) return json({ error: 'sesion_invalida' }, 401)
 
     let body: { codigo?: unknown }
     try {
@@ -45,40 +51,46 @@ export async function POST(req: Request) {
       return json({ error: 'JSON inválido' }, 400)
     }
 
-    if (!(await permitidoPorClave(t.admin, claveTerminal(t.sesion), LIMITES.kioscoCodigo))) {
-      return json(RESPUESTA_429, 429)
-    }
+    const admin = createAdminClient()
+    // P8: los dos viajes no dependen uno del otro — la vigencia de la terminal
+    // y el tope de esta terminal se resuelven en paralelo, no en serie.
+    const [vigente, permitido] = await Promise.all([
+      terminalVigente(admin, sesion),
+      permitidoPorClave(admin, claveTerminal(sesion), LIMITES.kioscoCodigo),
+    ])
+    if (!vigente) return json({ error: 'sesion_invalida' }, 401)
+    if (!permitido) return json(RESPUESTA_429, 429)
 
     const crudo = typeof body.codigo === 'string' ? body.codigo.trim() : ''
     if (!crudo || crudo.length > MAX_LARGO) {
       return json({ error: 'codigo_inexistente' })
     }
 
-    // La normalización real —mayúsculas, sin espacios ni guiones— la hace el RPC.
-    const canje = await resolverCodigo(t.admin, crudo)
+    // P8 / E5a: `kiosco_canjear` (61_) junta resolver_codigo() + buscar_
+    // credencial() en un viaje; sin ese script aplicado, cae sola a las dos
+    // llamadas de siempre (más lenta, sin cambiar el resultado).
+    const canje = await canjearCodigoKiosco(admin, crudo)
     if (esError(canje)) return json(canje)
 
-    // Estado de la credencial. Se pide igual que en `/v/{token}`, y por lo mismo:
-    // no trae el nombre ni la boleta, que salen recién con el segundo factor.
-    const estado = await buscarCredencial(t.admin, canje.token)
-    if (esError(estado)) return json(estado)
-
-    if (estado.eleccion.id !== t.sesion.eleccion_id) {
+    const estado = canje.estado
+    if (estado.eleccion.id !== sesion.eleccion_id) {
       return json({ error: 'otra_eleccion' })
     }
 
     // Lo que impide votar, en el orden en que le sirve a quien está parado
     // adelante: "ya votaste" es más informativo que "la votación cerró".
-    if (estado.ya_voto) return json({ error: 'ya_voto' })
+    if (estado.ya_voto) return json({ error: 'ya_voto', emitido_at: estado.emitido_at })
     if (!estado.habilitado) return json({ error: 'no_habilitado' })
     if (estado.bloqueado) return json({ error: 'bloqueado' })
     if (estado.ventana === 'no_abierta') {
       return json({ error: 'no_abierta', desde: estado.eleccion.fecha_apertura })
     }
-    if (estado.ventana === 'cerrada_web') {
-      return json({ error: 'cerrada_web', desde: estado.eleccion.fecha_cierre_web })
+    // NUEVO (E5a): acá NO se corta con `cerrada_web` — ver el punto 3 del
+    // encabezado. `validar` y `emitir` usan la RPC de kiosco, que trae la
+    // misma exención.
+    if (estado.ventana !== 'abierta' && estado.ventana !== 'cerrada_web') {
+      return json({ error: 'eleccion_cerrada' })
     }
-    if (estado.ventana !== 'abierta') return json({ error: 'eleccion_cerrada' })
 
     return json({
       ok: true,

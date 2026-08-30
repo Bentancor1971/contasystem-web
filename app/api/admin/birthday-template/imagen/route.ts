@@ -5,12 +5,15 @@
  *     { ok, path, url }. El `path` se guarda después con el PUT de la
  *     plantilla.
  *
- * Autorización: caller con `puede_ver_config`.
+ * Autorización: caller con `puede_ver_config` en `empresa_id` Y acceso a
+ * `plantilla_empresa` (E7 — ver el comentario de ../route.ts): sin el
+ * segundo chequeo, cualquiera con acceso a la config de SU empresa podía
+ * subir una imagen a la carpeta de otra.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { assertPuedeVerConfig } from '@/lib/birthday-auth'
+import { assertPuedeVerConfig, assertAccesoEmpresaDestino } from '@/lib/birthday-auth'
 import { BIRTHDAY_BUCKET, storagePublicUrl } from '@/lib/birthday-template-store'
 
 export const runtime = 'nodejs'
@@ -37,6 +40,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'plantilla_empresa requerido' },
         { status: 400 },
+      )
+    }
+    if (!(await assertAccesoEmpresaDestino(auth.userId, plantillaEmpresa))) {
+      return NextResponse.json(
+        { error: 'Sin acceso a esa empresa' },
+        { status: 403 },
       )
     }
 

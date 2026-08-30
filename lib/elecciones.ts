@@ -18,6 +18,7 @@ import type {
   EleccionPublicaPagina,
   ErrorVotacion,
   EstadoActo,
+  EstadoCredencial,
   IntegranteOpcion,
   OpcionPapeleta,
   Papeleta,
@@ -151,13 +152,12 @@ export function ocultarInexistente<T>(r: T | ErrorVotacion): T | ErrorVotacion {
 
 // ── Paso 1 · abrir el link ──────────────────────────────────────────────────
 
-export async function buscarCredencial(
-  admin: SupabaseClient,
-  token: string,
-): Promise<RespuestaEstado> {
-  const d = await llamar(admin, 'buscar_credencial', { p_token: token })
-  if (d.ok !== true) return d as unknown as ErrorVotacion
-
+/**
+ * Normaliza lo que devuelve `buscar_credencial`. Se exporta porque
+ * `kiosco_canjear` (61_) envuelve esa misma RPC y `lib/kiosco.ts` reusa esto
+ * en vez de duplicar el mapeo entero.
+ */
+export function normalizarEstadoCredencial(d: Record<string, unknown>): EstadoCredencial {
   const e = (d.eleccion ?? {}) as Record<string, unknown>
   return {
     ok: true,
@@ -186,17 +186,23 @@ export async function buscarCredencial(
   }
 }
 
-// ── Paso 2 · segundo factor → votante + boleta ──────────────────────────────
-
-export async function validarCredencial(
+export async function buscarCredencial(
   admin: SupabaseClient,
   token: string,
-  digitos: string,
-): Promise<RespuestaValidar> {
-  const d = await llamar(admin, 'validar_credencial', {
-    p_token: token,
-    p_digitos: digitos,
-  })
+): Promise<RespuestaEstado> {
+  const d = await llamar(admin, 'buscar_credencial', { p_token: token })
+  if (d.ok !== true) return d as unknown as ErrorVotacion
+  return normalizarEstadoCredencial(d)
+}
+
+// ── Paso 2 · segundo factor → votante + boleta ──────────────────────────────
+
+/**
+ * Normaliza lo que devuelven `validar_credencial` y `validar_credencial_kiosco`
+ * (61_): misma forma, sólo cambia si la RPC exime o no del cierre del canal
+ * web. Exportada para que `lib/kiosco.ts` no duplique el mapeo de la boleta.
+ */
+export function normalizarRespuestaValidar(d: Record<string, unknown>): RespuestaValidar {
   if (d.ok !== true) return d as unknown as ErrorVotacion
 
   const papeletas = Array.isArray(d.papeletas)
@@ -207,6 +213,18 @@ export async function validarCredencial(
     : []
 
   return { ok: true, votante: String(d.votante ?? ''), papeletas }
+}
+
+export async function validarCredencial(
+  admin: SupabaseClient,
+  token: string,
+  digitos: string,
+): Promise<RespuestaValidar> {
+  const d = await llamar(admin, 'validar_credencial', {
+    p_token: token,
+    p_digitos: digitos,
+  })
+  return normalizarRespuestaValidar(d)
 }
 
 // ── Paso 3 · emitir ─────────────────────────────────────────────────────────
@@ -319,5 +337,8 @@ export async function resolverCodigo(
     token,
     slug: String(d.slug ?? ''),
     eleccion: String(d.eleccion ?? ''),
+    // Desde 61_. Sin ese script la clave no viene y queda `null`, que es como
+    // se comportaba antes.
+    email_contacto: texto(d.email_contacto),
   }
 }

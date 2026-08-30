@@ -164,7 +164,15 @@ export function Votacion({
   const [sel, setSel] = useState<Record<string, SeleccionLocal>>({})
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<MensajeVotacion | null>(null)
-  const [cortado, setCortado] = useState<MensajeVotacion | null>(null)
+  /**
+   * `mostrarPortada`: sólo para `cerrada_web` (y `no_abierta`/`bloqueado`, que
+   * tienen el mismo "todavía hay algo por delante"). El instructivo de la
+   * portada explica cómo votar; mostrarlo contra `eleccion_cerrada` o
+   * `ya_voto` sería una instrucción para algo que ya no se puede hacer.
+   */
+  const [cortado, setCortado] = useState<(MensajeVotacion & { mostrarPortada: boolean }) | null>(
+    null,
+  )
   const [emitidoAt, setEmitidoAt] = useState<string | null>(null)
   /**
    * El emitir no respondió: puede haberse registrado o no.
@@ -183,10 +191,22 @@ export function Votacion({
 
   const base = `/api/votacion/${encodeURIComponent(token)}`
 
+  /**
+   * `true` cuando esta persona TODAVÍA tiene algo por delante: `cerrada_web`
+   * (se vota en el local), `no_abierta`, `bloqueado`, y el caso equivalente de
+   * `digitos_incorrectos` que agotó los reintentos (mismo destino que
+   * `bloqueado`, distinto código). Ninguno de estos es "se terminó" — que es
+   * el criterio de `puedeVotarTodavia` en `page.tsx` para mostrar la portada.
+   */
+  function siguePudiendoVotar(err: ErrorVotacion): boolean {
+    if (err.error === 'digitos_incorrectos') return err.intentos_restantes === 0
+    return err.error === 'cerrada_web' || err.error === 'no_abierta' || err.error === 'bloqueado'
+  }
+
   function mostrar(err: ErrorVotacion) {
     const m = mensajeDeError(err, emailContacto, eleccion)
     if (m.terminal) {
-      setCortado(m)
+      setCortado({ ...m, mostrarPortada: siguePudiendoVotar(err) })
       setFase('cortado')
       arriba()
     } else {
@@ -340,8 +360,15 @@ export function Votacion({
 
     if (r.estado === 'error' && NO_SE_REGISTRO.has(String(r.err.error))) {
       // Errores de boleta: se vuelve a la boleta con la papeleta señalada.
-      if (r.err.papeleta && boleta) {
-        const p = boleta.papeletas.find((x) => x.titulo === r.err.papeleta)
+      if (boleta) {
+        // Desde 61_: `emitir_voto` manda `papeleta_id`. Señalar por id no se
+        // rompe si dos papeletas comparten título; `papeleta` (el título)
+        // queda como respaldo contra una base sin ese script.
+        const p = r.err.papeleta_id
+          ? boleta.papeletas.find((x) => x.id === r.err.papeleta_id)
+          : r.err.papeleta
+            ? boleta.papeletas.find((x) => x.titulo === r.err.papeleta)
+            : undefined
         if (p) {
           setErrores((e) => ({ ...e, [p.id]: 'Revisá esta parte.' }))
           setFase('boleta')
@@ -452,6 +479,12 @@ export function Votacion({
           </h2>
           <p className="text-ink-2 text-[17px] leading-relaxed">{cortado.detalle}</p>
         </div>
+        {/* U5: cuando el canal web cierra a mitad de sesión, esta pantalla
+            escondía el instructivo que la MISMA elección sí muestra en la
+            portada de `page.tsx` (`puedeVotarTodavia`) para quien recarga en
+            vez de seguir en la pestaña abierta. Misma persona, mismo momento,
+            dos pantallas distintas según haya o no recargado. */}
+        {cortado.mostrarPortada && portada}
       </>
     )
   }

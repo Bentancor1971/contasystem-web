@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Save,
   Loader2,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   CloudOff,
   UploadCloud,
+  AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +25,7 @@ import { Highlight } from '@/components/Highlight'
 import { HaberLogo } from '@/components/HaberLogo'
 import { useApp } from '@/lib/app-context'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
+import { mensajeHumano } from '@/lib/api-client'
 import {
   type ColaItem,
   type ColaItemDisplay,
@@ -93,6 +96,83 @@ function escribirPlantillaUso(userId: string, mapa: PlantillaUsoMap): void {
   }
 }
 
+/**
+ * Mensaje de un error de Supabase/JS traducido a texto humano (RLS, JWT
+ * vencido, timeout, etc. — ver `mensajeHumano` en lib/api-client.ts). Esta
+ * pantalla no usa `fetch` (habla con Supabase vía RPC/`.from()`), así que no
+ * pasa por `fetchApi`, pero el mismo diccionario de patrones aplica igual:
+ * los códigos de PostgREST llegan en `error.message` de la misma forma.
+ */
+function mensajeError(err: unknown, fallback: string): string {
+  if (err instanceof Error) return mensajeHumano(err.message)
+  return fallback
+}
+
+// ── Caché de catálogos en sessionStorage ──────────────────────────────────
+// P6: los 5 catálogos del mount (plantillas, contactos, cuentas, tipos de
+// comprobante, comprobantes) se piden de nuevo en cada visita a /carga —
+// entrar y salir de la pantalla varias veces en el día repite las mismas 5
+// consultas sin que el catálogo cambie casi nunca. Un TTL corto (5 min) y
+// por empresa: el contador que agrega una plantilla la ve en la próxima
+// carga de la pestaña, no en cada click. sessionStorage (no localStorage)
+// porque es una pestaña a la vez la que carga — no hace falta que sobreviva
+// más que la sesión del navegador.
+const CACHE_TTL_MS = 5 * 60 * 1000
+
+function cacheKey(tipo: string, empresaId: string): string {
+  return `csCarga:${tipo}:${empresaId}`
+}
+
+function leerCache<T>(tipo: string, empresaId: string): T | null {
+  try {
+    const raw = window.sessionStorage.getItem(cacheKey(tipo, empresaId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { at: number; data: T }
+    if (!parsed || typeof parsed.at !== 'number') return null
+    if (Date.now() - parsed.at > CACHE_TTL_MS) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function escribirCache<T>(tipo: string, empresaId: string, data: T): void {
+  try {
+    window.sessionStorage.setItem(
+      cacheKey(tipo, empresaId),
+      JSON.stringify({ at: Date.now(), data }),
+    )
+  } catch {
+    // sessionStorage bloqueado/lleno — ignorar, no es crítico
+  }
+}
+
+// Columnas explícitas de los 4 catálogos + el propio comprobante (P6): antes
+// `select('*')` traía columnas que esta pantalla nunca usa (coinciden con
+// los campos de lib/types.ts, que SON los que el resto del archivo lee).
+const COLS_PLANTILLA =
+  'id, empresa_id, nombre, iva_porcentaje, descripcion_default, cuenta_debe_nombre, ' +
+  'cuenta_debe_moneda, cuenta_haber_id, cuenta_haber_nombre, cuenta_haber_moneda, ' +
+  'cuenta_haber_medio_tipo, cuenta_haber_sello, cuenta_haber_emisor, cuenta_haber_logo_key, ' +
+  'cuenta_haber_es_credito, cuenta_iva_nombre, tipo_comprobante_credito_id, ' +
+  'tipo_credito_nombre, haberes_alternativos, contacto_id, contacto_nombre, activo, ' +
+  'row_updated_at, created_at'
+const COLS_CONTACTO =
+  'id, grupo_id, empresa_id, nombre_razon_social, rut_ci, tipo, email, telefono, activo, ' +
+  'visible_web, row_updated_at, created_at'
+const COLS_CUENTA =
+  'id, empresa_id, codigo, nombre, tipo, moneda_codigo, activo, row_updated_at, created_at'
+const COLS_TIPO_COMPROBANTE =
+  'id, empresa_id, abreviacion, nombre, clasificacion, activo, row_updated_at, created_at'
+const COLS_COMPROBANTE =
+  'id, empresa_id, plantilla_id, contacto_id, fecha, moneda_codigo, monto_total, ' +
+  'descripcion, cuenta_haber_override_id, cuenta_haber_override_nombre, cuenta_debe_libre_id, ' +
+  'cuenta_debe_libre_nombre, cuenta_haber_libre_id, cuenta_haber_libre_nombre, ' +
+  'contacto_nombre, tipo_comprobante_id, tipo_comprobante_nombre, numero_borrador, ' +
+  'numero_oficial, estado, asiento_id_local, motivo_rechazo, anulacion_solicitada_at, ' +
+  'anulacion_motivo, anulacion_confirmada_at, nota_credito_asiento_id, created_by, ' +
+  'created_at, impactado_at, row_updated_at'
+
 function opcionesHaber(p: PlantillaRemota | null): HaberOption[] {
   if (!p || !p.cuenta_haber_id || !p.cuenta_haber_nombre) return []
   const base: HaberOption = {
@@ -132,7 +212,18 @@ function warningMoneda(
 }
 
 export default function CargaPage() {
-  const { empresa, userId } = useApp()
+  const router = useRouter()
+  const { empresa, userId, permisos } = useApp()
+
+  // E17: `puede_cargar` sólo ocultaba el ítem del Sidenav — quien conocía la
+  // URL (o la tenía guardada) entraba igual. Mismo patrón que
+  // `configuracion/page.tsx` para `canSeeConfig`: redirigir a `/checkin`, el
+  // único ítem visible para cualquier miembro de la empresa (ver
+  // components/Sidenav.tsx).
+  useEffect(() => {
+    if (!permisos.puede_cargar) router.replace('/checkin')
+  }, [permisos, router])
+
   const [plantillas, setPlantillas] = useState<PlantillaRemota[]>([])
   const [contactos, setContactos] = useState<ContactoRemoto[]>([])
   const [cuentas, setCuentas] = useState<CuentaRemota[]>([])
@@ -150,6 +241,13 @@ export default function CargaPage() {
   const refreshingRef = useRef(false)
   const lastRefetchRef = useRef(0)
   const REFETCH_THROTTLE_MS = 30_000
+  // Ref con el largo de `comprobantes`, para que `refetchComprobantes` no
+  // cambie de identidad en cada fetch (ver el efecto de foco/visibilidad más
+  // abajo, que se re-suscribe cada vez que su callback cambia).
+  const comprobantesLenRef = useRef(0)
+  useEffect(() => {
+    comprobantesLenRef.current = comprobantes.length
+  }, [comprobantes.length])
 
   // Form (plantilla)
   const [fecha, setFecha] = useState(hoyISO())
@@ -169,6 +267,7 @@ export default function CargaPage() {
   const [busy, setBusy] = useState(false)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [anulandoId, setAnulandoId] = useState<string | null>(null)
+  const [eliminando, setEliminando] = useState<ComprobanteRemoto | null>(null)
   const [plantillaUso, setPlantillaUso] = useState<PlantillaUsoMap>({})
 
   useEffect(() => {
@@ -199,57 +298,116 @@ export default function CargaPage() {
   const [editandoGeneralId, setEditandoGeneralId] = useState<string | null>(null)
 
   // ── Carga de datos de la pantalla ────────────────────────────────────────
+  // P6: los 4 catálogos (plantillas/contactos/cuentas/tipos de comprobante)
+  // salen de sessionStorage si hay una copia de hasta CACHE_TTL_MS — no
+  // cambian casi nunca, y sin esto se repiten las mismas 4 consultas cada
+  // vez que se entra a /carga. Los comprobantes ("Últimos") NO se cachean:
+  // son datos vivos, y mostrar un pendiente ya importado sería peor que el
+  // viaje de más.
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const empresaId = empresa.empresa_id
 
+      let plantillasData = leerCache<PlantillaRemota[]>('plantillas', empresaId)
+      let contactosData = leerCache<ContactoRemoto[]>('contactos', empresaId)
+      let cuentasData = leerCache<CuentaRemota[]>('cuentas', empresaId)
+      let tiposData = leerCache<TipoComprobanteRemoto[]>('tipos', empresaId)
+
       let cmpQuery = supabase
         .from('comprobantes_remoto')
-        .select('*')
+        .select(COLS_COMPROBANTE)
         .eq('empresa_id', empresaId)
         .order('created_at', { ascending: false })
         .limit(PAGE_SIZE)
       // En el primer load el filtro siempre arranca en 'mios' (default).
       if (filtroAutor === 'mios') cmpQuery = cmpQuery.eq('created_by', userId)
 
-      const [plRes, ctRes, cuRes, tcRes, cmpRes] = await Promise.all([
-        supabase
-          .from('plantillas_remoto')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .eq('activo', 1)
-          .order('nombre'),
-        supabase
-          .from('contactos_remoto')
-          .select('*')
-          .or(
-            `empresa_id.eq.${empresaId},grupo_id.eq.${empresa.grupo_id ?? '___none___'}`,
-          )
-          .eq('activo', 1)
-          .eq('visible_web', 1)
-          .order('nombre_razon_social'),
-        supabase
-          .from('cuentas_remoto')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .eq('activo', 1)
-          .order('codigo'),
-        supabase
-          .from('tipos_comprobante_remoto')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .eq('activo', 1)
-          .order('abreviacion'),
-        cmpQuery,
-      ])
+      // PromiseLike y no Promise: el `.then()` del query builder de Supabase
+      // devuelve un thenable, no una Promise nativa. Promise.all los acepta.
+      const fetches: PromiseLike<void>[] = []
+      if (!plantillasData) {
+        fetches.push(
+          supabase
+            .from('plantillas_remoto')
+            .select(COLS_PLANTILLA)
+            .eq('empresa_id', empresaId)
+            .eq('activo', 1)
+            .order('nombre')
+            .then(({ data }) => {
+              if (data) {
+                plantillasData = data as unknown as PlantillaRemota[]
+                escribirCache('plantillas', empresaId, plantillasData)
+              }
+            }),
+        )
+      }
+      if (!contactosData) {
+        fetches.push(
+          supabase
+            .from('contactos_remoto')
+            .select(COLS_CONTACTO)
+            .or(
+              `empresa_id.eq.${empresaId},grupo_id.eq.${empresa.grupo_id ?? '___none___'}`,
+            )
+            .eq('activo', 1)
+            .eq('visible_web', 1)
+            .order('nombre_razon_social')
+            .then(({ data }) => {
+              if (data) {
+                contactosData = data as unknown as ContactoRemoto[]
+                escribirCache('contactos', empresaId, contactosData)
+              }
+            }),
+        )
+      }
+      if (!cuentasData) {
+        fetches.push(
+          supabase
+            .from('cuentas_remoto')
+            .select(COLS_CUENTA)
+            .eq('empresa_id', empresaId)
+            .eq('activo', 1)
+            .order('codigo')
+            .then(({ data }) => {
+              if (data) {
+                cuentasData = data as unknown as CuentaRemota[]
+                escribirCache('cuentas', empresaId, cuentasData)
+              }
+            }),
+        )
+      }
+      if (!tiposData) {
+        fetches.push(
+          supabase
+            .from('tipos_comprobante_remoto')
+            .select(COLS_TIPO_COMPROBANTE)
+            .eq('empresa_id', empresaId)
+            .eq('activo', 1)
+            .order('abreviacion')
+            .then(({ data }) => {
+              if (data) {
+                tiposData = data as unknown as TipoComprobanteRemoto[]
+                escribirCache('tipos', empresaId, tiposData)
+              }
+            }),
+        )
+      }
+      let comprobantesData: ComprobanteRemoto[] | null = null
+      fetches.push(
+        cmpQuery.then(({ data }) => {
+          if (data) comprobantesData = data as unknown as ComprobanteRemoto[]
+        }),
+      )
 
-      if (plRes.data) setPlantillas(plRes.data as PlantillaRemota[])
-      if (ctRes.data) setContactos(ctRes.data as ContactoRemoto[])
-      if (cuRes.data) setCuentas(cuRes.data as CuentaRemota[])
-      if (tcRes.data) setTiposComprobante(tcRes.data as TipoComprobanteRemoto[])
-      if (cmpRes.data) {
-        const rows = cmpRes.data as ComprobanteRemoto[]
+      await Promise.all(fetches)
+
+      if (plantillasData) setPlantillas(plantillasData)
+      if (contactosData) setContactos(contactosData)
+      if (cuentasData) setCuentas(cuentasData)
+      if (tiposData) setTiposComprobante(tiposData)
+      if (comprobantesData) {
+        const rows = comprobantesData as ComprobanteRemoto[]
         setComprobantes(rows)
         setHasMore(rows.length === PAGE_SIZE)
       }
@@ -269,18 +427,18 @@ export default function CargaPage() {
       const desde = comprobantes.length
       let q = supabase
         .from('comprobantes_remoto')
-        .select('*')
+        .select(COLS_COMPROBANTE)
         .eq('empresa_id', empresa.empresa_id)
         .order('created_at', { ascending: false })
         .range(desde, desde + PAGE_SIZE - 1)
       if (filtroAutor === 'mios') q = q.eq('created_by', userId)
       const { data, error } = await q
       if (error) throw new Error(error.message)
-      const rows = (data ?? []) as ComprobanteRemoto[]
+      const rows = (data ?? []) as unknown as ComprobanteRemoto[]
       setComprobantes((prev) => [...prev, ...rows])
       setHasMore(rows.length === PAGE_SIZE)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al cargar más')
+      toast.error(mensajeError(err, 'Error al cargar más'))
     } finally {
       setLoadingMore(false)
     }
@@ -301,35 +459,36 @@ export default function CargaPage() {
       try {
         const supabase = createClient()
         // reset (ej: cambio de filtro) vuelve a la primera página; si no, se
-        // mantiene la ventana ya cargada por el usuario.
+        // mantiene la ventana ya cargada por el usuario. Se lee de un ref
+        // (no de `comprobantes.length` directo) para que esta función no
+        // cambie de identidad cada vez que la lista crece — si no, el efecto
+        // de foco/visibilidad de más abajo se resuscribe en cada fetch.
         const limit = opts.reset
           ? PAGE_SIZE
-          : Math.max(comprobantes.length, PAGE_SIZE)
+          : Math.max(comprobantesLenRef.current, PAGE_SIZE)
         let q = supabase
           .from('comprobantes_remoto')
-          .select('*')
+          .select(COLS_COMPROBANTE)
           .eq('empresa_id', empresa.empresa_id)
           .order('created_at', { ascending: false })
           .limit(limit)
         if (filtroAutor === 'mios') q = q.eq('created_by', userId)
         const { data, error } = await q
         if (error) throw new Error(error.message)
-        const rows = (data ?? []) as ComprobanteRemoto[]
+        const rows = (data ?? []) as unknown as ComprobanteRemoto[]
         setComprobantes(rows)
         if (opts.reset) setHasMore(rows.length === PAGE_SIZE)
         lastRefetchRef.current = Date.now()
       } catch (err) {
         if (!opts.silencioso) {
-          toast.error(
-            err instanceof Error ? err.message : 'No se pudo actualizar',
-          )
+          toast.error(mensajeError(err, 'No se pudo actualizar'))
         }
       } finally {
         refreshingRef.current = false
         setRefreshing(false)
       }
     },
-    [comprobantes.length, empresa.empresa_id, filtroAutor, userId],
+    [empresa.empresa_id, filtroAutor, userId],
   )
 
   // ── Convertir items de la cola a la forma de ComprobanteRemoto para
@@ -372,12 +531,15 @@ export default function CargaPage() {
   }
 
   // ── Cargar cola persistida al montar / cambiar empresa ───────────────────
+  // E2: filtrada por usuario además de empresa — ver el comentario de
+  // `listarCola` en lib/offlineQueue.ts (navegador compartido entre
+  // operadores de carga).
   useEffect(() => {
     void (async () => {
-      const items = await listarCola(empresa.empresa_id)
+      const items = await listarCola(empresa.empresa_id, userId)
       setEnCola(items)
     })()
-  }, [empresa.empresa_id])
+  }, [empresa.empresa_id, userId])
 
   // ── Encolar un payload que no se pudo subir ahora ────────────────────────
   const encolar = useCallback(
@@ -425,6 +587,7 @@ export default function CargaPage() {
       const supabase = createClient()
       let okCount = 0
       let failCount = 0
+      const okIds = new Set<string>()
       const updated: ColaItem[] = []
       for (const item of pendientes) {
         try {
@@ -432,16 +595,17 @@ export default function CargaPage() {
             p_row: item.payload,
           })
           if (error) throw new Error(error.message)
-          const guardado = data as ComprobanteRemoto
+          const guardado = data as unknown as ComprobanteRemoto
           try { await eliminarDeCola(item.id) } catch { /* ignorar */ }
           setComprobantes((prev) => {
             // Evitar duplicar si refetch ya lo trajo
             if (prev.some((c) => c.id === guardado.id)) return prev
             return [guardado, ...prev]
           })
+          okIds.add(item.id)
           okCount++
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const msg = mensajeError(err, String(err))
           const next: ColaItem = {
             ...item,
             intentos: item.intentos + 1,
@@ -460,12 +624,17 @@ export default function CargaPage() {
         }
       }
       setEnCola((prev) => {
-        // Reconstruir respetando lo que actualizamos arriba; los items que
-        // se subieron ya no figuran en `updated`.
+        // E2: sólo se sacan los que efectivamente se subieron (`okIds`) y se
+        // refrescan los que fallaron (`updated`, con el nuevo intentos/error).
+        // Antes se filtraba `prev` contra `updated` — un item ENCOLADO
+        // MIENTRAS esta sincronización corría (otra carga offline del mismo
+        // operador) no estaba en `updated` porque no era parte de la tanda
+        // `pendientes`, y ese filtro lo hacía desaparecer de la UI aunque
+        // siguiera intacto en IndexedDB.
         const updMap = new Map(updated.map((x) => [x.id, x]))
         return prev
-          .filter((x) => updMap.has(x.id))
-          .map((x) => updMap.get(x.id)!)
+          .filter((x) => !okIds.has(x.id))
+          .map((x) => updMap.get(x.id) ?? x)
       })
       setSincronizando(false)
       if (!opts.silencioso) {
@@ -548,9 +717,18 @@ export default function CargaPage() {
     }
   }, [loading, refetchComprobantes])
 
+  // U10: la plantilla de un pendiente puede haberse desactivado después de
+  // cargado. `plantillas` sólo trae activas (filtro del mount), así que sin
+  // esto `plantillaSeleccionada` da null, el <select> queda en blanco y las
+  // secciones de Contacto/Modalidad de pago desaparecen sin explicación —
+  // ver `precargarPlantilla` más abajo, que la trae aparte cuando hace falta.
+  const [plantillaInactiva, setPlantillaInactiva] = useState<PlantillaRemota | null>(null)
+
   const plantillaSeleccionada = useMemo(
-    () => plantillas.find((p) => p.id === plantillaId) ?? null,
-    [plantillas, plantillaId],
+    () =>
+      plantillas.find((p) => p.id === plantillaId) ??
+      (plantillaInactiva?.id === plantillaId ? plantillaInactiva : null),
+    [plantillas, plantillaId, plantillaInactiva],
   )
 
   const haberOpciones = useMemo(
@@ -558,8 +736,26 @@ export default function CargaPage() {
     [plantillaSeleccionada],
   )
 
+  /**
+   * E3: al Modificar/Duplicar, `precargarPlantilla` (más abajo) ya deja
+   * `contactoId`/`haberId` con el valor REAL guardado en el comprobante
+   * (puede ser un override, distinto del default de la plantilla) ANTES de
+   * llamar a `setPlantillaId`. Pero cambiar `plantillaId` dispara este mismo
+   * effect (depende de `plantillaSeleccionada`), que sin este guard pisa esos
+   * valores con los defaults de la plantilla — el comentario que decía "el
+   * haberId definitivo lo setea este effect" estaba al revés: este effect
+   * corría DESPUÉS y ganaba, tirando abajo lo que se acababa de precargar.
+   * `precargandoRef` hace que, la primera vez que el effect corre tras una
+   * precarga, no toque nada — se consume una sola vez.
+   */
+  const precargandoRef = useRef(false)
+
   // Pre-llenar descripción + restaurar preferencia de Haber al elegir plantilla
   useEffect(() => {
+    if (precargandoRef.current) {
+      precargandoRef.current = false
+      return
+    }
     if (!plantillaSeleccionada) {
       setHaberId('')
       setContactoId('')
@@ -734,6 +930,7 @@ export default function CargaPage() {
     setContactoId('')
     setContactoLocked(false)
     setEditandoId(null)
+    setPlantillaInactiva(null)
   }
 
   function resetFormGeneral() {
@@ -749,29 +946,57 @@ export default function CargaPage() {
 
   function precargarPlantilla(c: ComprobanteRemoto) {
     if (c.plantilla_id == null) return
+    const pl = plantillas.find((p) => p.id === c.plantilla_id) ?? null
+
+    // E3: frena al useEffect de `plantillaSeleccionada` — cambiar
+    // `plantillaId` acá abajo lo dispara igual, y sin este guard pisa con
+    // los defaults de la plantilla lo que se precarga a continuación.
+    precargandoRef.current = true
     setFecha(c.fecha)
     setPlantillaId(c.plantilla_id)
     setMonto(formatMonto(c.monto_total))
     setMoneda((c.moneda_codigo as Moneda) ?? 'UYU')
     setDescripcion(c.descripcion ?? '')
     setDescripcionTocada(true)
-    // El haberId definitivo lo setea el useEffect de plantillaSeleccionada
-    // si el override existe entre las opciones; lo forzamos acá si vino override.
-    if (c.cuenta_haber_override_id) {
-      setHaberId(c.cuenta_haber_override_id)
-    }
+    // El haberId real: el override si lo hay, si no el default de la
+    // plantilla (ya no lo completa el effect — ver el guard de arriba).
+    setHaberId(c.cuenta_haber_override_id ?? pl?.cuenta_haber_id ?? '')
     // Contacto: respetar lo que se guardó (puede ser override del default de
     // la plantilla, o cualquier valor si la plantilla era genérica).
     if (c.contacto_id) {
       setContactoId(c.contacto_id)
       // Si difiere del default de la plantilla, dejarlo desbloqueado para
       // que se vea que fue elegido manualmente.
-      const pl = plantillas.find((p) => p.id === c.plantilla_id)
       setContactoLocked(!!pl?.contacto_id && pl.contacto_id === c.contacto_id)
     } else {
       setContactoId('')
       setContactoLocked(false)
     }
+
+    if (pl) {
+      setPlantillaInactiva(null)
+      return
+    }
+
+    // U10: la plantilla ya no está activa (por eso no aparece en
+    // `plantillas`) — se trae aparte para que el selector no quede en blanco
+    // y las secciones de Contacto/Modalidad de pago no desaparezcan sin
+    // explicación. El guard se vuelve a armar: el fetch resuelve en otro
+    // render y cambia `plantillaSeleccionada` de null a esta plantilla, lo
+    // que dispararía el mismo effect otra vez.
+    setPlantillaInactiva(null)
+    void (async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('plantillas_remoto')
+        .select(COLS_PLANTILLA)
+        .eq('id', c.plantilla_id)
+        .maybeSingle()
+      if (data) {
+        precargandoRef.current = true
+        setPlantillaInactiva(data as unknown as PlantillaRemota)
+      }
+    })()
   }
 
   function precargarGeneral(c: ComprobanteRemoto) {
@@ -816,26 +1041,28 @@ export default function CargaPage() {
     resetForm()
   }
 
-  async function eliminarPendiente(c: ComprobanteRemoto) {
+  // U10/E11: `window.confirm` no tiene marca propia y en PWA standalone de
+  // iOS a veces ni aparece — `pedirEliminar` sólo abre `ModalConfirmarEliminar`
+  // (ver su render más abajo), que ejecuta `confirmarEliminar` al aceptar.
+  function pedirEliminar(c: ComprobanteRemoto) {
+    if (c.estado !== 'en_cola' && c.estado !== 'pendiente') return
+    setEliminando(c)
+  }
+
+  async function confirmarEliminar() {
+    const c = eliminando
+    if (!c) return
     if (c.estado === 'en_cola') {
-      const ok = window.confirm(
-        '¿Eliminar este comprobante de la cola? Todavía no se subió al servidor.',
-      )
-      if (!ok) return
       try {
         await eliminarDeCola(c.id)
         setEnCola((prev) => prev.filter((x) => x.id !== c.id))
         toast.success('Eliminado de la cola')
+        setEliminando(null)
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'No se pudo eliminar de la cola')
+        toast.error(mensajeError(err, 'No se pudo eliminar de la cola'))
       }
       return
     }
-    if (c.estado !== 'pendiente') return
-    const ok = window.confirm(
-      `¿Eliminar el comprobante ${c.numero_borrador ?? ''}? Esta acción no se puede deshacer.`,
-    )
-    if (!ok) return
     try {
       const supabase = createClient()
       const { error } = await supabase
@@ -846,8 +1073,9 @@ export default function CargaPage() {
       setComprobantes((prev) => prev.filter((x) => x.id !== c.id))
       if (editandoId === c.id) cancelarEdicion()
       toast.success('Comprobante eliminado')
+      setEliminando(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo eliminar')
+      toast.error(mensajeError(err, 'No se pudo eliminar'))
     }
   }
 
@@ -909,8 +1137,15 @@ export default function CargaPage() {
       ? tiposComprobante.find((t) => t.id === tipoComprobanteGeneralId) ?? null
       : null
 
+    // E2/E3: id generado ACÁ, antes del primer intento — si el primer intento
+    // termina en un error ambiguo (¿llegó a guardar del lado del servidor o
+    // no?) y se reintenta (encolado o manual), el reintento manda el MISMO
+    // id. `upsert_comprobante_libre_web` es un upsert por id: el reintento
+    // actualiza la misma fila en vez de crear un comprobante duplicado.
+    const id = editandoGeneralId ?? crypto.randomUUID()
+
     const payload = {
-      ...(editandoGeneralId ? { id: editandoGeneralId } : {}),
+      id,
       empresa_id: empresa.empresa_id,
       fecha: fechaGeneral,
       moneda_codigo: monedaGeneral,
@@ -1012,7 +1247,7 @@ export default function CargaPage() {
           return
         }
       }
-      toast.error(err instanceof Error ? err.message : 'Error al guardar')
+      toast.error(mensajeError(err, 'Error al guardar'))
     } finally {
       setBusyGeneral(false)
     }
@@ -1039,8 +1274,12 @@ export default function CargaPage() {
     const esOverride =
       !!haberElegido && !!defaultHaberId && haberElegido.id !== defaultHaberId
 
+    // E2/E3: mismo id fijo desde antes del primer intento — ver el comentario
+    // equivalente en guardarGeneral().
+    const id = editandoId ?? crypto.randomUUID()
+
     const payload = {
-      ...(editandoId ? { id: editandoId } : {}),
+      id,
       empresa_id: empresa.empresa_id,
       plantilla_id: plantillaId,
       contacto_id: contactoId || null,
@@ -1167,11 +1406,13 @@ export default function CargaPage() {
           return
         }
       }
-      toast.error(err instanceof Error ? err.message : 'Error al guardar')
+      toast.error(mensajeError(err, 'Error al guardar'))
     } finally {
       setBusy(false)
     }
   }
+
+  if (!permisos.puede_cargar) return null
 
   if (loading) {
     return (
@@ -1186,24 +1427,30 @@ export default function CargaPage() {
       {/* Tabs */}
       <div className="bg-white border-b border-line">
         <div className="max-w-3xl mx-auto px-5 md:px-8">
-          <div className="flex">
+          <div className="flex" role="tablist" aria-label="Secciones de carga">
             <button
-              className="tab"
+              type="button"
+              role="tab"
               aria-selected={tab === 'cargar'}
+              className="tab"
               onClick={() => setTab('cargar')}
             >
               Cargar
             </button>
             <button
-              className="tab"
+              type="button"
+              role="tab"
               aria-selected={tab === 'general'}
+              className="tab"
               onClick={() => setTab('general')}
             >
               General
             </button>
             <button
-              className="tab"
+              type="button"
+              role="tab"
               aria-selected={tab === 'ultimos'}
+              className="tab"
               onClick={() => setTab('ultimos')}
             >
               Últimos {comprobantesUI.length > 0 && `· ${comprobantesUI.length}`}
@@ -1359,10 +1606,25 @@ export default function CargaPage() {
                       </optgroup>
                     </>
                   )}
+                  {/* U10: plantilla desactivada después de esta carga — se agrega
+                      aparte para que el <select> muestre algo en vez de quedar en
+                      blanco (no está entre las activas de arriba). */}
+                  {plantillaInactiva && plantillaInactiva.id === plantillaId && (
+                    <option value={plantillaInactiva.id}>
+                      {plantillaInactiva.nombre} (inactiva)
+                    </option>
+                  )}
                 </select>
                 {plantillas.length === 0 && (
                   <p className="mt-2 text-[11px] font-mono text-ink-3">
                     Sin plantillas todavía. El contador las define en ContaSystem.
+                  </p>
+                )}
+                {plantillaInactiva && plantillaInactiva.id === plantillaId && (
+                  <p className="mt-2 text-[11px] font-mono text-amber-deep flex items-start gap-1.5">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                    Esta plantilla ya no está activa. Podés guardar los cambios, pero
+                    no está disponible para cargas nuevas.
                   </p>
                 )}
                 {plantillaSeleccionada && (
@@ -1592,7 +1854,7 @@ export default function CargaPage() {
             hasMore={hasMore}
             loadingMore={loadingMore}
             onModificar={modificarPendiente}
-            onEliminar={eliminarPendiente}
+            onEliminar={pedirEliminar}
             onDuplicar={duplicarComoNuevo}
             onSolicitarAnulacion={(c) => setAnulandoId(c.id)}
             onReintentar={reintentarEnCola}
@@ -1611,6 +1873,13 @@ export default function CargaPage() {
           }
           onConfirmar={confirmarAnulacion}
           onCerrar={() => setAnulandoId(null)}
+        />
+      )}
+      {eliminando && (
+        <ModalConfirmarEliminar
+          comprobante={eliminando}
+          onConfirmar={confirmarEliminar}
+          onCerrar={() => setEliminando(null)}
         />
       )}
     </>
@@ -1825,6 +2094,11 @@ function ListaUltimos({
           {stats.pendientes > 0 && (
             <span className="font-mono text-xs text-amber-deep font-semibold">
               {stats.pendientes} pendiente{stats.pendientes === 1 ? '' : 's'}
+              {/* U10: `stats` sale de las filas YA CARGADAS (paginado), no de
+                  un count del server — con "Cargar más" pendiente, decir sólo
+                  "3 pendientes" sugiere que es el total cuando puede haber más
+                  entre lo que todavía no se trajo. */}
+              {hasMore ? ' de los cargados' : ''}
             </span>
           )}
           <button
@@ -2151,6 +2425,59 @@ function AccionesComprobante({
   )
 }
 
+/**
+ * Overlay de modal accesible, compartido por `ModalAnulacion` y
+ * `ModalConfirmarEliminar` (U11). Antes cada uno cerraba SOLO por click en
+ * el fondo — sin `role="dialog"`/`aria-modal` un lector de pantalla no
+ * anuncia que se abrió un diálogo, sin foco inicial el teclado sigue en el
+ * botón que lo disparó (o se pierde), y sin Escape la única salida es el
+ * mouse — lo que además es la misma familia de problema que
+ * `window.confirm` (E11): en PWA standalone de iOS a veces ni aparece.
+ */
+function ModalOverlay({
+  titulo,
+  onCerrar,
+  children,
+}: {
+  titulo: string
+  onCerrar: () => void
+  children: React.ReactNode
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onCerrar()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    // Foco inicial en el primer control del panel — sin esto el foco del
+    // teclado queda atrás, en el botón que abrió el modal.
+    const primero = panelRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    primero?.focus()
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onCerrar])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4"
+      onClick={onCerrar}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={titulo}
+        className="card max-w-md w-full p-6 lg:p-8 rise"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function ModalAnulacion({
   comprobante,
   onConfirmar,
@@ -2164,89 +2491,146 @@ function ModalAnulacion({
   const [busy, setBusy] = useState(false)
   if (!comprobante) return null
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4"
-      onClick={onCerrar}
-    >
-      <div
-        className="card max-w-md w-full p-6 lg:p-8 rise"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-5">
-          <p className="label-mono mb-2">Solicitar anulación</p>
-          <h3 className="font-display text-2xl font-medium leading-tight">
-            ¿Anular comprobante?
-          </h3>
+    <ModalOverlay titulo="Solicitar anulación de comprobante" onCerrar={onCerrar}>
+      <div className="mb-5">
+        <p className="label-mono mb-2">Solicitar anulación</p>
+        <h3 className="font-display text-2xl font-medium leading-tight">
+          ¿Anular comprobante?
+        </h3>
+      </div>
+      <div className="rounded-md bg-paper-2 border border-line px-3 py-2.5 mb-5">
+        <div className="font-mono text-[11px] text-ink-3 mb-1">
+          {comprobante.numero_borrador ?? '—'}
         </div>
-        <div className="rounded-md bg-paper-2 border border-line px-3 py-2.5 mb-5">
-          <div className="font-mono text-[11px] text-ink-3 mb-1">
-            {comprobante.numero_borrador ?? '—'}
-          </div>
-          <div className="font-display-tight text-base font-medium">
-            {simboloMoneda(comprobante.moneda_codigo)} {formatMonto(comprobante.monto_total)}{' '}
-            <span className="font-mono text-[10px] text-ink-3 uppercase ml-1">
-              {comprobante.moneda_codigo}
-            </span>
-          </div>
-          <div className="text-[12px] text-ink-2">
-            {formatFecha(comprobante.fecha)}
-          </div>
+        <div className="font-display-tight text-base font-medium">
+          {simboloMoneda(comprobante.moneda_codigo)} {formatMonto(comprobante.monto_total)}{' '}
+          <span className="font-mono text-[10px] text-ink-3 uppercase ml-1">
+            {comprobante.moneda_codigo}
+          </span>
         </div>
-        <p className="text-[13px] text-ink-2 mb-4 leading-relaxed">
-          El contador recibirá la solicitud y, al confirmarla en ContaSystem,
-          generará la nota de crédito que reversa este comprobante.
-        </p>
-        <div className="mb-5">
-          <label htmlFor="motivo-anul" className="label-mono block mb-2">
-            Motivo (opcional)
-          </label>
-          <textarea
-            id="motivo-anul"
-            rows={3}
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            disabled={busy}
-            placeholder="Ej: error en el monto, comprobante duplicado…"
-            className="w-full bg-paper-2 border border-line rounded-md px-3 py-2.5 text-[14px] resize-none focus:outline-none focus:border-ink-2 transition-colors font-sans"
-          />
-        </div>
-        <div className="flex gap-2 justify-end">
-          <button
-            type="button"
-            onClick={onCerrar}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[12px] uppercase tracking-wider text-ink-2"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              setBusy(true)
-              try {
-                await onConfirmar(motivo.trim())
-              } finally {
-                setBusy(false)
-              }
-            }}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-status-no text-white hover:bg-status-no/90 transition-colors font-mono text-[12px] uppercase tracking-wider disabled:opacity-60"
-          >
-            {busy ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Enviando…
-              </>
-            ) : (
-              <>
-                <Ban size={14} strokeWidth={2.5} />
-                Solicitar anulación
-              </>
-            )}
-          </button>
+        <div className="text-[12px] text-ink-2">
+          {formatFecha(comprobante.fecha)}
         </div>
       </div>
-    </div>
+      <p className="text-[13px] text-ink-2 mb-4 leading-relaxed">
+        El contador recibirá la solicitud y, al confirmarla en ContaSystem,
+        generará la nota de crédito que reversa este comprobante.
+      </p>
+      <div className="mb-5">
+        <label htmlFor="motivo-anul" className="label-mono block mb-2">
+          Motivo (opcional)
+        </label>
+        <textarea
+          id="motivo-anul"
+          rows={3}
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          disabled={busy}
+          placeholder="Ej: error en el monto, comprobante duplicado…"
+          className="w-full bg-paper-2 border border-line rounded-md px-3 py-2.5 text-[14px] resize-none focus:outline-none focus:border-ink-2 transition-colors font-sans"
+        />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onCerrar}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[12px] uppercase tracking-wider text-ink-2"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await onConfirmar(motivo.trim())
+            } finally {
+              setBusy(false)
+            }
+          }}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-status-no text-white hover:bg-status-no/90 transition-colors font-mono text-[12px] uppercase tracking-wider disabled:opacity-60"
+        >
+          {busy ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              Enviando…
+            </>
+          ) : (
+            <>
+              <Ban size={14} strokeWidth={2.5} />
+              Solicitar anulación
+            </>
+          )}
+        </button>
+      </div>
+    </ModalOverlay>
+  )
+}
+
+/**
+ * Confirmación de borrado — reemplaza `window.confirm` (E11/U10): sin marca
+ * propia, y en PWA standalone de iOS a veces ni aparece.
+ */
+function ModalConfirmarEliminar({
+  comprobante,
+  onConfirmar,
+  onCerrar,
+}: {
+  comprobante: ComprobanteRemoto | null
+  onConfirmar: () => void
+  onCerrar: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  if (!comprobante) return null
+  const esCola = comprobante.estado === 'en_cola'
+  return (
+    <ModalOverlay titulo="Eliminar comprobante" onCerrar={onCerrar}>
+      <div className="mb-5">
+        <p className="label-mono mb-2">Eliminar</p>
+        <h3 className="font-display text-2xl font-medium leading-tight">
+          {esCola
+            ? '¿Eliminar de la cola?'
+            : `¿Eliminar el comprobante ${comprobante.numero_borrador ?? ''}?`}
+        </h3>
+      </div>
+      <p className="text-[13px] text-ink-2 mb-6 leading-relaxed">
+        {esCola
+          ? 'Todavía no se subió al servidor — se pierde sin dejar rastro.'
+          : 'Esta acción no se puede deshacer.'}
+      </p>
+      <div className="flex gap-2 justify-end">
+        <button
+          type="button"
+          onClick={onCerrar}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md border border-line bg-white hover:border-ink-3 hover:bg-paper-2 transition-colors font-mono text-[12px] uppercase tracking-wider text-ink-2"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await onConfirmar()
+            } finally {
+              setBusy(false)
+            }
+          }}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-status-no text-white hover:bg-status-no/90 transition-colors font-mono text-[12px] uppercase tracking-wider disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Trash2 size={14} strokeWidth={2.5} />
+          )}
+          Eliminar
+        </button>
+      </div>
+    </ModalOverlay>
   )
 }
 

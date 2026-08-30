@@ -41,6 +41,30 @@ export interface RateLimitRule {
   limite: number
   /** Largo de la ventana, en segundos. */
   ventanaSegundos: number
+  /**
+   * `true` = ante un error de PERMISOS (42501 / "permission denied") esta
+   * regla corta (devuelve `false`) en vez de dejar pasar.
+   *
+   * Sólo tiene sentido en los dos puntos del módulo donde se prueba un
+   * secreto SIN bloqueo por credencial detrás (`votoCodigo`, `kioscoAbrir`):
+   * ahí, si el `REVOKE … FROM anon` de `rate_limit_hit` no se aplicó (48_) o
+   * se deshizo, el limitador queda sin dientes justo donde es la única
+   * defensa. El resto de las reglas sigue fail-open: un error de permisos en
+   * `votoValidar` o `mesaLogin` no puede tumbar una elección, porque atrás
+   * sigue estando el bloqueo por credencial/mesa que hace la base.
+   *
+   * No aplica a errores de red ni de conexión (el `catch` de abajo): eso
+   * sigue fail-open siempre, para las dos reglas también. Lo que corta es
+   * específicamente "esta función quedó ejecutable de más", no "Supabase no
+   * respondió".
+   */
+  failClosed?: boolean
+}
+
+/** 42501 es el código de Postgres para "permission denied"; PostgREST lo respeta tal cual. */
+function esErrorDePermisos(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false
+  return err.code === '42501' || (err.message ?? '').toLowerCase().includes('permission denied')
 }
 
 /**
@@ -85,6 +109,10 @@ export async function permitidoPorClave(
       p_window_seconds: regla.ventanaSegundos,
     })
     if (error) {
+      if (regla.failClosed && esErrorDePermisos(error)) {
+        console.warn(`[rate-limit] fail-closed (${bucket}): ${error.message}`)
+        return false
+      }
       console.warn(`[rate-limit] fail-open (${bucket}): ${error.message}`)
       return true
     }
@@ -130,7 +158,7 @@ export const LIMITES = {
    * Por eso el tope es más estrecho que el de votar, aunque siga siendo holgado
    * para quien tipea mal un par de veces desde el papel.
    */
-  votoCodigo: { nombre: 'voto_codigo', limite: 10, ventanaSegundos: 300 },
+  votoCodigo: { nombre: 'voto_codigo', limite: 10, ventanaSegundos: 300, failClosed: true },
 
   // Terminal de mesa (`/v/mesa`). Montarla se cuenta por IP; atender votantes,
   // por terminal. Esa asimetría es todo el punto de la llave: sin ella no habría
@@ -142,7 +170,7 @@ export const LIMITES = {
    * use el endpoint como martillo. Holgado para el operador que copia de un
    * papel y se equivoca dos veces.
    */
-  kioscoAbrir: { nombre: 'kiosco_abrir', limite: 10, ventanaSegundos: 300 },
+  kioscoAbrir: { nombre: 'kiosco_abrir', limite: 10, ventanaSegundos: 300, failClosed: true },
   /**
    * Canjear el código de una credencial EN una terminal montada. Por terminal,
    * y holgado: es una fila de gente, no un script. El código sigue sin tener

@@ -57,6 +57,10 @@ export function Padron({
   const [fase, setFase] = useState<'cargando' | 'listo'>('cargando')
   const [caido, setCaido] = useState(false)
   const [vencida, setVencida] = useState(false)
+  /** Desde 61_: `mesa_padron` puede devolver `mesa_cerrada` con la hora real. */
+  const [cerradaAt, setCerradaAt] = useState<string | null>(null)
+  /** Desde 61_ (E5b): el canal web de esta elección sigue abierto. */
+  const [canalWebAbierto, setCanalWebAbierto] = useState(false)
 
   const [q, setQ] = useState('')
   const [aviso, setAviso] = useState<(MensajeMesa & { tono: 'ok' | 'medio' | 'alto' }) | null>(null)
@@ -68,26 +72,45 @@ export function Padron({
   /** Marca de agua del servidor. En ref y no en estado: no dibuja nada. */
   const hasta = useRef<string | null>(null)
   const buscador = useRef<HTMLInputElement>(null)
+  /** La carga en vuelo, para poder cancelarla si empieza otra antes de que vuelva. */
+  const cargaEnCurso = useRef<AbortController | null>(null)
 
   // ── Carga y refresco ──────────────────────────────────────────────────────
 
   const cargar = useCallback(async (inicial: boolean) => {
+    // El interval, el `visibilitychange` y el `catch` de marcar pueden disparar
+    // `cargar` casi al mismo tiempo: sin esto, dos fetches quedan en vuelo y no
+    // hay garantía de que el que llega primero sea el que se mandó primero.
+    cargaEnCurso.current?.abort()
+    const controller = new AbortController()
+    cargaEnCurso.current = controller
+
     const desde = inicial ? null : hasta.current
     try {
       const r = await fetch(
         desde ? `/api/mesa/padron?desde=${encodeURIComponent(desde)}` : '/api/mesa/padron',
-        { cache: 'no-store' },
+        { cache: 'no-store', signal: controller.signal },
       )
       const d = (await r.json()) as RespuestaPadron | ErrorMesa
 
       if (!esErrorMesa(d)) {
+        // Una respuesta vieja que llega DESPUÉS de una más nueva no puede pisarla:
+        // `row_updated_at` lo asigna la transacción que marcó el voto, no el
+        // orden de llegada al navegador. Se descarta en vez de aplicarse.
+        if (hasta.current && new Date(d.hasta).getTime() < new Date(hasta.current).getTime()) {
+          return
+        }
         hasta.current = d.hasta
         setPadron((prev) => {
+          // Delta vacío: nada cambió, no hace falta repintar la lista entera
+          // cada 12 segundos.
+          if (!d.completo && d.padron.length === 0) return prev
           // `completo` reemplaza; un delta se aplica encima de lo que ya está.
           const m: Mapa = d.completo ? new Map() : new Map(prev)
           for (const p of d.padron) m.set(p.habilitado_id, indexar(p))
           return m
         })
+        setCanalWebAbierto(d.canal_web_abierto === true)
         setCaido(false)
         setFase('listo')
         return
@@ -97,8 +120,17 @@ export function Padron({
         setVencida(true)
         return
       }
+      // Desde 61_ (U12): la sesión de una mesa recién cerrada contesta esto en
+      // vez del genérico `sesion_invalida`, que se confunde con un token
+      // vencido de verdad y no explica nada.
+      if (d.error === 'mesa_cerrada') {
+        setCerradaAt(d.cerrada_at ?? null)
+        return
+      }
       setCaido(true)
     } catch {
+      // Un abort deliberado (una carga más nueva la reemplazó) no es una caída.
+      if (controller.signal.aborted) return
       // Sin conexión el padrón que ya está en memoria sigue sirviendo: se avisa
       // que quedó viejo, pero no se borra nada de la pantalla.
       setCaido(true)
@@ -110,7 +142,7 @@ export function Padron({
   }, [cargar])
 
   useEffect(() => {
-    if (vencida) return
+    if (vencida || cerradaAt) return
     const t = setInterval(() => void cargar(false), REFRESCO_MS)
     // Volver a la pestaña después de un rato tiene que traer lo de las otras
     // mesas al instante, sin esperar el próximo tic.
@@ -122,7 +154,7 @@ export function Padron({
       clearInterval(t)
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [cargar, vencida])
+  }, [cargar, vencida, cerradaAt])
 
   // ── Derivados ─────────────────────────────────────────────────────────────
 
@@ -156,8 +188,13 @@ export function Padron({
 
   // ── Marcar ────────────────────────────────────────────────────────────────
 
+  // Doble toque en el botón: el estado de React puede no haber pintado
+  // todavía cuando entra el segundo toque. `:159-161` original.
+  const marcandoRef = useRef(false)
+
   const marcar = async (p: PersonaIndexada) => {
-    if (ocupado) return
+    if (marcandoRef.current) return
+    marcandoRef.current = true
     setOcupado(true)
     setAviso(null)
     try {
@@ -175,9 +212,16 @@ export function Padron({
           voto_origen: 'urna',
           mesa_id: mesaId,
         })
+        // Desde 61_ (E5b): no bloquea la marca, pero el canal web sigue
+        // abierto y la comisión tiene que cerrarlo cuanto antes.
+        if (d.advertencia === 'canal_web_abierto') setCanalWebAbierto(true)
         setAviso({
           titulo: `Votó ${p.nombre_completo}`,
-          detalle: `Registrado a las ${horaCorta(d.emitido_at)}.`,
+          detalle:
+            `Registrado a las ${horaCorta(d.emitido_at)}.` +
+            (d.advertencia === 'canal_web_abierto'
+              ? ' El voto por internet de esta elección sigue abierto: avisale a la comisión que lo cierre.'
+              : ''),
           tono: 'ok',
         })
         setPorMarcar(null)
@@ -215,6 +259,7 @@ export function Padron({
       setPorMarcar(null)
       void cargar(false)
     }
+    marcandoRef.current = false
     setOcupado(false)
   }
 
@@ -270,6 +315,27 @@ export function Padron({
     )
   }
 
+  // Desde 61_ (U12): esta mesa cerró la urna desde OTRO dispositivo mientras
+  // este seguía con el padrón abierto. Antes de 61_ esto se leía como
+  // `sesion_invalida` — el mismo mensaje que un token vencido de verdad — y no
+  // explicaba nada.
+  if (cerradaAt) {
+    return (
+      <Aviso
+        titulo="Esta urna ya se cerró"
+        detalle={
+          `Se cerró a las ${horaCorta(cerradaAt)} desde otro dispositivo de esta mesa. No se ` +
+          'puede reabrir desde acá.'
+        }
+        tono="medio"
+      >
+        <button type="button" className="btn-secondary w-full mt-4" onClick={salir}>
+          Salir
+        </button>
+      </Aviso>
+    )
+  }
+
   // ── Pantalla ──────────────────────────────────────────────────────────────
 
   return (
@@ -284,6 +350,20 @@ export function Padron({
           </a>
         )}
       </div>
+
+      {/* Desde 61_ (E5b): persistente mientras el canal web siga abierto, no un
+          aviso que se borra con la próxima acción. La marca en papel vale
+          igual, pero la misma persona podría estar votando por internet en
+          este instante. */}
+      {canalWebAbierto && (
+        <div className="voto-aviso voto-aviso--alto mb-4" role="alert">
+          <p className="font-medium text-[15px] leading-snug">El voto por internet sigue abierto</p>
+          <p className="text-ink-2 text-sm leading-relaxed mt-1">
+            Mientras siga así, alguien podría estar votando por internet al mismo tiempo que en
+            esta mesa. Avisale a la comisión que cierre el canal web cuanto antes.
+          </p>
+        </div>
+      )}
 
       <label htmlFor="buscar" className="label-mono block mb-2">
         Buscar por nombre o cédula
@@ -305,7 +385,9 @@ export function Padron({
       />
 
       {fase === 'cargando' && (
-        <p className="text-ink-3 text-sm mt-4">Cargando el padrón…</p>
+        <p className="text-ink-3 text-sm mt-4">
+          {caido ? 'No se pudo cargar el padrón, reintentando…' : 'Cargando el padrón…'}
+        </p>
       )}
 
       {caido && fase === 'listo' && (
@@ -515,9 +597,13 @@ function Dialogo({
   onCerrar: () => void
   children: React.ReactNode
 }) {
-  // Cerrar con Escape: el operador tiene el teclado en la mano si trabaja con
-  // notebook, y en el celular el botón Cancelar está igual de a mano.
+  const cajaRef = useRef<HTMLDivElement>(null)
+
+  // Foco inicial y Escape: quien abre esto con el teclado tiene que poder
+  // cerrarlo sin ir a buscar el mouse, y un lector de pantalla tiene que
+  // anunciar que apareció un diálogo en vez de seguir leyendo lo de atrás.
   useEffect(() => {
+    cajaRef.current?.focus()
     const esc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCerrar()
     }
@@ -532,7 +618,11 @@ function Dialogo({
       aria-modal="true"
       aria-label={titulo}
     >
-      <div className="w-full sm:max-w-md bg-paper rounded-t-2xl sm:rounded-2xl border border-line p-5 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={cajaRef}
+        tabIndex={-1}
+        className="w-full sm:max-w-md bg-paper rounded-t-2xl sm:rounded-2xl border border-line p-5 max-h-[90vh] overflow-y-auto outline-none"
+      >
         <span className="label-mono">{titulo}</span>
         <div className="mt-3">{children}</div>
       </div>

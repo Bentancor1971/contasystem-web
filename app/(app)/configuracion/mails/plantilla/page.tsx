@@ -105,8 +105,12 @@ export default function PlantillaMailPage() {
     let vivo = true
     ;(async () => {
       try {
+        // ?solo_empresas=1: esta pantalla sólo necesita el <select> de
+        // empresas, no los logs ni el estado de plantilla de cada una que
+        // trae el payload completo (admin/birthday-config/route.ts ya sabe
+        // recortar la respuesta con este parámetro).
         const res = await fetch(
-          `/api/admin/birthday-config?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
+          `/api/admin/birthday-config?empresa_id=${encodeURIComponent(empresa.empresa_id)}&solo_empresas=1`,
           { cache: 'no-store' },
         )
         const data = await res.json().catch(() => ({}))

@@ -137,6 +137,8 @@ export interface CodigoResuelto {
   token: string
   slug: string
   eleccion: string
+  /** Desde 61_. `null` contra una base sin ese script, o si la elección no lo tiene cargado. */
+  email_contacto: string | null
 }
 
 export type CodigoError =
@@ -171,8 +173,16 @@ export interface ErrorVotacion {
   emitido_at?: string
   /** Errores de boleta: título de la papeleta que falló. */
   papeleta?: string
+  /**
+   * Id de la papeleta que falló. Desde 61_: señalar por título se rompe si
+   * dos papeletas comparten nombre. Se prefiere este campo y `papeleta` queda
+   * como respaldo contra una base sin ese script.
+   */
+  papeleta_id?: string
   min?: number
   max?: number
+  /** `no_habilitado` desde `resolver_codigo` (61_): a quién escribirle. */
+  email_contacto?: string | null
 }
 
 export type RespuestaEstado = EstadoCredencial | ErrorVotacion

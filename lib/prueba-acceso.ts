@@ -101,12 +101,17 @@ export async function diagnosticarAcceso(
   try {
     admin = createAdminClient()
   } catch (err) {
+    // El mensaje real trae el nombre exacto de la variable que falta: acá NO
+    // se muestra —esta URL es pública y sin login, y ese detalle queda para
+    // los logs del servidor, que es donde alguien con acceso al despliegue lo
+    // va a arreglar—.
+    console.error('[prueba-acceso] falta configuración de Supabase:', mensajeDe(err))
     pasos.push({
       titulo: 'Falta la configuración de la base',
       ok: false,
       detalle:
-        `${mensajeDe(err)}. Con un link real esta pantalla daría un error del servidor. Se ` +
-        'arregla en las variables de entorno del despliegue, no en el desktop.',
+        'Con un link real esta pantalla daría un error del servidor. Revisá los logs del ' +
+        'despliegue: falta una variable de entorno de Supabase. Se arregla ahí, no en el desktop.',
     })
     return { ok: false, pasos }
   }
@@ -155,13 +160,16 @@ export async function diagnosticarAcceso(
     })
     return { ok: true, pasos }
   } catch (err) {
+    // El mensaje crudo de Postgres/PostgREST puede traer detalle de esquema o
+    // de permisos; queda en el log del servidor y no en esta URL pública.
+    console.error(`[prueba-acceso] ${rpc} falló:`, mensajeDe(err))
     pasos.push({
       titulo: 'La base no respondió',
       ok: false,
       detalle:
-        `${rpc} falló: ${mensajeDe(err)}. Con un link real esta pantalla diría «el link no es ` +
-        'válido», que es el mismo síntoma y no distingue una credencial vencida de una base ' +
-        'inalcanzable. Revisá la service key y los permisos de la función.',
+        `${rpc} falló. Con un link real esta pantalla diría «el link no es válido», que es el ` +
+        'mismo síntoma y no distingue una credencial vencida de una base inalcanzable. Revisá ' +
+        'los logs del despliegue: probablemente la service key o los permisos de la función.',
     })
     return { ok: false, pasos }
   }

@@ -74,8 +74,15 @@ export async function POST(
       }),
     )
   } catch (err) {
+    // Acá también caen los errores que ahora propagan `padronDeEmpresa` y
+    // `estadosSocioDeEmpresa` (E13): antes un error transitorio de PostgREST se
+    // tragaba en silencio y seguía con el default (podía cambiar tarifa o
+    // admisión sin que nadie se enterara). 503: es reintentable y no hay nada
+    // roto del lado de quien pregunta.
     console.error('[POST /api/eventos/[slug]/lookup] error:', err)
-    const msg = err instanceof Error ? err.message : 'Error interno'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json(
+      { error: 'No se pudo verificar la cédula. Reintentá en unos segundos.' },
+      { status: 503 },
+    )
   }
 }

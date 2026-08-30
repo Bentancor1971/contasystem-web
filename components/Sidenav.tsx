@@ -3,13 +3,21 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { FileText, QrCode, Settings, X } from 'lucide-react'
-import { canSeeConfig, type PermisosRol } from '@/lib/roles'
+import {
+  canManageRoles,
+  canManageUsers,
+  canSeeConfig,
+  type PermisosRol,
+} from '@/lib/roles'
+import pkg from '@/package.json'
 
 interface NavItem {
   href: string
   label: string
   icon: typeof FileText
   visible: (p: PermisosRol) => boolean
+  /** Sub-ítems que se muestran cuando la sección está activa. */
+  children?: { href: string; label: string; visible: (p: PermisosRol) => boolean }[]
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -28,6 +36,17 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Configuración',
     icon: Settings,
     visible: (p) => canSeeConfig(p),
+    // Las sub-pantallas que hoy sólo se descubrían entrando a Configuración
+    // (U9). Las puertas espejan configuracion/page.tsx: Usuarios y Roles piden
+    // su permiso propio; el resto, ver config. La sección "Configuración" a
+    // secas ya la filtra el ítem padre con canSeeConfig.
+    children: [
+      { href: '/configuracion/eventos', label: 'Eventos en la web', visible: canSeeConfig },
+      { href: '/configuracion/mails', label: 'Saludos de cumpleaños', visible: canSeeConfig },
+      { href: '/configuracion/personas', label: 'Personas', visible: canSeeConfig },
+      { href: '/configuracion/roles', label: 'Roles y permisos', visible: canManageRoles },
+      { href: '/configuracion/usuarios', label: 'Usuarios', visible: canManageUsers },
+    ],
   },
 ]
 
@@ -89,26 +108,54 @@ export function Sidenav({ permisos, open, onClose }: SidenavProps) {
                 ? pathname === '/carga'
                 : pathname.startsWith(item.href)
             const Icon = item.icon
+            const hijos = item.children?.filter((h) => h.visible(permisos)) ?? []
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors
-                  ${
-                    active
-                      ? 'bg-paper-3 text-ink font-medium'
-                      : 'text-ink-2 hover:bg-paper-2 hover:text-ink'
-                  }
-                `}
-              >
-                <Icon size={16} strokeWidth={active ? 2.25 : 2} />
-                <span>{item.label}</span>
-                {active && (
-                  <span className="ml-auto w-1 h-4 bg-amber rounded-full" />
+              <div key={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className={`
+                    flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors
+                    ${
+                      active
+                        ? 'bg-paper-3 text-ink font-medium'
+                        : 'text-ink-2 hover:bg-paper-2 hover:text-ink'
+                    }
+                  `}
+                >
+                  <Icon size={16} strokeWidth={active ? 2.25 : 2} />
+                  <span>{item.label}</span>
+                  {active && (
+                    <span className="ml-auto w-1 h-4 bg-amber rounded-full" />
+                  )}
+                </Link>
+                {/* Sub-ítems: sólo cuando la sección está activa. Evita cargar
+                    el menú con las 5 pantallas de config cuando estás en Carga. */}
+                {active && hijos.length > 0 && (
+                  <div className="mt-0.5 ml-4 pl-3 border-l border-line space-y-0.5">
+                    {hijos.map((h) => {
+                      const hActivo = pathname === h.href || pathname.startsWith(h.href + '/')
+                      return (
+                        <Link
+                          key={h.href}
+                          href={h.href}
+                          onClick={onClose}
+                          className={`
+                            block px-3 py-2 rounded-md text-[13px] transition-colors
+                            ${
+                              hActivo
+                                ? 'text-ink font-medium'
+                                : 'text-ink-3 hover:bg-paper-2 hover:text-ink-2'
+                            }
+                          `}
+                        >
+                          {h.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
                 )}
-              </Link>
+              </div>
             )
           })}
         </nav>
@@ -116,9 +163,9 @@ export function Sidenav({ permisos, open, onClose }: SidenavProps) {
         {/* Footer */}
         <div className="px-5 py-4 border-t border-line">
           <p className="font-mono text-[10px] text-ink-3 leading-relaxed">
-            ContaSystem · Carga
+            ContaSystem · Gestión
             <br />
-            <span className="text-ink-3/70">v0.1</span>
+            <span className="text-ink-3/70">v{pkg.version}</span>
           </p>
         </div>
       </aside>

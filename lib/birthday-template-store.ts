@@ -252,7 +252,10 @@ export async function loadGmailAccountForEmpresa(
 ): Promise<GmailAccount | null> {
   const { data, error } = await supabase
     .from(TEMPLATE_TABLE)
-    .select('gmail_user, gmail_app_password, from_name')
+    // `copia_oculta_acuse` faltaba acá (E11): sin la columna, `rowToGmailAccount`
+    // siempre veía `undefined !== false` y la copia oculta quedaba prendida
+    // fuera lo que fuera que hubiera elegido /configuracion/mails/plantilla.
+    .select('gmail_user, gmail_app_password, from_name, copia_oculta_acuse')
     .eq('empresa_id', empresaId)
     .maybeSingle()
   if (error || !data) return null

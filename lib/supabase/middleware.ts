@@ -1,5 +1,11 @@
 /**
- * Helper para usar Supabase desde middleware.ts (refresh de sesión + redirect).
+ * Helper para usar Supabase desde proxy.ts (refresh de sesión + redirect).
+ *
+ * Desde el arreglo de P4 (docs/web-performance-propuesta.md, repo desktop), el
+ * matcher de proxy.ts ya excluye TODAS las rutas públicas, así que en el caso
+ * normal acá sólo llegan las que necesitan sesión. Las listas de abajo quedan
+ * como segunda línea de defensa: si el matcher y las listas divergen, una ruta
+ * pública paga el proxy de más (molesto) pero nunca rebota a /login (grave).
  */
 
 import { createServerClient } from '@supabase/ssr'
@@ -39,8 +45,9 @@ const PUBLIC_PATHS = [
 ]
 
 // Rutas realmente SIN sesión (inscripción / certificados públicos): acá nunca
-// se auto-loguea, aunque falte usuario. `/login` NO está: ahí sí queremos que
-// el auto-login de dev actúe para que la pantalla no llegue a mostrarse.
+// se auto-loguea, aunque falte usuario, y no se crea el cliente de Supabase.
+// `/login` NO está: ahí sí queremos que el auto-login de dev actúe para que la
+// pantalla no llegue a mostrarse. Mantener en espejo con el matcher de proxy.ts.
 const PUBLIC_SIN_SESION = [
   '/auth/callback',
   '/e/',
@@ -75,8 +82,10 @@ function esPublica(pathname: string, lista: readonly string[]): boolean {
  * Rutas donde una respuesta cacheada es un problema de verdad: `ya_voto`
  * guardado en el disco del navegador es un voto perdido o un doble intento, y
  * `ya_postulado` cacheado le muestra a alguien una pantalla que no es la suya.
- * Se marca acá y no en cada handler porque una *página* no puede escribir sus
- * propios headers de respuesta.
+ *
+ * Con el matcher nuevo estas rutas ya no pasan por acá en el caso normal: el
+ * `no-store` real lo ponen next.config.ts (páginas) y los handlers (_comun.ts).
+ * Se conserva por la misma razón que las listas: defensa si el matcher diverge.
  */
 const SIN_CACHE = [
   '/v/',
@@ -98,6 +107,22 @@ const DEV_AUTO_LOGIN =
   process.env.NODE_ENV !== 'production' && Boolean(DEV_AUTO_EMAIL && DEV_AUTO_PASSWORD)
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Rutas públicas sin sesión: no se crea el cliente ni se mira la cookie.
+  // Antes esto venía DESPUÉS de getUser(); no costaba red para el visitante
+  // anónimo (auth-js corta en AuthSessionMissingError sin request si no hay
+  // cookie — verificado en GoTrueClient._getUser), pero sí para el operador
+  // logueado que abría un link público, y de paso refrescaba una sesión que la
+  // ruta no usa.
+  if (esPublica(pathname, PUBLIC_SIN_SESION)) {
+    const response = NextResponse.next({ request })
+    if (esPublica(pathname, SIN_CACHE)) {
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    }
+    return response
+  }
+
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -124,15 +149,14 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const pathname = request.nextUrl.pathname
   const isPublic = esPublica(pathname, PUBLIC_PATHS)
-  const isPublicSinSesion = esPublica(pathname, PUBLIC_SIN_SESION)
 
   // DEV: si no hay sesión, la firmamos acá mismo. `signInWithPassword` escribe
   // las cookies de sesión sobre `response` (vía el callback setAll de arriba), así
-  // que a partir de esta request ya hay usuario y `/login` no se muestra.
+  // que a partir de esta request ya hay usuario y `/login` no se muestra. Las
+  // rutas de PUBLIC_SIN_SESION nunca llegan acá (early return de arriba).
   let usuario = user
-  if (!usuario && DEV_AUTO_LOGIN && !isPublicSinSesion) {
+  if (!usuario && DEV_AUTO_LOGIN) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: DEV_AUTO_EMAIL!.trim(),
       password: DEV_AUTO_PASSWORD!,
@@ -156,10 +180,6 @@ export async function updateSession(request: NextRequest) {
     // opciones) o se perdería el login y quedaría un rebote infinito.
     for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie)
     return redirect
-  }
-
-  if (esPublica(pathname, SIN_CACHE)) {
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
   }
 
   return response

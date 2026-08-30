@@ -1,12 +1,21 @@
 /**
  * Normalización y hash de documentos (cédula/CI).
  *
- * DEBE coincidir 1:1 con contasystem-desktop `src/utils/crypto.ts`:
+ * ⚠️ `hashDocumento` de acá NO coincide con `socios_datos.documento_hash`: el
+ * desktop calcula ESE hash en base36 corto (ver
+ * `src/lib/modules/socios-datos.ts` en el repo desktop), mientras que acá es
+ * SHA-256 hex. Por eso la ficha del padrón se busca por `documento` EN CLARO
+ * (ver `resolverParticipante` en lib/eventos.ts), nunca comparando hashes: los
+ * dos algoritmos nunca van a coincidir, y "optimizar" ese lookup a una
+ * comparación de hash dejaría a todo el padrón como "no encontrado".
+ *
+ * El `hashDocumento` de este archivo es el propio de la web: sólo se usa para
+ * el `documento_hash` de `inscripciones_evento_remoto` / `pagos_evento_remoto`
+ * (dedupe y búsqueda DENTRO de esas tablas), donde no hace falta coincidir con
+ * nada del desktop — son dos hash de documento distintos, con dueños distintos.
+ *
  *   - normalizeDocumento: elimina espacios, puntos y guiones (deja el resto tal cual).
  *   - hashDocumento: SHA-256 (hex) del texto normalizado, codificado UTF-8.
- *
- * Se usa para buscar un socio por cédula contra `socios_datos.documento_hash`
- * sin exponer ni almacenar la cédula en claro en el flujo público.
  */
 
 import { createHash } from 'node:crypto'

@@ -65,12 +65,24 @@ export interface RespuestaPadron {
   hasta: string
   completo: boolean
   padron: PersonaPadron[]
+  /**
+   * Desde 61_: si el canal web de esta elección sigue abierto. `false` contra
+   * una base sin ese script (`mesa_padron` no lo devuelve, y no mostrar el
+   * banner es el comportamiento seguro por defecto).
+   */
+  canal_web_abierto: boolean
 }
 
 export interface MarcaOk {
   ok: true
   habilitado_id: string
   emitido_at: string
+  /**
+   * Desde 61_: `mesa_marcar_voto` avisa (no bloquea) cuando el canal web de
+   * esta elección sigue abierto al momento de marcar. No es un error: la
+   * marca en papel vale igual.
+   */
+  advertencia?: 'canal_web_abierto'
 }
 
 export interface ControlMesa {
@@ -318,6 +330,16 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
       return {
         titulo: 'Falta cargar el recuento',
         detalle: 'Antes de cerrar la urna hay que guardar los votos contados.',
+      }
+    case 'recuento_invalido':
+      return {
+        titulo: 'Alguno de los números no es válido',
+        detalle: 'Tienen que ser enteros entre 0 y 100.000. Revisá las casillas y volvé a guardar.',
+      }
+    case 'sobres_invalidos':
+      return {
+        titulo: 'Ese número de sobres no es válido',
+        detalle: 'Tiene que ser un entero entre 0 y 100.000.',
       }
     case 'requiere_observacion':
       return {

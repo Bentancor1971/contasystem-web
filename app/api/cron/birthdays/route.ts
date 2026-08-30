@@ -1,31 +1,78 @@
 /**
  * GET /api/cron/birthdays
  *
- * Disparado por Vercel Cron una vez por día (ver vercel.json: 11:00 UTC =
- * 08:00 Montevideo). Detecta los socios que cumplen años hoy y les envía un
- * saludo desde la casilla Gmail de su empresa.
+ * Disparado por Vercel Cron DOS veces por día (ver vercel.json: 11:00 y
+ * 11:30 UTC = 08:00 y 08:30 Montevideo). Detecta los socios que cumplen años
+ * hoy y les envía un saludo desde la casilla Gmail de su empresa. La segunda
+ * corrida existe para terminar lo que la primera dejó pendiente por el
+ * presupuesto de tiempo (ver `has_more` abajo); si la primera terminó todo,
+ * la segunda no reenvía nada (idempotencia).
  *
- * Seguridad   · exige header  Authorization: Bearer <CRON_SECRET>.
+ * Seguridad   · exige header  Authorization: Bearer <CRON_SECRET>, comparado
+ *               en tiempo constante (`secretoValido`).
+ * Envío       · en tandas de BATCH_SIZE en paralelo, cortando a los
+ *               TIME_BUDGET_MS para no pisar `maxDuration`.
  * Idempotencia· un socio recibe a lo sumo un mail por fecha (tabla
  *               birthday_email_logs, unique socio_id + fecha_cumpleanos).
  * Zona horaria· "hoy" se calcula en America/Montevideo, no en UTC.
  *
- * Respuesta   · { ok, fecha, found, sent, skipped, errors[] }
+ * Respuesta   · { ok, fecha, found, sent, skipped, errors[], has_more } —
+ *               `has_more: true` si se cortó por tiempo antes de procesar
+ *               todos los candidatos de `found`.
  *
  * Tabla de personas: `socios_datos` (no `personas`). Campos usados:
  *   id, nombre, apellido, mail, fecha_nacimiento (TEXT ISO), empresa_id (TEXT).
  */
 
+import { timingSafeEqual } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendBirthdayEmail, type SendResult } from '@/lib/mailer'
-import { loadActiveEmpresas, esEstadoActivo } from '@/lib/birthday-template-store'
+import {
+  loadActiveEmpresas,
+  esEstadoActivo,
+  type ActiveEmpresa,
+} from '@/lib/birthday-template-store'
 
 // Nodemailer necesita el runtime Node (sockets TCP/TLS), no Edge.
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+/**
+ * Cuántos mails se mandan EN PARALELO (E23). Antes era un `for` secuencial:
+ * con SMTP a Gmail (1-3 s por mail, sin pool — ver lib/mailer.ts) un día con
+ * 40 cumpleañeros tardaba más de un minuto y corría el riesgo real de pisar
+ * `maxDuration`. 4 a la vez es un compromiso entre velocidad y no gatillar el
+ * límite de envíos por segundo de Gmail.
+ */
+const BATCH_SIZE = 4
+
+/**
+ * Presupuesto de tiempo propio, por debajo de `maxDuration` (60 s): si se
+ * corta acá en vez de que Vercel mate la función a los 60 s, el resumen sale
+ * completo (`has_more`) y el log de Vercel no queda con un request colgado.
+ * Lo que quede sin procesar lo termina la SEGUNDA corrida del día
+ * (`vercel.json`, 11:30 UTC) — la idempotencia de `birthday_email_logs`
+ * (unique socio_id + fecha) hace que no se reenvíe nada de lo ya hecho acá.
+ */
+const TIME_BUDGET_MS = 45_000
+
+/**
+ * Compara el secreto del cron en tiempo constante. Con `!==` la comparación
+ * de strings corta apenas difiere el primer byte, así que el tiempo de
+ * respuesta filtra de a poco cuántos caracteres iniciales acertó un atacante
+ * (timing attack). `timingSafeEqual` exige buffers del mismo largo — con
+ * largos distintos ya sabemos que no matchea, sin necesidad de comparar byte
+ * a byte (y sin filtrar el largo real: se compara igual contra sí mismo).
+ */
+function secretoValido(recibido: string, esperado: string): boolean {
+  const a = Buffer.from(recibido)
+  const b = Buffer.from(esperado)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
 
 interface SocioRow {
   id: string
@@ -68,37 +115,27 @@ function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
 }
 
-/** Extrae mes y día de `fecha_nacimiento` (TEXT ISO). Devuelve null si es inválida. */
-function parseBirthMonthDay(raw: string | null): { month: number; day: number } | null {
-  if (!raw) return null
-  const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!m) return null
-  const month = Number(m[2])
-  const day = Number(m[3])
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null
-  return { month, day }
-}
-
 /**
- * ¿El socio cumple años hoy?
- * Caso 29-feb: en años no bisiestos se lo saluda el 28-feb.
+ * Patrones `LIKE` para filtrar `fecha_nacimiento` (TEXT ISO `YYYY-MM-DD`) en
+ * SQL en vez de traer TODOS los socios con mail de las empresas activas y
+ * filtrar mes/día en JS (E23) — con varios miles de socios por empresa, eso
+ * era la mayoría de las filas leídas tiradas a la basura en cada corrida.
+ * `_` es el comodín de un solo carácter en Postgres, así que
+ * `____-MM-DD` matchea el año (4 dígitos, cualquiera) y exige mes/día exactos
+ * — un valor con formato distinto o largo distinto no matchea ninguno.
+ *
+ * Caso 29-feb: en años no bisiestos se saluda el 28-feb, así que ese día
+ * también se agrega el patrón del 29-feb (mismo criterio que
+ * `admin/socios/route.ts` usa para el filtro por mes).
  */
-function cumpleHoy(
-  birth: { month: number; day: number },
-  today: MontevideoToday,
-): boolean {
-  if (birth.month === today.month && birth.day === today.day) return true
-
-  if (
-    birth.month === 2 &&
-    birth.day === 29 &&
-    today.month === 2 &&
-    today.day === 28 &&
-    !isLeapYear(today.year)
-  ) {
-    return true
+function patronesCumpleHoy(today: MontevideoToday): string[] {
+  const mm = String(today.month).padStart(2, '0')
+  const dd = String(today.day).padStart(2, '0')
+  const patrones = [`fecha_nacimiento.like.____-${mm}-${dd}`]
+  if (today.month === 2 && today.day === 28 && !isLeapYear(today.year)) {
+    patrones.push('fecha_nacimiento.like.____-02-29')
   }
-  return false
+  return patrones
 }
 
 /** Capitaliza el nombre para el saludo (en la base puede venir en MAYÚSCULAS). */
@@ -154,7 +191,8 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     )
   }
-  if (req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+  const recibido = req.headers.get('authorization') ?? ''
+  if (!secretoValido(recibido, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
   }
 
@@ -184,7 +222,10 @@ export async function GET(req: NextRequest) {
 
     // ── 3) Traer socios candidatos de esas empresas ────────────────────
     //  - deleted_at IS NULL  → no saludar socios dados de baja
-    //  - mail / fecha_nacimiento no nulos → sin esos datos no hay nada que hacer
+    //  - mail no nulo → sin mail no hay nada que hacer
+    //  - fecha_nacimiento filtrada en SQL por mes/día de HOY (E23): antes se
+    //    traían todos los socios con mail de las empresas activas (miles de
+    //    filas en una base grande) para descartar casi todos en JS.
     const { data: sociosData, error: sociosErr } = await admin
       .from('socios_datos')
       .select(
@@ -193,7 +234,7 @@ export async function GET(req: NextRequest) {
       .in('empresa_id', empresaIds)
       .is('deleted_at', null)
       .not('mail', 'is', null)
-      .not('fecha_nacimiento', 'is', null)
+      .or(patronesCumpleHoy(today).join(','))
 
     if (sociosErr) {
       console.error('[cron/birthdays] error consultando socios:', sociosErr.message)
@@ -203,13 +244,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const socios = (sociosData ?? []) as SocioRow[]
-
-    // ── 4) Filtrar los que cumplen años hoy ────────────────────────────
-    const cumpleaneros = socios.filter((s) => {
-      const bd = parseBirthMonthDay(s.fecha_nacimiento)
-      return bd ? cumpleHoy(bd, today) : false
-    })
+    const cumpleaneros = (sociosData ?? []) as SocioRow[]
 
     // ── 4b) Bajas: quién pidió no recibir ──────────────────────────────
     // El saludo de cumpleaños es el ÚNICO envío del sistema que no sale del
@@ -243,47 +278,50 @@ export async function GET(req: NextRequest) {
         .map((l) => l.socio_id as string),
     )
 
-    // ── 6) Enviar y logear ─────────────────────────────────────────────
+    // ── 6) Enviar y logear, en tandas de BATCH_SIZE en paralelo ────────
     let sent = 0
     let skipped = 0
     const errors: { socio_id: string; mail: string; error: string }[] = []
+    const inicio = Date.now()
+    let hasMore = false
 
-    for (const socio of cumpleaneros) {
+    /** Procesa un socio: filtros de skip, envío y log. No lanza. */
+    async function procesarUno(socio: SocioRow): Promise<void> {
       // Ya saludado hoy (re-ejecución del cron) → no reenviar.
       if (yaEnviados.has(socio.id)) {
         skipped++
-        continue
+        return
       }
 
       const mail = (socio.mail ?? '').trim()
       const empresaId = socio.empresa_id
       if (!mail || !empresaId) {
         skipped++
-        continue
+        return
       }
 
       // Pidió no recibir. No se logea como error ni se reintenta: no es una
       // falla, es la decisión de la persona.
       if (bajas.has(`${empresaId}|${mail.toLowerCase()}`)) {
         skipped++
-        continue
+        return
       }
 
-      const data = empresasActivas.get(empresaId)
-      let result: SendResult
+      const data: ActiveEmpresa | undefined = empresasActivas.get(empresaId)
       if (!data) {
         // La empresa dejó de estar activa entre consultas — saltear.
         skipped++
-        continue
+        return
       }
 
       // Filtro por estado: si la empresa configuró "solo activos" y este
       // socio no está marcado como Activo, no se le manda saludo.
       if (data.soloActivos && !esEstadoActivo(socio.estado_registro_nombre)) {
         skipped++
-        continue
+        return
       }
 
+      let result: SendResult
       if (!data.cuenta) {
         result = {
           ok: false,
@@ -331,6 +369,26 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    for (let i = 0; i < cumpleaneros.length; i += BATCH_SIZE) {
+      if (Date.now() - inicio > TIME_BUDGET_MS) {
+        // Se corta ACÁ, antes que Vercel mate la función a los 60 s. Lo que
+        // queda sin tocar lo recoge la segunda corrida del día (11:30 UTC,
+        // ver vercel.json) — es idempotente contra `birthday_email_logs`.
+        hasMore = true
+        break
+      }
+      const tanda = cumpleaneros.slice(i, i + BATCH_SIZE)
+      // allSettled, no all: un mail que tira una excepción no debe abortar
+      // el resto de la tanda (procesarUno ya atrapa los rechazos de Gmail
+      // adentro de `result`, pero no descartamos un error inesperado).
+      const resultados = await Promise.allSettled(tanda.map(procesarUno))
+      for (const r of resultados) {
+        if (r.status === 'rejected') {
+          console.error('[cron/birthdays] fallo inesperado procesando un socio:', r.reason)
+        }
+      }
+    }
+
     const summary = {
       ok: true as const,
       fecha: today.iso,
@@ -338,11 +396,13 @@ export async function GET(req: NextRequest) {
       sent,
       skipped,
       errors,
+      has_more: hasMore,
     }
 
     console.log(
       `[cron/birthdays] ${today.iso} · encontrados=${cumpleaneros.length} ` +
-        `enviados=${sent} salteados=${skipped} errores=${errors.length}`,
+        `enviados=${sent} salteados=${skipped} errores=${errors.length}` +
+        (hasMore ? ' · CORTADO POR TIEMPO (has_more) — lo termina la corrida de las 11:30 UTC' : ''),
     )
 
     return NextResponse.json(summary)

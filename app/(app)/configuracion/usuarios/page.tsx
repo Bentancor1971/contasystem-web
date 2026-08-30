@@ -13,9 +13,11 @@ import {
   EyeOff,
   Pencil,
   Save,
+  RotateCcw,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useApp } from '@/lib/app-context'
+import { fetchApi } from '@/lib/api-client'
 import {
   canManageUsers,
   ROL_LABEL,
@@ -37,6 +39,7 @@ export default function UsuariosPage() {
   const router = useRouter()
   const { empresa, permisos, userId: miUserId } = useApp()
   const [usuarios, setUsuarios] = useState<UsuarioRow[] | null>(null)
+  const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<UsuarioRow | null>(null)
 
@@ -53,18 +56,16 @@ export default function UsuariosPage() {
 
   async function cargar() {
     setUsuarios(null)
-    const res = await fetch(
-      `/api/admin/usuarios?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
-      { cache: 'no-store' },
-    )
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '')
-      toast.error(`No pude listar usuarios · ${res.status} ${txt}`)
-      setUsuarios([])
-      return
+    setError('')
+    try {
+      const data = await fetchApi<{ usuarios: UsuarioRow[] }>(
+        `/api/admin/usuarios?empresa_id=${encodeURIComponent(empresa.empresa_id)}`,
+      )
+      setUsuarios(data.usuarios)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo listar usuarios')
+      setUsuarios(null)
     }
-    const data = (await res.json()) as { usuarios: UsuarioRow[] }
-    setUsuarios(data.usuarios)
   }
 
   if (!canManageUsers(permisos)) return null
@@ -129,7 +130,14 @@ export default function UsuariosPage() {
 
         <div className="perforated mb-3" />
 
-        {usuarios === null ? (
+        {error ? (
+          <div className="py-8 text-center">
+            <p className="text-sm text-status-no mb-3">{error}</p>
+            <button type="button" className="btn-secondary" onClick={() => void cargar()}>
+              <RotateCcw size={14} /> Reintentar
+            </button>
+          </div>
+        ) : usuarios === null ? (
           <div className="py-10 flex justify-center">
             <Loader2 size={24} className="animate-spin text-amber" />
           </div>
@@ -254,7 +262,11 @@ function FormCrear({
 
     setBusy(true)
     try {
-      const res = await fetch('/api/admin/usuarios', {
+      // `asociado: true` cuando el email ya tenía cuenta en Auth por otra
+      // empresa: el servidor no crea un usuario nuevo, asocia el existente a
+      // esta (ver app/api/admin/usuarios/route.ts) — la pantalla lo refleja
+      // en vez de decir "creado" sobre una cuenta que ya existía.
+      const data = await fetchApi<{ asociado?: boolean }>('/api/admin/usuarios', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -265,14 +277,11 @@ function FormCrear({
           rol,
         }),
       })
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string
-      }
-      if (!res.ok) {
-        toast.error(data.error ?? `Error · ${res.status}`)
-        return
-      }
-      toast.success(`Usuario ${nombre.trim()} creado`)
+      toast.success(
+        data.asociado
+          ? `${email.trim()} ya tenía cuenta — se asoció a esta empresa`
+          : `Usuario ${nombre.trim()} creado`,
+      )
       onCreated()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al crear usuario')
@@ -482,19 +491,11 @@ function FormEditar({
       if (nombreCambio) body.nombre = nombre.trim()
       if (rolCambio) body.rol = rol
 
-      const res = await fetch(
-        `/api/admin/usuarios/${encodeURIComponent(usuario.user_id)}`,
-        {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-      )
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        toast.error(data.error ?? `Error · ${res.status}`)
-        return
-      }
+      await fetchApi(`/api/admin/usuarios/${encodeURIComponent(usuario.user_id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
       toast.success('Usuario actualizado')
       onSaved()
     } catch (err) {

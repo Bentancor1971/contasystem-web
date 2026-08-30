@@ -24,7 +24,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAccesoEmpresa } from '@/lib/checkin-auth'
 import { extraerToken } from '@/lib/checkin-token'
-import { buscarEntrada, contarEvento, leerEntradaCruda, marcarAsistencia } from '@/lib/entradas'
+import {
+  buscarEntrada,
+  contarEvento,
+  leerEntradaCruda,
+  marcarAsistencia,
+  marcarAsistenciaScoped,
+} from '@/lib/entradas'
 import type { MarcarResponse } from '@/lib/entradas-types'
 
 export const runtime = 'nodejs'
@@ -57,6 +63,15 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminClient()
+
+    // P5: un solo viaje con la RPC `marcar_asistencia_scoped` (63_app_web_
+    // fixes.sql) en vez de leerEntradaCruda + marcarAsistencia + contarEvento.
+    // Si el SQL no está aplicado, degrada sola al camino de siempre.
+    const viaRpc = await marcarAsistenciaScoped(admin, token, empresaId, eventoId, auth.email)
+    if (viaRpc) {
+      return NextResponse.json(viaRpc)
+    }
+
     const cruda = await leerEntradaCruda(admin, token)
 
     if (!cruda || cruda.empresa_id !== empresaId) {

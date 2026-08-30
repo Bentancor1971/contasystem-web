@@ -345,6 +345,12 @@ export default async function PostulacionPage({
         <>
           {convocatoria.instructivo && <Instructivo texto={convocatoria.instructivo} />}
           <Postulacion
+            // `key={modo}` fuerza un remount cuando cambia: "Volver a
+            // anotarme" hace `router.refresh()` (no un reload de página) y
+            // sin esto React conserva el `useState` interno de `Postulacion`
+            // —que quedó en la fase `retirado`— aunque el servidor ya mande
+            // `modo: 'postular'` con la baja hecha.
+            key={puedeRetirarse ? 'retirar' : 'postular'}
             token={token}
             modo={puedeRetirarse ? 'retirar' : 'postular'}
             verificacionDigitos={estado.verificacion_digitos}
