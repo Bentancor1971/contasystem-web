@@ -121,12 +121,11 @@ del desktop no vuelva a marcar a la persona (antes, `COALESCE(existente,
 entrante)` la resucitaba en el próximo reenvío de recibo). Una marca
 genuinamente nueva —un reescaneo después de la desmarca— sí entra.
 
-> **Pendiente del lado desktop:** `pullAsistenciasQR` baja sólo lo marcado y
-> "nunca desmarca", así que una desmarca hecha en la web **no llega al
-> desktop** todavía: la corrección queda firme en la nube pero la base local
-> sigue con la persona presente. El SQL necesario del lado desktop está
-> documentado al pie de
-> [`supabase/desmarcar_asistencia.sql`](supabase/desmarcar_asistencia.sql).
+> **Lado desktop: resuelto.** `pullAsistenciasQR` baja también las desmarcas
+> (segunda consulta sobre `desmarcada_at`) y resuelve por última escritura; y
+> desde el 30/08/2026 una desmarca hecha EN el desktop viaja a la nube por la
+> misma RPC (`autoPushDesmarcaAsistencia`). Ver
+> `docs/eventos-performance-propuesta.md` en el repo del desktop.
 
 `entradas_remoto` guarda un único `nombre_completo` armado como
 "NOMBRE APELLIDO", así que para ordenar por apellido hay que deshacer esa unión.

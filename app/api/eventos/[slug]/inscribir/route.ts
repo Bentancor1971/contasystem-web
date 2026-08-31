@@ -161,7 +161,7 @@ export async function POST(
     // temprano, así el 409 sale antes de completar categoría/transporte/etc.
     const [cfgCruda, inscriptosActuales, part, previa] = await Promise.all([
       loadEventoWebConfig(admin, evento.id),
-      evento.cupo_maximo != null ? contarInscriptos(admin, evento.id) : Promise.resolve(0),
+      evento.cupo_maximo != null ? contarInscriptos(admin, evento) : Promise.resolve(0),
       resolverParticipante(admin, evento, documento),
       buscarInscripcionPrevia(admin, evento.id, documento),
     ])
@@ -341,7 +341,7 @@ export async function POST(
       // puede reintentar sin transporte). Mismo criterio que el cupo del evento:
       // chequeo temprano, no atómico — el cierre real lo hace la RPC/recuento.
       if (evento.transporte_cupo_maximo != null) {
-        const conTransporte = await contarConTransporte(admin, evento.id)
+        const conTransporte = await contarConTransporte(admin, evento)
         if (conTransporte >= evento.transporte_cupo_maximo) {
           return NextResponse.json(
             { error: 'Se completó el cupo de transporte' },
@@ -528,10 +528,17 @@ export async function POST(
         // E4/I3: cupo + transporte + INSERT en una sola transacción, serializada
         // por evento (`pg_advisory_xact_lock`) — cierra la carrera de raíz en vez
         // de sólo angostarla. Ver docs/supabase/60_eventos_web_fixes.sql.
+        // La RPC cuenta SÓLO filas remotas, así que el tope que se le pasa es
+        // el cupo efectivo: el configurado menos lo ya ocupado desde el desktop
+        // (65_eventos_puente_desktop.sql).
         const { data: rpcData, error: rpcErr } = await admin.rpc('inscribir_evento_web', {
           p_row: filaCompleta,
-          p_cupo_maximo: evento.cupo_maximo,
-          p_transporte_cupo: llevaTransporte ? evento.transporte_cupo_maximo : null,
+          p_cupo_maximo: evento.cupo_maximo != null
+            ? Math.max(0, evento.cupo_maximo - (evento.ocupados_desktop ?? 0))
+            : null,
+          p_transporte_cupo: llevaTransporte && evento.transporte_cupo_maximo != null
+            ? Math.max(0, evento.transporte_cupo_maximo - (evento.ocupados_desktop_transporte ?? 0))
+            : null,
         })
 
         if (!rpcErr) {
@@ -625,7 +632,7 @@ export async function POST(
     // bloque no corre — el cupo ya quedó garantizado en la misma transacción.
     if (!usarRpc) {
       if (evento.cupo_maximo != null) {
-        const actual = await contarInscriptos(admin, evento.id)
+        const actual = await contarInscriptos(admin, evento)
         if (actual > evento.cupo_maximo) {
           await admin
             .from('inscripciones_evento_remoto')
@@ -635,7 +642,7 @@ export async function POST(
         }
       }
       if (llevaTransporte && evento.transporte_cupo_maximo != null) {
-        const actualTransporte = await contarConTransporte(admin, evento.id)
+        const actualTransporte = await contarConTransporte(admin, evento)
         if (actualTransporte > evento.transporte_cupo_maximo) {
           await admin
             .from('inscripciones_evento_remoto')

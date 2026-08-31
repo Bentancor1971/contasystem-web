@@ -26,7 +26,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAccesoEmpresa } from '@/lib/checkin-auth'
-import { contarEvento, resolverNombres } from '@/lib/entradas'
+import { contarEvento, resolverNombres, type NombrePartido } from '@/lib/entradas'
 import {
   grupoEntrada,
   rangoGrupo,
@@ -59,7 +59,15 @@ interface FilaCruda {
   estado: 'valida' | 'anulada'
   asistio_at: string | null
   asistio_por: string | null
+  /** Separados desde 65_ (los manda el push del desktop); NULL en entradas viejas. */
+  nombre?: string | null
+  apellido?: string | null
 }
+
+const COLS_BASE =
+  'token, nombre_completo, documento, categoria_nombre, rol_nombre, numero, estado, asistio_at, asistio_por'
+/** Con 65_ aplicado la entrada trae nombre y apellido separados. */
+const COLS_CON_NOMBRES = `${COLS_BASE}, nombre, apellido`
 
 export async function GET(req: NextRequest) {
   try {
@@ -83,33 +91,34 @@ export async function GET(req: NextRequest) {
 
     const admin = createAdminClient()
 
-    let query = admin
-      .from('entradas_remoto')
-      .select(
-        'token, nombre_completo, documento, categoria_nombre, rol_nombre, numero, estado, asistio_at, asistio_por',
-        { count: 'exact' },
-      )
-      .eq('empresa_id', empresaId)
-      .eq('evento_id', eventoId)
+    const armarQuery = (cols: string) => {
+      let query = admin
+        .from('entradas_remoto')
+        .select(cols, { count: 'exact' })
+        .eq('empresa_id', empresaId)
+        .eq('evento_id', eventoId)
 
-    if (rol === ROL_ASISTENTE) {
-      // Sin rol asignado = asistente: así lo trata el desktop, y si no la
-      // mayoría de la gente no aparecería en el filtro por defecto.
-      query = query.or(`rol_nombre.eq.${ROL_ASISTENTE},rol_nombre.is.null`)
-    } else if (rol !== ROL_TODOS) {
-      query = query.eq('rol_nombre', rol)
+      if (rol === ROL_ASISTENTE) {
+        // Sin rol asignado = asistente: así lo trata el desktop, y si no la
+        // mayoría de la gente no aparecería en el filtro por defecto.
+        query = query.or(`rol_nombre.eq.${ROL_ASISTENTE},rol_nombre.is.null`)
+      } else if (rol !== ROL_TODOS) {
+        query = query.eq('rol_nombre', rol)
+      }
+
+      if (q) {
+        // Escapar los wildcards de LIKE, y sacar los caracteres que PostgREST usa
+        // como separadores dentro de `or(...)` — una coma en el término partiría
+        // el filtro en dos y devolvería cualquier cosa.
+        const esc = q.replace(/([\\%_])/g, '\\$1').replace(/[,()"]/g, ' ')
+        query = query.or(`nombre_completo.ilike.%${esc}%,documento.ilike.%${esc}%`)
+      }
+
+      return query.order('nombre_completo', { ascending: true }).limit(FETCH_CAP)
     }
 
-    if (q) {
-      // Escapar los wildcards de LIKE, y sacar los caracteres que PostgREST usa
-      // como separadores dentro de `or(...)` — una coma en el término partiría
-      // el filtro en dos y devolvería cualquier cosa.
-      const esc = q.replace(/([\\%_])/g, '\\$1').replace(/[,()"]/g, ' ')
-      query = query.or(`nombre_completo.ilike.%${esc}%,documento.ilike.%${esc}%`)
-    }
-
-    const [{ data, error, count }, conteo, empresaRow] = await Promise.all([
-      query.order('nombre_completo', { ascending: true }).limit(FETCH_CAP),
+    const [primera, conteo, empresaRow] = await Promise.all([
+      armarQuery(COLS_CON_NOMBRES),
       contarEvento(admin, empresaId, eventoId),
       admin
         .from('empresas_online_remoto')
@@ -118,6 +127,14 @@ export async function GET(req: NextRequest) {
         .maybeSingle(),
     ])
 
+    let { data, error, count } = primera
+    if (error && /column|does not exist/i.test(error.message)) {
+      // 65_eventos_puente_desktop.sql sin aplicar: se reintenta sin las
+      // columnas nuevas y los nombres se resuelven contra socios_datos.
+      console.warn('[entradas] falta 65_ (nombre/apellido): degradando a socios_datos')
+      ;({ data, error, count } = await armarQuery(COLS_BASE))
+    }
+
     if (error) {
       return NextResponse.json(
         { error: `Error consultando entradas: ${error.message}` },
@@ -125,25 +142,24 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const crudas = (data ?? []) as FilaCruda[]
+    const crudas = (data ?? []) as unknown as FilaCruda[]
 
-    // Nombre y apellido separados: sólo hacen falta para ordenar y mostrar
-    // "APELLIDO, Nombre", así que se resuelven en una sola consulta por tanda,
-    // acotada a la empresa del evento y a las demás de su grupo (P5).
+    // Nombre y apellido separados: desde 65_ vienen en la propia entrada (los
+    // manda el push del desktop). socios_datos queda como fallback SÓLO para
+    // las emitidas antes de esa migración — si todas traen apellido, esta
+    // consulta ni se hace.
+    const sinNombre = crudas.filter((f) => !f.apellido?.trim() && f.documento)
     const grupoId = (empresaRow.data as { grupo_id: string | null } | null)?.grupo_id ?? null
-    const fichas = await resolverNombres(
-      admin,
-      crudas.map((f) => f.documento ?? ''),
-      empresaId,
-      grupoId,
-    )
+    const fichas: Map<string, NombrePartido> = sinNombre.length
+      ? await resolverNombres(admin, sinNombre.map((f) => f.documento ?? ''), empresaId, grupoId)
+      : new Map()
 
     const entradas: EntradaListada[] = crudas.map((f) => {
       const ficha = f.documento ? fichas.get(f.documento.trim()) : undefined
       return {
         ...f,
-        nombre: ficha?.nombre ?? null,
-        apellido: ficha?.apellido ?? null,
+        nombre: f.nombre?.trim() || ficha?.nombre || null,
+        apellido: f.apellido?.trim() || ficha?.apellido || null,
       }
     })
 

@@ -275,6 +275,16 @@ export interface EventoRemoto {
    * columna y COALESCE la deja en TRUE.
    */
   permitir_categoria_otros: boolean
+  /**
+   * Cupo ocupado por inscripciones cargadas A MANO en el desktop (rol
+   * Asistente, activas). Las de la web no están acá: ya son filas de
+   * inscripciones_evento_remoto y se cuentan solas. Lo publica el push del
+   * desktop (65_eventos_puente_desktop.sql); `?? 0` cubre filas previas o la
+   * migración sin aplicar.
+   */
+  ocupados_desktop?: number | null
+  /** Ídem para el cupo propio del transporte. */
+  ocupados_desktop_transporte?: number | null
   /** El evento incluye un sorteo (opt-in al inscribirse). Ver docs/supabase/31. */
   sorteo_disponible: boolean
   /**

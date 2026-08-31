@@ -295,30 +295,36 @@ export async function precioMaximoCategoria(
 /** Cuántas inscripciones ocupan cupo en el evento. */
 export async function contarInscriptos(
   admin: SupabaseClient,
-  eventoId: string,
+  evento: Pick<EventoRemoto, 'id' | 'ocupados_desktop'>,
 ): Promise<number> {
   const { count, error } = await admin
     .from('inscripciones_evento_remoto')
     .select('id', { count: 'exact', head: true })
-    .eq('evento_id', eventoId)
+    .eq('evento_id', evento.id)
     .in('estado', ESTADOS_OCUPAN)
   if (error) throw new Error(`Error contando inscriptos: ${error.message}`)
-  return count ?? 0
+  // Acá sólo están las inscripciones que nacieron en la WEB. Las cargadas a
+  // mano en el desktop ocupan el mismo cupo pero no tienen fila remota: llegan
+  // como un contador que publica el push (65_eventos_puente_desktop.sql).
+  // Sin ese contador un evento que se llena por los dos lados se sobrevende.
+  return (count ?? 0) + (evento.ocupados_desktop ?? 0)
 }
 
 /** Cuántas inscripciones que ocupan cupo llevan transporte (para su cupo propio). */
 export async function contarConTransporte(
   admin: SupabaseClient,
-  eventoId: string,
+  evento: Pick<EventoRemoto, 'id' | 'ocupados_desktop_transporte'>,
 ): Promise<number> {
   const { count, error } = await admin
     .from('inscripciones_evento_remoto')
     .select('id', { count: 'exact', head: true })
-    .eq('evento_id', eventoId)
+    .eq('evento_id', evento.id)
     .eq('lleva_transporte', true)
     .in('estado', ESTADOS_OCUPAN)
   if (error) throw new Error(`Error contando transporte: ${error.message}`)
-  return count ?? 0
+  // Mismo criterio que contarInscriptos: se suman los lugares de ómnibus
+  // ocupados por inscripciones del desktop.
+  return (count ?? 0) + (evento.ocupados_desktop_transporte ?? 0)
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -421,7 +427,7 @@ async function loadEventoPublicoImpl(
   const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos, sorteoMax] =
     await Promise.all([
       loadCategoriasEvento(admin, ev.id, monedas[0].codigo),
-      ev.cupo_maximo != null ? contarInscriptos(admin, ev.id) : Promise.resolve(0),
+      ev.cupo_maximo != null ? contarInscriptos(admin, ev) : Promise.resolve(0),
       // Las categorías de socio (clasificación sin precio) sólo se ofrecen como
       // grilla en eventos sin costo; en los con costo la grilla son las categorías
       // con precio (evento_categorias_remoto).
@@ -429,7 +435,7 @@ async function loadEventoPublicoImpl(
         ? loadCategoriasSocio(admin, ev.empresa_id)
         : Promise.resolve([] as CategoriaSocioPublica[]),
       loadEventoWebConfig(admin, ev.id),
-      transporteConCupo ? contarConTransporte(admin, ev.id) : Promise.resolve(0),
+      transporteConCupo ? contarConTransporte(admin, ev) : Promise.resolve(0),
       ev.sorteo_disponible ? maxNumeroSorteo(admin, ev.id) : Promise.resolve(null),
     ])
 
