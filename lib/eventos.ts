@@ -699,6 +699,50 @@ async function padronDeEmpresa(
 }
 
 /**
+ * La ficha (socios_datos) de un documento, buscada en el PADRÓN de la empresa.
+ *
+ * Compartida entre eventos (`resolverParticipante`) y la ficha web
+ * (`leerFichaPersonal` en lib/ficha.ts): es LA búsqueda de socios_datos por
+ * documento del repo, así el scope del grupo (58_) y el desempate entre
+ * tenants viven en un solo lugar y no en dos copias que divergen.
+ *
+ * `columnas` es la proyección de cada caller; el resto es fijo:
+ *   · `documento` va EN CLARO y ya normalizado (ver lib/documento.ts) — los
+ *     hash del desktop y de la web no coinciden nunca, ver ese archivo;
+ *   · si la misma cédula tiene ficha en los dos tenants (grupo y empresa
+ *     padre) gana la del grupo: es la que dejó la migración 41 y la que edita
+ *     el desktop desde que el padrón se comparte.
+ */
+export async function buscarSocioEnPadron(
+  admin: SupabaseClient,
+  empresaId: string,
+  documentoNormalizado: string,
+  columnas: string,
+): Promise<Record<string, unknown> | null> {
+  // La ficha se busca en el PADRÓN, que puede no ser la empresa dada (grupo
+  // empresarial: el socio es uno solo y vive en la padre o en el grupo).
+  const padron = await padronDeEmpresa(admin, empresaId)
+
+  let query = admin
+    .from('socios_datos')
+    .select(columnas)
+    .eq('documento', documentoNormalizado)
+    .is('deleted_at', null)
+
+  query = padron.grupoId
+    ? query.or(`empresa_id.eq.${padron.empresaId},grupo_id.eq.${padron.grupoId}`)
+    : query.eq('empresa_id', padron.empresaId)
+
+  const { data, error } = await query
+    .order('grupo_id', { ascending: true, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Error buscando socio: ${error.message}`)
+  return (data as Record<string, unknown> | null) ?? null
+}
+
+/**
  * Resuelve la cédula contra el registro del evento y decide el tipo de
  * participante. Se exigen DOS condiciones para la tarifa de socio:
  *   1. el estado de registro de la ficha cuenta como socio (ver esEstadoSocio)
@@ -738,31 +782,14 @@ export async function resolverParticipante(
   }
   if (doc.length < 6) return vacio
 
-  // La ficha se busca en el PADRÓN, que puede no ser la empresa del evento
-  // (grupo empresarial: el socio es uno solo y vive en la padre o en el grupo).
-  const padron = await padronDeEmpresa(admin, evento.empresa_id)
-
-  let query = admin
-    .from('socios_datos')
-    .select(
-      'id, nombre, apellido, mail, telefono, celular, documento_hash, estado_registro_nombre, grupo_id',
-    )
-    .eq('documento', doc)
-    .is('deleted_at', null)
-
-  query = padron.grupoId
-    ? query.or(`empresa_id.eq.${padron.empresaId},grupo_id.eq.${padron.grupoId}`)
-    : query.eq('empresa_id', padron.empresaId)
-
-  const { data: socio, error } = await query
-    // Si la misma cédula tiene ficha en los dos tenants (grupo y empresa padre)
-    // gana la del grupo: es la que dejó la migración 41 y la que edita el
-    // desktop desde que el padrón se comparte.
-    .order('grupo_id', { ascending: true, nullsFirst: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw new Error(`Error buscando socio: ${error.message}`)
+  // La ficha, con el scope del padrón y el desempate entre tenants: ver
+  // `buscarSocioEnPadron`.
+  const socio = await buscarSocioEnPadron(
+    admin,
+    evento.empresa_id,
+    doc,
+    'id, nombre, apellido, mail, telefono, celular, documento_hash, estado_registro_nombre, grupo_id',
+  )
   if (!socio) return vacio
 
   const docHash = (socio.documento_hash as string) ?? ''

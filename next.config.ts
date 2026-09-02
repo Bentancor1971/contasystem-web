@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
       { source: "/v/:path*", headers: SIN_CACHE },
       { source: "/p/:path*", headers: SIN_CACHE },
       { source: "/mesa/:path*", headers: SIN_CACHE },
+      // La ficha del socio: tras el segundo factor la página muestra los
+      // datos personales completos — nada de eso queda en caché de disco.
+      { source: "/f/:path*", headers: SIN_CACHE },
     ];
   },
 };

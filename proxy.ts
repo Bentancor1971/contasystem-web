@@ -23,8 +23,9 @@ export const config = {
      *   clicks y bajas de los mails (los abre el destinatario, sin sesión) y
      *   los endpoints que consume el desktop con x-api-key. `api/events` no
      *   captura `api/eventos`: divergen en la 's'.
-     * - e/, a/, c/, p/, v, v/, mesa, mesa/ y sus api/ — las rutas públicas de
-     *   eventos, entradas QR, certificados, postulación, votación y mesa. Son
+     * - e/, a/, c/, p/, v, v/, f/, mesa, mesa/ y sus api/ — las rutas públicas
+     *   de eventos, entradas QR, certificados, postulación, votación, ficha de
+     *   socio y mesa. Son
      *   las mismas de PUBLIC_SIN_SESION en lib/supabase/middleware.ts (que
      *   queda como segunda línea de defensa por si estas listas divergen).
      *   `v$` y `mesa$` cubren la ruta exacta sin capturar otras que empiecen
@@ -33,6 +34,6 @@ export const config = {
      *   de estas rutas NO depende del proxy: las páginas lo fijan en
      *   next.config.ts (headers) y los handlers en su _comun.ts.
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|api/cron|api/tracking|api/events|api/health|api/bajas|api/eventos/|api/votacion/|api/mesa/|api/postulacion/|api/certificados/|t/|b/|e/|a/|c/|p/|v$|v/|mesa$|mesa/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|api/cron|api/tracking|api/events|api/health|api/bajas|api/eventos/|api/votacion/|api/mesa/|api/postulacion/|api/certificados/|api/ficha/|t/|b/|e/|a/|c/|p/|v$|v/|f/|mesa$|mesa/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff2?)$).*)',
   ],
 }

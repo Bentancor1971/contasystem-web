@@ -209,6 +209,21 @@ export const LIMITES = {
   /** Darse de baja. */
   postulacionRetirar: { nombre: 'postulacion_retirar', limite: 10, ventanaSegundos: 300 },
 
+  // Ficha de socio (/f/[token]). Mismo criterio que votación/postulación: el
+  // bloqueo fuerte (5 fallos → 15 minutos) lo lleva la base por credencial, y
+  // el tope por IP cubre al que prueba muchas credenciales distintas. Holgado
+  // por el CGNAT de los operadores móviles. La diferencia con votación es que
+  // acá el premio del factor es la ficha COMPLETA de una persona, así que
+  // guardar —que revalida el factor— tiene su propio bucket, más estrecho.
+  /** Abrir el link. */
+  fichaVer: { nombre: 'ficha_ver', limite: 30, ventanaSegundos: 60 },
+  /** Probar el factor (dígitos o código). */
+  fichaValidar: { nombre: 'ficha_validar', limite: 20, ventanaSegundos: 60 },
+  /** Enviar la propuesta. Una persona lo hace una o dos veces; reenviar reemplaza. */
+  fichaGuardar: { nombre: 'ficha_guardar', limite: 10, ventanaSegundos: 300 },
+  /** Pedir el link de subida del título (cada uno habilita UN PUT a Storage). */
+  fichaTitulo: { nombre: 'ficha_titulo', limite: 5, ventanaSegundos: 300 },
+
   /**
    * Probar el acceso (`/v/prueba-acceso`, `/p/prueba-acceso`).
    *
