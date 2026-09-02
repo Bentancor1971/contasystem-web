@@ -65,6 +65,7 @@ export async function POST(
       ficha,
       membresia: r.membresia,
       catalogos: r.catalogos,
+      campos: r.campos,
       cambios_pendientes: r.cambios_pendientes,
     }
     return NextResponse.json(respuesta, { headers: SIN_CACHE })

@@ -24,7 +24,9 @@ import { buscarSocioEnPadron } from '@/lib/eventos'
 import { normalizeDocumento } from '@/lib/documento'
 import {
   CAMPOS_FICHA,
+  type CampoConfigFicha,
   type CampoFicha,
+  type CamposFicha,
   type CatalogosFicha,
   type ErrorFicha,
   type FichaPersonal,
@@ -101,6 +103,24 @@ function membresia(v: unknown): MembresiaFicha {
   }
 }
 
+/**
+ * La configuración de campos, con la misma normalización que hace el desktop
+ * al guardarla: obligatorio implica visible. Una entrada rara se descarta y
+ * ese campo queda en el default (visible y opcional).
+ */
+function camposDe(v: unknown): CamposFicha {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: CamposFicha = {}
+  for (const [campo, cfg] of Object.entries(v as Record<string, unknown>)) {
+    if (!cfg || typeof cfg !== 'object') continue
+    const c = cfg as Record<string, unknown>
+    const obligatorio = c.obligatorio === true
+    const parsed: CampoConfigFicha = { visible: obligatorio || c.visible !== false, obligatorio }
+    out[campo] = parsed
+  }
+  return out
+}
+
 /** La propuesta pendiente, filtrada a la lista blanca. Nada más baja al cliente. */
 function cambiosPendientes(v: unknown): Partial<Record<CampoFicha, string>> | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
@@ -173,6 +193,7 @@ export interface FichaValidadaServer {
   cedula_valida: boolean
   membresia: MembresiaFicha
   catalogos: CatalogosFicha
+  campos: CamposFicha
   cambios_pendientes: Partial<Record<CampoFicha, string>> | null
 }
 
@@ -193,6 +214,7 @@ export async function validarCredencialFicha(
     cedula_valida: d.cedula_valida === true,
     membresia: membresia(d.membresia),
     catalogos: catalogos(d.catalogos),
+    campos: camposDe(d.campos),
     cambios_pendientes: cambiosPendientes(d.cambios_pendientes),
   }
 }
@@ -299,17 +321,45 @@ export async function crearSubidaTitulo(
 
 // ── Paso 3 · registrar la propuesta ─────────────────────────────────────────
 
+/**
+ * La RPC devuelve, además del id, el contexto para el mail de acuse: identidad
+ * (documento actual), snapshot de membresía, catálogos y los cambios que DE
+ * VERDAD se registraron (la lista blanca puede haber filtrado, y el título lo
+ * suma la propia RPC si el PDF está en Storage).
+ */
+export interface CambioRegistradoServer {
+  ok: true
+  id: string
+  empresa_id: string
+  documento: string
+  membresia: MembresiaFicha
+  catalogos: CatalogosFicha
+  cambios: Partial<Record<CampoFicha | 'titulo_pdf', string>>
+}
+
 export async function registrarFichaCambio(
   admin: SupabaseClient,
   token: string,
   factor: string,
   cambios: Record<string, string>,
-): Promise<{ ok: true; id: string } | ErrorFicha> {
+): Promise<CambioRegistradoServer | ErrorFicha> {
   const d = await llamar(admin, 'registrar_ficha_cambio', {
     p_token: token,
     p_factor: factor,
     p_cambios: cambios,
   })
   if (d.ok !== true) return d as unknown as ErrorFicha
-  return { ok: true, id: textoO(d.id) }
+  const registrados: Partial<Record<CampoFicha | 'titulo_pdf', string>> =
+    cambiosPendientes(d.cambios) ?? {}
+  const tituloPath = (d.cambios as Record<string, unknown> | null)?.['titulo_pdf']
+  if (typeof tituloPath === 'string' && tituloPath !== '') registrados.titulo_pdf = tituloPath
+  return {
+    ok: true,
+    id: textoO(d.id),
+    empresa_id: textoO(d.empresa_id),
+    documento: textoO(d.documento),
+    membresia: membresia(d.membresia),
+    catalogos: catalogos(d.catalogos),
+    cambios: registrados,
+  }
 }

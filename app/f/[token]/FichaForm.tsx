@@ -24,6 +24,8 @@ import { useRef, useState } from 'react'
 import { FileText, Loader2, Lock, Pencil } from 'lucide-react'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import {
+  configDe,
+  LABELS_CAMPOS,
   limpiarCodigo,
   limpiarDocumento,
   mensajeDeErrorFicha,
@@ -135,16 +137,24 @@ function armarValores(v: FichaValidada): { original: Valores; inicial: Valores }
 function Campo({
   id,
   label,
+  obligatorio = false,
+  falta = false,
   children,
 }: {
   id: string
   label: string
+  /** El desktop lo marcó obligatorio: rótulo resaltado + asterisco. */
+  obligatorio?: boolean
+  /** Quedó vacío en un intento de envío: rótulo en rojo hasta completarlo. */
+  falta?: boolean
   children: React.ReactNode
 }) {
+  const color = falta ? 'text-red-700' : obligatorio ? 'text-amber-deep' : ''
   return (
     <div>
-      <label htmlFor={id} className="label-mono block mb-1.5">
+      <label htmlFor={id} className={`label-mono block mb-1.5 ${color}`}>
         {label}
+        {obligatorio && <span aria-hidden> *</span>}
       </label>
       {children}
     </div>
@@ -162,6 +172,8 @@ function SelectMembresia({
   opciones,
   valor,
   nombreActual,
+  obligatorio = false,
+  falta = false,
   onChange,
 }: {
   id: string
@@ -169,17 +181,19 @@ function SelectMembresia({
   opciones: ItemCatalogo[]
   valor: string
   nombreActual: string
+  obligatorio?: boolean
+  falta?: boolean
   onChange: (v: string) => void
 }) {
   if (opciones.length === 0) {
     return (
-      <Campo id={id} label={label}>
+      <Campo id={id} label={label} obligatorio={obligatorio} falta={falta}>
         <input id={id} className="field" value={nombreActual || '—'} readOnly tabIndex={-1} />
       </Campo>
     )
   }
   return (
-    <Campo id={id} label={label}>
+    <Campo id={id} label={label} obligatorio={obligatorio} falta={falta}>
       <select id={id} className="field" value={valor} onChange={(e) => onChange(e.target.value)}>
         {/* La opción vacía existe sólo si la ficha no tiene valor hoy: elegirla
             no viaja (vaciar no es una propuesta). */}
@@ -224,6 +238,10 @@ export function FichaForm({
   // El PDF del título elegido, todavía sin subir: sube recién al enviar, así
   // un PDF elegido y arrepentido no deja nada en el servidor.
   const [tituloFile, setTituloFile] = useState<File | null>(null)
+  // true = el server mandó el mail de acuse con el detalle antes → después.
+  const [acuseEnviado, setAcuseEnviado] = useState(false)
+  // Obligatorios que quedaron vacíos en el último intento de envío.
+  const [faltantes, setFaltantes] = useState<Set<string>>(new Set())
   const tituloInputRef = useRef<HTMLInputElement>(null)
   const enVuelo = useRef(false)
 
@@ -366,6 +384,42 @@ export function FichaForm({
     e.preventDefault()
     if (enVuelo.current) return
 
+    // Obligatorios (los marcó el desktop): el campo tiene que quedar CON valor
+    // — si la ficha ya lo traía, no hace falta tocarlo. Se chequea sobre lo
+    // que muestra el formulario, no sobre lo que viaja.
+    if (datos) {
+      const vacios: string[] = []
+      const aplicables = [
+        'nombre', 'apellido', 'sexo', 'fecha_nacimiento', 'generacion',
+        ...(datos.membresia.titulo_aplica ? ['fecha_recibido'] : []),
+        'telefono', 'celular', 'mail', 'direccion', 'localidad',
+        'categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id',
+      ]
+      for (const campo of aplicables) {
+        const cfg = configDe(datos.campos, campo)
+        if (!cfg.visible || !cfg.obligatorio) continue
+        if ((valores[campo as CampoFicha] ?? '').trim() === '') vacios.push(campo)
+      }
+      const cfgTitulo = configDe(datos.campos, 'titulo_pdf')
+      if (
+        datos.membresia.titulo_aplica && cfgTitulo.visible && cfgTitulo.obligatorio &&
+        !tituloFile && !datos.membresia.titulo_cargado
+      ) {
+        vacios.push('titulo_pdf')
+      }
+      if (vacios.length > 0) {
+        setFaltantes(new Set(vacios))
+        setAviso({
+          titulo: 'Faltan datos obligatorios',
+          detalle: `Completá: ${vacios.map((c) => LABELS_CAMPOS[c] ?? c).join(', ')}. Están marcados con *.`,
+          terminal: false,
+        })
+        arriba()
+        return
+      }
+      setFaltantes(new Set())
+    }
+
     const cambios = cambiosAEnviar()
     if (Object.keys(cambios).length === 0 && !tituloFile) {
       setAviso({
@@ -406,7 +460,7 @@ export function FichaForm({
       }
     }
 
-    const r = await pedir<{ ok: true; id: string }>(`${base}/guardar`, {
+    const r = await pedir<{ ok: true; id: string; acuse_enviado?: boolean }>(`${base}/guardar`, {
       factor,
       cambios,
       subio_titulo: !!tituloFile,
@@ -415,6 +469,7 @@ export function FichaForm({
     setOcupado(false)
 
     if (r.estado === 'ok') {
+      setAcuseEnviado(r.data.acuse_enviado === true)
       setFase('listo')
       arriba()
       return
@@ -454,6 +509,7 @@ export function FichaForm({
           <p className="text-ink-2 text-[17px] leading-relaxed">
             Los recibió la asociación y los va a revisar antes de aplicarlos. No tenés que
             hacer nada más — si hiciera falta aclarar algo, te contactan al mail de tu ficha.
+            {acuseEnviado && ' Te mandamos un mail con el detalle de lo que enviaste.'}
           </p>
         </div>
       </div>
@@ -524,6 +580,15 @@ export function FichaForm({
 
   const cat = datos.catalogos
   const mem = datos.membresia
+  // Config por campo, decidida en el desktop: qué se ve y qué se exige.
+  const vis = (campo: string) => configDe(datos.campos, campo).visible
+  const obl = (campo: string) => configDe(datos.campos, campo).obligatorio
+  const falta = (campo: string) => faltantes.has(campo)
+  const hayPersonales = ['nombre', 'apellido', 'sexo', 'fecha_nacimiento', 'generacion']
+    .concat(mem.titulo_aplica ? ['fecha_recibido'] : []).some(vis)
+  const hayContacto = ['telefono', 'celular', 'mail', 'direccion', 'localidad'].some(vis)
+  const hayMembresia = ['categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id'].some(vis)
+  const hayTitulo = mem.titulo_aplica && vis('titulo_pdf')
 
   return (
     <div className="rise">
@@ -574,103 +639,152 @@ export function FichaForm({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
-          <Campo id="nombre" label="Nombre">
-            <input id="nombre" className="field" value={valores.nombre ?? ''} maxLength={200}
-              onChange={(e) => setCampo('nombre', e.target.value)} autoComplete="given-name" />
-          </Campo>
-          <Campo id="apellido" label="Apellido">
-            <input id="apellido" className="field" value={valores.apellido ?? ''} maxLength={200}
-              onChange={(e) => setCampo('apellido', e.target.value)} autoComplete="family-name" />
-          </Campo>
-          <Campo id="sexo" label="Sexo">
-            <select id="sexo" className="field" value={valores.sexo ?? ''}
-              onChange={(e) => setCampo('sexo', e.target.value)}>
-              {(valores.sexo ?? '') === '' && <option value="">Sin especificar</option>}
-              <option value="F">Femenino</option>
-              <option value="M">Masculino</option>
-            </select>
-          </Campo>
-          <Campo id="fecha_nacimiento" label="Fecha de nacimiento">
-            <input id="fecha_nacimiento" type="date" className="field" value={valores.fecha_nacimiento ?? ''}
-              onChange={(e) => setCampo('fecha_nacimiento', e.target.value)} />
-          </Campo>
-          <Campo id="generacion" label="Generación">
-            <input id="generacion" className="field" value={valores.generacion ?? ''} maxLength={200}
-              onChange={(e) => setCampo('generacion', e.target.value)} />
-          </Campo>
-          {/* Sólo para no estudiantes: la fecha en que se recibió. */}
-          {mem.titulo_aplica && (
-            <Campo id="fecha_recibido" label="Fecha de recibido">
-              <input id="fecha_recibido" type="date" className="field" value={valores.fecha_recibido ?? ''}
-                onChange={(e) => setCampo('fecha_recibido', e.target.value)} />
-            </Campo>
-          )}
-        </div>
-
-        <div className="perforated my-7" />
-        <span className="label-mono block mb-4">Contacto</span>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
-          <Campo id="telefono" label="Teléfono">
-            <input id="telefono" className="field" value={valores.telefono ?? ''} maxLength={200}
-              onChange={(e) => setCampo('telefono', e.target.value)} inputMode="tel" autoComplete="tel" />
-          </Campo>
-          <Campo id="celular" label="Celular">
-            <input id="celular" className="field" value={valores.celular ?? ''} maxLength={200}
-              onChange={(e) => setCampo('celular', e.target.value)} inputMode="tel" autoComplete="tel" />
-          </Campo>
-          <div className="sm:col-span-2">
-            <Campo id="mail" label="Email">
-              <input id="mail" type="email" className="field" value={valores.mail ?? ''} maxLength={200}
-                onChange={(e) => setCampo('mail', e.target.value)} autoComplete="email" />
-            </Campo>
+        {hayPersonales && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+            {vis('nombre') && (
+              <Campo id="nombre" label="Nombre" obligatorio={obl('nombre')} falta={falta('nombre')}>
+                <input id="nombre" className="field" value={valores.nombre ?? ''} maxLength={200}
+                  onChange={(e) => setCampo('nombre', e.target.value)} autoComplete="given-name" />
+              </Campo>
+            )}
+            {vis('apellido') && (
+              <Campo id="apellido" label="Apellido" obligatorio={obl('apellido')} falta={falta('apellido')}>
+                <input id="apellido" className="field" value={valores.apellido ?? ''} maxLength={200}
+                  onChange={(e) => setCampo('apellido', e.target.value)} autoComplete="family-name" />
+              </Campo>
+            )}
+            {vis('sexo') && (
+              <Campo id="sexo" label="Sexo" obligatorio={obl('sexo')} falta={falta('sexo')}>
+                <select id="sexo" className="field" value={valores.sexo ?? ''}
+                  onChange={(e) => setCampo('sexo', e.target.value)}>
+                  {(valores.sexo ?? '') === '' && <option value="">Sin especificar</option>}
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                </select>
+              </Campo>
+            )}
+            {vis('fecha_nacimiento') && (
+              <Campo id="fecha_nacimiento" label="Fecha de nacimiento" obligatorio={obl('fecha_nacimiento')} falta={falta('fecha_nacimiento')}>
+                <input id="fecha_nacimiento" type="date" className="field" value={valores.fecha_nacimiento ?? ''}
+                  onChange={(e) => setCampo('fecha_nacimiento', e.target.value)} />
+              </Campo>
+            )}
+            {vis('generacion') && (
+              <Campo id="generacion" label="Generación" obligatorio={obl('generacion')} falta={falta('generacion')}>
+                <input id="generacion" className="field" value={valores.generacion ?? ''} maxLength={200}
+                  onChange={(e) => setCampo('generacion', e.target.value)} />
+              </Campo>
+            )}
+            {/* Sólo para no estudiantes: la fecha en que se recibió. */}
+            {mem.titulo_aplica && vis('fecha_recibido') && (
+              <Campo id="fecha_recibido" label="Fecha de recibido" obligatorio={obl('fecha_recibido')} falta={falta('fecha_recibido')}>
+                <input id="fecha_recibido" type="date" className="field" value={valores.fecha_recibido ?? ''}
+                  onChange={(e) => setCampo('fecha_recibido', e.target.value)} />
+              </Campo>
+            )}
           </div>
-          <Campo id="direccion" label="Dirección">
-            <input id="direccion" className="field" value={valores.direccion ?? ''} maxLength={200}
-              onChange={(e) => setCampo('direccion', e.target.value)} autoComplete="street-address" />
-          </Campo>
-          <Campo id="localidad" label="Localidad">
-            <input id="localidad" className="field" value={valores.localidad ?? ''} maxLength={200}
-              onChange={(e) => setCampo('localidad', e.target.value)} />
-          </Campo>
-        </div>
+        )}
 
-        <div className="perforated my-7" />
-        <span className="label-mono block mb-1.5">Membresía</span>
-        <p className="text-ink-3 text-[13px] leading-relaxed mb-4">
-          Estos datos definen tu categoría y tu cuota: cualquier cambio lo evalúa la
-          asociación antes de aplicarlo.
-        </p>
+        {hayContacto && (
+          <>
+            <div className="perforated my-7" />
+            <span className="label-mono block mb-4">Contacto</span>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
-          <SelectMembresia id="categoria_id" label="Categoría" opciones={cat.categorias}
-            valor={valores.categoria_id ?? ''} nombreActual={mem.categoria_nombre}
-            onChange={(v) => setCampo('categoria_id', v)} />
-          <SelectMembresia id="forma_pago_id" label="Forma de pago" opciones={cat.formas_pago}
-            valor={valores.forma_pago_id ?? ''} nombreActual={mem.forma_pago_nombre}
-            onChange={(v) => setCampo('forma_pago_id', v)} />
-          <SelectMembresia id="estado_registro_id" label="Estado" opciones={cat.estados_registro}
-            valor={valores.estado_registro_id ?? ''} nombreActual={mem.estado_registro_nombre}
-            onChange={(v) => setCampo('estado_registro_id', v)} />
-          <SelectMembresia id="tipo_pago_id" label="Tipo de pago" opciones={cat.tipos_pago}
-            valor={valores.tipo_pago_id ?? ''} nombreActual={mem.tipo_pago_nombre}
-            onChange={(v) => setCampo('tipo_pago_id', v)} />
-          <SelectMembresia id="instituto_id" label="Instituto" opciones={cat.institutos}
-            valor={valores.instituto_id ?? ''} nombreActual={mem.instituto_nombre}
-            onChange={(v) => setCampo('instituto_id', v)} />
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+              {vis('telefono') && (
+                <Campo id="telefono" label="Teléfono" obligatorio={obl('telefono')} falta={falta('telefono')}>
+                  <input id="telefono" className="field" value={valores.telefono ?? ''} maxLength={200}
+                    onChange={(e) => setCampo('telefono', e.target.value)} inputMode="tel" autoComplete="tel" />
+                </Campo>
+              )}
+              {vis('celular') && (
+                <Campo id="celular" label="Celular" obligatorio={obl('celular')} falta={falta('celular')}>
+                  <input id="celular" className="field" value={valores.celular ?? ''} maxLength={200}
+                    onChange={(e) => setCampo('celular', e.target.value)} inputMode="tel" autoComplete="tel" />
+                </Campo>
+              )}
+              {vis('mail') && (
+                <div className="sm:col-span-2">
+                  <Campo id="mail" label="Email" obligatorio={obl('mail')} falta={falta('mail')}>
+                    <input id="mail" type="email" className="field" value={valores.mail ?? ''} maxLength={200}
+                      onChange={(e) => setCampo('mail', e.target.value)} autoComplete="email" />
+                  </Campo>
+                </div>
+              )}
+              {vis('direccion') && (
+                <Campo id="direccion" label="Dirección" obligatorio={obl('direccion')} falta={falta('direccion')}>
+                  <input id="direccion" className="field" value={valores.direccion ?? ''} maxLength={200}
+                    onChange={(e) => setCampo('direccion', e.target.value)} autoComplete="street-address" />
+                </Campo>
+              )}
+              {vis('localidad') && (
+                <Campo id="localidad" label="Localidad" obligatorio={obl('localidad')} falta={falta('localidad')}>
+                  <input id="localidad" className="field" value={valores.localidad ?? ''} maxLength={200}
+                    onChange={(e) => setCampo('localidad', e.target.value)} />
+                </Campo>
+              )}
+            </div>
+          </>
+        )}
+
+        {hayMembresia && (
+          <>
+            <div className="perforated my-7" />
+            <span className="label-mono block mb-1.5">Membresía</span>
+            <p className="text-ink-3 text-[13px] leading-relaxed mb-4">
+              Estos datos definen tu categoría y tu cuota: cualquier cambio lo evalúa la
+              asociación antes de aplicarlo.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+              {vis('categoria_id') && (
+                <SelectMembresia id="categoria_id" label="Categoría" opciones={cat.categorias}
+                  valor={valores.categoria_id ?? ''} nombreActual={mem.categoria_nombre}
+                  obligatorio={obl('categoria_id')} falta={falta('categoria_id')}
+                  onChange={(v) => setCampo('categoria_id', v)} />
+              )}
+              {vis('forma_pago_id') && (
+                <SelectMembresia id="forma_pago_id" label="Forma de pago" opciones={cat.formas_pago}
+                  valor={valores.forma_pago_id ?? ''} nombreActual={mem.forma_pago_nombre}
+                  obligatorio={obl('forma_pago_id')} falta={falta('forma_pago_id')}
+                  onChange={(v) => setCampo('forma_pago_id', v)} />
+              )}
+              {vis('estado_registro_id') && (
+                <SelectMembresia id="estado_registro_id" label="Estado" opciones={cat.estados_registro}
+                  valor={valores.estado_registro_id ?? ''} nombreActual={mem.estado_registro_nombre}
+                  obligatorio={obl('estado_registro_id')} falta={falta('estado_registro_id')}
+                  onChange={(v) => setCampo('estado_registro_id', v)} />
+              )}
+              {vis('tipo_pago_id') && (
+                <SelectMembresia id="tipo_pago_id" label="Tipo de pago" opciones={cat.tipos_pago}
+                  valor={valores.tipo_pago_id ?? ''} nombreActual={mem.tipo_pago_nombre}
+                  obligatorio={obl('tipo_pago_id')} falta={falta('tipo_pago_id')}
+                  onChange={(v) => setCampo('tipo_pago_id', v)} />
+              )}
+              {vis('instituto_id') && (
+                <SelectMembresia id="instituto_id" label="Instituto" opciones={cat.institutos}
+                  valor={valores.instituto_id ?? ''} nombreActual={mem.instituto_nombre}
+                  obligatorio={obl('instituto_id')} falta={falta('instituto_id')}
+                  onChange={(v) => setCampo('instituto_id', v)} />
+              )}
+            </div>
+          </>
+        )}
 
         {/* El título en PDF: sólo para no estudiantes. El archivo sube recién
             al enviar, junto con el resto de la propuesta. */}
-        {mem.titulo_aplica && (
+        {hayTitulo && (
           <>
             <div className="perforated my-7" />
-            <span className="label-mono block mb-1.5">Título</span>
+            <span className={`label-mono block mb-1.5 ${falta('titulo_pdf') ? 'text-red-700' : obl('titulo_pdf') ? 'text-amber-deep' : ''}`}>
+              Título{obl('titulo_pdf') && <span aria-hidden> *</span>}
+            </span>
             <p className="text-ink-3 text-[13px] leading-relaxed mb-3">
               {mem.titulo_cargado
                 ? 'Ya tenemos tu título registrado. Si subís uno nuevo, reemplaza al anterior.'
-                : 'Subí tu título escaneado en PDF (máximo 10 MB). Lo revisa la asociación junto con el resto de los datos.'}
+                : obl('titulo_pdf')
+                  ? 'Subí tu título escaneado en PDF (máximo 10 MB). Es necesario para poder enviar el formulario.'
+                  : 'Subí tu título escaneado en PDF (máximo 10 MB). Lo revisa la asociación junto con el resto de los datos.'}
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <button

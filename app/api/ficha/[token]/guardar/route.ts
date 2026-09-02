@@ -16,7 +16,8 @@
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ocultarInexistente, registrarFichaCambio } from '@/lib/ficha'
+import { leerFichaPersonal, ocultarInexistente, registrarFichaCambio } from '@/lib/ficha'
+import { enviarAcuseFicha } from '@/lib/ficha-acuse'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import {
   CAMPOS_FICHA,
@@ -116,7 +117,24 @@ export async function POST(
     const r = ocultarInexistente(
       await registrarFichaCambio(admin, token, factor, saneado.cambios),
     )
-    return NextResponse.json(r, { headers: SIN_CACHE })
+    if ('error' in r) {
+      return NextResponse.json(r, { headers: SIN_CACHE })
+    }
+
+    // Acuse por mail con el detalle "antes → después". La ficha vieja se lee
+    // AHORA de socios_datos — sigue intacta, la propuesta no la tocó. Best
+    // effort y AWAITED: en serverless un envío sin await muere con la lambda.
+    const { ficha: fichaVieja } = await leerFichaPersonal(admin, r.empresa_id, r.documento)
+    const acuse = await enviarAcuseFicha(admin, r, fichaVieja)
+    if (!acuse.enviado && acuse.motivo !== 'sin_destino') {
+      console.warn(`[guardar] acuse de ficha no enviado: ${acuse.motivo}`)
+    }
+
+    // Al browser vuelve lo justo: el resto del contexto ya lo tenía de /validar.
+    return NextResponse.json(
+      { ok: true, id: r.id, acuse_enviado: acuse.enviado },
+      { headers: SIN_CACHE },
+    )
   } catch (err) {
     console.error('[POST /api/ficha/[token]/guardar] error:', err)
     return NextResponse.json({ error: 'Error interno' }, { status: 500, headers: SIN_CACHE })

@@ -64,6 +64,47 @@ export const MAX_LARGO_VALOR = 200
 /** 'cedula' → últimos N dígitos del documento; 'codigo' → el código corto del mail. */
 export type ModoFactor = 'cedula' | 'codigo'
 
+/** Rótulos en español de cada campo, compartidos por el formulario y el acuse. */
+export const LABELS_CAMPOS: Record<string, string> = {
+  documento: 'Documento (cédula)',
+  nombre: 'Nombre',
+  apellido: 'Apellido',
+  sexo: 'Sexo',
+  fecha_nacimiento: 'Fecha de nacimiento',
+  generacion: 'Generación',
+  fecha_recibido: 'Fecha de recibido',
+  telefono: 'Teléfono',
+  celular: 'Celular',
+  mail: 'Email',
+  direccion: 'Dirección',
+  localidad: 'Localidad',
+  categoria_id: 'Categoría',
+  forma_pago_id: 'Forma de pago',
+  estado_registro_id: 'Estado',
+  tipo_pago_id: 'Tipo de pago',
+  instituto_id: 'Instituto',
+  titulo_pdf: 'Título (PDF)',
+}
+
+// ── Configuración de campos (visible / obligatorio) ─────────────────────────
+
+/**
+ * Lo que el desktop configuró para el formulario (Ficha en la Web → Campos
+ * del formulario), bajado en `ficha_catalogos_remoto.campos`. Un campo
+ * ausente es visible y opcional — el default histórico. `titulo_pdf`
+ * obligatorio exige subir el PDF (o que ya esté cargado).
+ */
+export interface CampoConfigFicha {
+  visible: boolean
+  obligatorio: boolean
+}
+export type CamposFicha = Partial<Record<string, CampoConfigFicha>>
+
+/** La config de un campo, con el default cuando el desktop no dijo nada. */
+export function configDe(campos: CamposFicha, campo: string): CampoConfigFicha {
+  return campos[campo] ?? { visible: true, obligatorio: false }
+}
+
 // ── Formas que viajan entre server y client ─────────────────────────────────
 
 export interface ItemCatalogo {
@@ -135,6 +176,8 @@ export interface FichaValidada {
   ficha: FichaPersonal
   membresia: MembresiaFicha
   catalogos: CatalogosFicha
+  /** Qué campos muestra y exige el formulario (configurado en el desktop). */
+  campos: CamposFicha
   /** La propuesta pendiente sin bajar, si hay: { campo: valor_nuevo }. */
   cambios_pendientes: Partial<Record<CampoFicha, string>> | null
 }
