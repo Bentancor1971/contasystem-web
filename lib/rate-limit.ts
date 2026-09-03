@@ -223,6 +223,8 @@ export const LIMITES = {
   fichaGuardar: { nombre: 'ficha_guardar', limite: 10, ventanaSegundos: 300 },
   /** Pedir el link de subida del título (cada uno habilita UN PUT a Storage). */
   fichaTitulo: { nombre: 'ficha_titulo', limite: 5, ventanaSegundos: 300 },
+  /** Confirmar sin cambios. Una persona lo hace una vez; margen para el reintento. */
+  fichaConfirmar: { nombre: 'ficha_confirmar', limite: 5, ventanaSegundos: 300 },
 
   /**
    * Probar el acceso (`/v/prueba-acceso`, `/p/prueba-acceso`).

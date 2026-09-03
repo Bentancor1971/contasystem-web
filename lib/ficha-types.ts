@@ -178,6 +178,8 @@ export interface FichaValidada {
   catalogos: CatalogosFicha
   /** Qué campos muestra y exige el formulario (configurado en el desktop). */
   campos: CamposFicha
+  /** Última confirmación "está todo bien", si hubo (para avisarlo en el form). */
+  confirmado_at: string | null
   /** La propuesta pendiente sin bajar, si hay: { campo: valor_nuevo }. */
   cambios_pendientes: Partial<Record<CampoFicha, string>> | null
 }
@@ -308,6 +310,14 @@ export function mensajeDeErrorFicha(r: ErrorFicha, modo: ModoFactor): MensajeFic
         titulo: 'La cédula no es válida',
         detalle:
           'Revisá el número completo, con el dígito verificador y sin puntos ni guiones.',
+        terminal: false,
+      }
+
+    case 'documento_duplicado':
+      return {
+        titulo: 'Esa cédula ya está registrada',
+        detalle:
+          'El número que ingresaste ya figura en el padrón (o en una corrección que está en revisión). Revisalo; si es tu cédula correcta, no envíes el cambio y comunicate con tu asociación para que lo resuelva.',
         terminal: false,
       }
 

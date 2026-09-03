@@ -158,6 +158,28 @@ html, body {
   padding-bottom: 11px;
 }
 
+/* Campo obligatorio (lo define el desktop por empresa). Se distingue DESDE QUE
+   se abre el formulario y no sólo cuando falla: la persona tiene que poder
+   barrer la pantalla y ver qué le van a exigir antes de empezar a escribir.
+   Se pinta desde el envoltorio para no tocar cada input uno por uno. */
+.campo-req > .field {
+  background: color-mix(in srgb, var(--color-amber-light) 55%, transparent);
+  border-bottom-color: var(--color-amber);
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: 4px 4px 0 0;
+}
+.campo-req > .field:focus { border-bottom-color: var(--color-amber-deep); }
+
+/* Obligatorio que quedó vacío al intentar enviar: manda el rojo sobre el ámbar. */
+.campo-falta > .field,
+.campo-falta > .field:focus {
+  background: color-mix(in srgb, var(--color-status-no-bg) 55%, transparent);
+  border-bottom-color: var(--color-status-no);
+  border-bottom-width: 2px;
+  padding-bottom: 11px;
+}
+
 /* Igual que .field-error pero para un bloque (radios de categoría), donde no
    hay una línea inferior que teñir. Inset para no correr al vecino. */
 .bloque-error {

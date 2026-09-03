@@ -194,6 +194,8 @@ export interface FichaValidadaServer {
   membresia: MembresiaFicha
   catalogos: CatalogosFicha
   campos: CamposFicha
+  /** Última confirmación "está todo bien" de esta credencial, si hubo. */
+  confirmado_at: string | null
   cambios_pendientes: Partial<Record<CampoFicha, string>> | null
 }
 
@@ -215,8 +217,26 @@ export async function validarCredencialFicha(
     membresia: membresia(d.membresia),
     catalogos: catalogos(d.catalogos),
     campos: camposDe(d.campos),
+    confirmado_at: typeof d.confirmado_at === 'string' ? d.confirmado_at : null,
     cambios_pendientes: cambiosPendientes(d.cambios_pendientes),
   }
+}
+
+// ── Confirmación sin cambios ────────────────────────────────────────────────
+
+/**
+ * "Revisé mis datos y están bien": sella confirmado_at en la credencial y
+ * descarta la propuesta pendiente de este token si había. La RPC revalida el
+ * factor; no pasa por la cola de validación porque no hay nada que validar.
+ */
+export async function confirmarFicha(
+  admin: SupabaseClient,
+  token: string,
+  factor: string,
+): Promise<{ ok: true; confirmado_at: string } | ErrorFicha> {
+  const d = await llamar(admin, 'confirmar_ficha', { p_token: token, p_factor: factor })
+  if (d.ok !== true) return d as unknown as ErrorFicha
+  return { ok: true, confirmado_at: textoO(d.confirmado_at) }
 }
 
 // ── Los datos personales, desde socios_datos ────────────────────────────────

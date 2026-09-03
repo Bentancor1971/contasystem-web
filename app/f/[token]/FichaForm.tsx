@@ -21,7 +21,7 @@
  */
 
 import { useRef, useState } from 'react'
-import { FileText, Loader2, Lock, Pencil } from 'lucide-react'
+import { Check, FileText, Loader2, Lock, Pencil } from 'lucide-react'
 import { esCedulaUruguayaValida } from '@/lib/cedula'
 import {
   configDe,
@@ -150,8 +150,11 @@ function Campo({
   children: React.ReactNode
 }) {
   const color = falta ? 'text-red-700' : obligatorio ? 'text-amber-deep' : ''
+  // `campo-req` / `campo-falta` (globals.css) tiñen el input desde acá: el
+  // obligatorio se ve distinto desde que se abre la pantalla, no sólo al fallar.
+  const marca = falta ? 'campo-req campo-falta' : obligatorio ? 'campo-req' : ''
   return (
-    <div>
+    <div className={marca}>
       <label htmlFor={id} className={`label-mono block mb-1.5 ${color}`}>
         {label}
         {obligatorio && <span aria-hidden> *</span>}
@@ -242,6 +245,14 @@ export function FichaForm({
   const [acuseEnviado, setAcuseEnviado] = useState(false)
   // Obligatorios que quedaron vacíos en el último intento de envío.
   const [faltantes, setFaltantes] = useState<Set<string>>(new Set())
+  // true = la pantalla final es la de "datos confirmados", no la de cambios.
+  const [confirmado, setConfirmado] = useState(false)
+  // "Enviaré después": libera el título obligatorio para poder guardar el resto.
+  const [tituloDespues, setTituloDespues] = useState(false)
+  // Error del dígito verificador, mostrado al terminar de cargar la cédula
+  // (blur) y no recién al enviar: corregir un número mal tipeado es el motivo
+  // por el que esta persona entró.
+  const [errorDocumento, setErrorDocumento] = useState<string | null>(null)
   const tituloInputRef = useRef<HTMLInputElement>(null)
   const enVuelo = useRef(false)
 
@@ -305,6 +316,21 @@ export function FichaForm({
             detalle: 'Revisá tu conexión y volvé a probar.',
             terminal: false,
           },
+    )
+  }
+
+  /**
+   * Chequeo del documento al terminar de escribirlo. Sólo el formato: el
+   * duplicado contra el padrón lo resuelve el servidor al enviar, porque acá
+   * no hay forma de preguntarlo sin convertir la pantalla en un oráculo.
+   */
+  function revisarDocumento(valor: string) {
+    const doc = limpiarDocumento(valor.trim())
+    if (doc === '') { setErrorDocumento(null); return }
+    setErrorDocumento(
+      esCedulaUruguayaValida(doc)
+        ? null
+        : 'No parece una cédula válida. Revisá el número completo, con el dígito verificador.',
     )
   }
 
@@ -380,6 +406,91 @@ export function FichaForm({
     }
   }
 
+  /**
+   * Obligatorios sin valor sobre una fuente dada: `valores` (lo que muestra el
+   * formulario, para enviar) o `original` (lo registrado, para confirmar).
+   */
+  function obligatoriosVacios(fuente: Valores, hayTituloNuevo: boolean): string[] {
+    if (!datos) return []
+    const vacios: string[] = []
+    const aplicables = [
+      'nombre', 'apellido', 'sexo', 'fecha_nacimiento', 'generacion',
+      ...(datos.membresia.titulo_aplica ? ['fecha_recibido'] : []),
+      'telefono', 'celular', 'mail', 'direccion', 'localidad',
+      'categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id',
+    ]
+    for (const campo of aplicables) {
+      const cfg = configDe(datos.campos, campo)
+      if (!cfg.visible || !cfg.obligatorio) continue
+      if ((fuente[campo as CampoFicha] ?? '').trim() === '') vacios.push(campo)
+    }
+    const cfgTitulo = configDe(datos.campos, 'titulo_pdf')
+    if (
+      datos.membresia.titulo_aplica && cfgTitulo.visible && cfgTitulo.obligatorio &&
+      !hayTituloNuevo && !datos.membresia.titulo_cargado && !tituloDespues
+    ) {
+      vacios.push('titulo_pdf')
+    }
+    return vacios
+  }
+
+  // ── Confirmar sin cambios ─────────────────────────────────────────────────
+
+  async function onConfirmar() {
+    if (enVuelo.current || !datos) return
+
+    // Confirmar dice "lo REGISTRADO está bien": con ediciones sin enviar en la
+    // pantalla, la persona tiene que decidir primero qué quiere hacer.
+    if (Object.keys(cambiosAEnviar()).length > 0 || tituloFile) {
+      setAviso({
+        titulo: 'Tenés cambios sin enviar',
+        detalle: 'Modificaste datos en esta pantalla. Envialos con "Enviar cambios", o volvé a dejarlos como estaban antes de confirmar.',
+        terminal: false,
+      })
+      arriba()
+      return
+    }
+    // Y no se puede afirmar que "está todo bien" con un obligatorio vacío.
+    const vacios = obligatoriosVacios(original, false)
+    if (vacios.length > 0) {
+      setFaltantes(new Set(vacios))
+      setAviso({
+        titulo: 'No podés confirmar: faltan datos',
+        detalle: `Tu ficha no tiene: ${vacios.map((c) => LABELS_CAMPOS[c] ?? c).join(', ')}. Completalos y enviá los cambios.`,
+        terminal: false,
+      })
+      arriba()
+      return
+    }
+
+    enVuelo.current = true
+    setOcupado(true)
+    setAviso(null)
+    const r = await pedir<{ ok: true; confirmado_at: string }>(`${base}/confirmar`, { factor })
+    enVuelo.current = false
+    setOcupado(false)
+
+    if (r.estado === 'ok') {
+      setConfirmado(true)
+      setFase('listo')
+      arriba()
+      return
+    }
+    if (r.estado === 'error') {
+      mostrar(r.err)
+      return
+    }
+    setAviso(
+      r.estado === 'tope'
+        ? MENSAJE_TOPE
+        : {
+            titulo: 'No pudimos registrar tu confirmación',
+            detalle: 'Revisá tu conexión y volvé a probar.',
+            terminal: false,
+          },
+    )
+  }
+
   async function onEnviar(e: React.FormEvent) {
     e.preventDefault()
     if (enVuelo.current) return
@@ -388,25 +499,7 @@ export function FichaForm({
     // — si la ficha ya lo traía, no hace falta tocarlo. Se chequea sobre lo
     // que muestra el formulario, no sobre lo que viaja.
     if (datos) {
-      const vacios: string[] = []
-      const aplicables = [
-        'nombre', 'apellido', 'sexo', 'fecha_nacimiento', 'generacion',
-        ...(datos.membresia.titulo_aplica ? ['fecha_recibido'] : []),
-        'telefono', 'celular', 'mail', 'direccion', 'localidad',
-        'categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id',
-      ]
-      for (const campo of aplicables) {
-        const cfg = configDe(datos.campos, campo)
-        if (!cfg.visible || !cfg.obligatorio) continue
-        if ((valores[campo as CampoFicha] ?? '').trim() === '') vacios.push(campo)
-      }
-      const cfgTitulo = configDe(datos.campos, 'titulo_pdf')
-      if (
-        datos.membresia.titulo_aplica && cfgTitulo.visible && cfgTitulo.obligatorio &&
-        !tituloFile && !datos.membresia.titulo_cargado
-      ) {
-        vacios.push('titulo_pdf')
-      }
+      const vacios = obligatoriosVacios(valores, !!tituloFile)
       if (vacios.length > 0) {
         setFaltantes(new Set(vacios))
         setAviso({
@@ -434,6 +527,9 @@ export function FichaForm({
     // el dígito verificador — reemplazar un error de carga por otro no arregla
     // nada. El server exige lo mismo.
     if (cambios.documento && !esCedulaUruguayaValida(cambios.documento)) {
+      // Además del aviso, el campo queda marcado (quien llegó acá sin pasar por
+      // el blur —enviando con Enter— tiene que ver DÓNDE está el problema).
+      setErrorDocumento('No parece una cédula válida. Revisá el número completo, con el dígito verificador.')
       setAviso({
         titulo: 'La cédula no es válida',
         detalle:
@@ -504,12 +600,16 @@ export function FichaForm({
       <div className="rise">
         <div className="voto-aviso voto-aviso--ok" role="status">
           <h2 className="font-display text-2xl font-medium leading-tight mb-2">
-            Cambios enviados
+            {confirmado ? 'Datos confirmados' : 'Cambios enviados'}
           </h2>
           <p className="text-ink-2 text-[17px] leading-relaxed">
-            Los recibió la asociación y los va a revisar antes de aplicarlos. No tenés que
-            hacer nada más — si hiciera falta aclarar algo, te contactan al mail de tu ficha.
-            {acuseEnviado && ' Te mandamos un mail con el detalle de lo que enviaste.'}
+            {confirmado
+              ? 'Quedó registrado que revisaste tu ficha y que los datos están correctos. No tenés que hacer nada más.'
+              : <>
+                  Los recibió la asociación y los va a revisar antes de aplicarlos. No tenés que
+                  hacer nada más — si hiciera falta aclarar algo, te contactan al mail de tu ficha.
+                  {acuseEnviado && ' Te mandamos un mail con el detalle de lo que enviaste.'}
+                </>}
           </p>
         </div>
       </div>
@@ -589,6 +689,14 @@ export function FichaForm({
   const hayContacto = ['telefono', 'celular', 'mail', 'direccion', 'localidad'].some(vis)
   const hayMembresia = ['categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id'].some(vis)
   const hayTitulo = mem.titulo_aplica && vis('titulo_pdf')
+  // Obligatorios efectivamente a la vista: los que la nota de arriba anuncia.
+  const obligatoriosVisibles = [
+    'nombre', 'apellido', 'sexo', 'fecha_nacimiento', 'generacion',
+    ...(mem.titulo_aplica ? ['fecha_recibido'] : []),
+    'telefono', 'celular', 'mail', 'direccion', 'localidad',
+    'categoria_id', 'forma_pago_id', 'estado_registro_id', 'tipo_pago_id', 'instituto_id',
+    ...(mem.titulo_aplica ? ['titulo_pdf'] : []),
+  ].filter((c) => vis(c) && obl(c))
 
   return (
     <div className="rise">
@@ -607,6 +715,22 @@ export function FichaForm({
           </p>
         )}
 
+        {/* La consigna, arriba de todo: qué está resaltado y por qué. Sin esto
+            el color es decoración — con esto es una instrucción. */}
+        {obligatoriosVisibles.length > 0 && (
+          faltantes.size > 0 ? (
+            <p className="text-[15px] leading-relaxed mb-5 rounded p-3 bg-status-no-bg text-status-no" role="alert">
+              <strong>Revisá los campos resaltados en rojo:</strong> son obligatorios y
+              están vacíos. Completalos para poder enviar.
+            </p>
+          ) : (
+            <p className="text-[15px] leading-relaxed mb-5 rounded p-3 bg-amber-light/60 text-ink-2">
+              <strong>Revisá los campos resaltados con&nbsp;*</strong> — son obligatorios y
+              tienen que quedar completos para poder enviar el formulario.
+            </p>
+          )
+        )}
+
         {/* Documento: la identidad. Con cédula válida no se toca desde acá; con
             cédula inválida corregirla es el punto de todo el circuito. */}
         {esCodigo ? (
@@ -619,14 +743,20 @@ export function FichaForm({
             <Campo id="documento" label="Cédula (con dígito verificador)">
               <input
                 id="documento"
-                className="field font-mono"
+                className={`field font-mono ${errorDocumento ? 'field-error' : ''}`}
                 value={valores.documento ?? ''}
-                onChange={(e) => setCampo('documento', e.target.value)}
+                onChange={(e) => { setCampo('documento', e.target.value); if (errorDocumento) setErrorDocumento(null) }}
+                onBlur={(e) => revisarDocumento(e.target.value)}
                 inputMode="numeric"
                 autoComplete="off"
                 placeholder="1.234.567-8"
+                aria-invalid={!!errorDocumento}
+                aria-describedby={errorDocumento ? 'documento-error' : undefined}
               />
             </Campo>
+            {errorDocumento && (
+              <p id="documento-error" className="msg-error" role="alert">{errorDocumento}</p>
+            )}
           </div>
         ) : (
           <div className="mb-6">
@@ -817,6 +947,34 @@ export function FichaForm({
                 onChange={onTituloElegido}
               />
             </div>
+
+            {/* El título obligatorio no puede dejar a nadie encerrado: casi
+                nunca se tiene el escaneo a mano en el momento. Con esto el
+                resto de la ficha se guarda igual y el PDF queda debiendo —la
+                asociación lo ve en el reporte, columna "Título cargado". */}
+            {obl('titulo_pdf') && !mem.titulo_cargado && !tituloFile && (
+              <label className="flex gap-3 items-start text-[16px] leading-relaxed mt-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="voto-control mt-0.5"
+                  checked={tituloDespues}
+                  onChange={(e) => {
+                    setTituloDespues(e.target.checked)
+                    if (e.target.checked) {
+                      setFaltantes((f) => { const s = new Set(f); s.delete('titulo_pdf'); return s })
+                    }
+                  }}
+                  disabled={ocupado}
+                />
+                <span>
+                  Enviaré después
+                  <span className="text-ink-3 text-[13px] block">
+                    Marcalo si no tenés el archivo a mano: podés enviar el resto de tus
+                    datos ahora y subir el título más adelante, con este mismo link.
+                  </span>
+                </span>
+              </label>
+            )}
           </>
         )}
 
@@ -826,6 +984,31 @@ export function FichaForm({
         </button>
         <p className="text-ink-3 text-[13px] leading-relaxed mt-3 text-center">
           Sólo viaja lo que modificaste. La asociación lo revisa antes de aplicarlo.
+        </p>
+
+        {/* Confirmar sin cambios: la constancia de quien revisó y está todo
+            bien. Vale tanto como una corrección — sin esto, "no contestó" y
+            "está todo bien" son indistinguibles para la asociación. */}
+        <div className="perforated my-7" />
+        <p className="text-[16px] leading-relaxed mb-3 text-center">
+          ¿Está todo bien así?{' '}
+          {datos.confirmado_at && (
+            <span className="text-ink-3 text-[13px] block mt-1">
+              Ya confirmaste tus datos anteriormente; podés volver a hacerlo.
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          className="btn-secondary w-full"
+          onClick={onConfirmar}
+          disabled={ocupado}
+        >
+          {ocupado ? <Loader2 className="animate-spin" size={18} /> : <Check size={16} aria-hidden />}
+          Confirmar mis datos sin cambios
+        </button>
+        <p className="text-ink-3 text-[13px] leading-relaxed mt-3 text-center">
+          Le avisa a la asociación que revisaste tu ficha y que está correcta.
         </p>
       </form>
     </div>
