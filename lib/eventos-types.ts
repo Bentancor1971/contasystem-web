@@ -103,6 +103,17 @@ export function datosDepositoDe(
 export type RegistroPermitido = 'todos' | 'padron' | 'socios_al_dia'
 
 /**
+ * Cómo decide el evento quién está "al día" (lo setea el desktop; ver
+ * docs/supabase/68_tolerancia_cuotas.sql del repo desktop):
+ *   'config'          cuotas_pendientes <= tolerancia del SOCIO (viene resuelta en
+ *                     socios_cuotas_remoto, según su forma y tipo de pago)
+ *   'fijo'            cuotas_pendientes <  umbral_cuotas_no_socio (regla histórica)
+ *   'sin_restriccion' la deuda no cambia la tarifa ni la admisión
+ * Un evento sin la columna (push anterior a la 68) se trata como 'fijo'.
+ */
+export type ModoToleranciaEvento = 'config' | 'fijo' | 'sin_restriccion'
+
+/**
  * Regla de admisión al evento, en un solo lugar.
  *
  * La usan el formulario público (para avisar al verificar la cédula) y
@@ -266,6 +277,8 @@ export interface EventoRemoto {
   permitir_preinscripcion: boolean
   /** Política de admisión. La setea el desktop; default 'todos'. */
   registro_permitido: RegistroPermitido
+  /** Cómo se decide "al día" (ver ModoToleranciaEvento). null = columna anterior a la migración 68. */
+  modo_tolerancia: ModoToleranciaEvento | null
   /**
    * Permite categoría libre ("Otros") al inscribirse. La setea el desktop
    * (push, ver docs/supabase/38_eventos_multimoneda.sql); el efectivo que ve
@@ -662,6 +675,7 @@ export interface EventoPublico {
    * re-decide server-side al inscribir.
    */
   registro_permitido: RegistroPermitido
+  modo_tolerancia: ModoToleranciaEvento
 }
 
 /**

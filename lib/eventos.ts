@@ -19,6 +19,7 @@ import type {
   EventoWebConfig,
   ExtraPrecio,
   InscripcionPrevia,
+  ModoToleranciaEvento,
   MonedaEvento,
   RegistroPermitido,
   ResolucionParticipante,
@@ -511,6 +512,7 @@ async function loadEventoPublicoImpl(
     extras_precio: normalizarExtrasPrecio(ev),
     tipo: ev.tipo,
     umbral_cuotas_no_socio: ev.umbral_cuotas_no_socio,
+    modo_tolerancia: normalizarModoTolerancia(ev.modo_tolerancia),
     abierto: motivo == null,
     titulo_cerrado: titulo,
     motivo_cerrado: motivo,
@@ -802,7 +804,7 @@ export async function resolverParticipante(
   const [{ data: cuotasRow }, { data: catRow }, estadosSocio] = await Promise.all([
     admin
       .from('socios_cuotas_remoto')
-      .select('cuotas_pendientes')
+      .select('cuotas_pendientes, tolerancia')
       .eq('empresa_id', evento.empresa_id)
       .eq('documento_hash', docHash)
       .maybeSingle(),
@@ -817,7 +819,20 @@ export async function resolverParticipante(
 
   const cuotas = Number(cuotasRow?.cuotas_pendientes ?? 0)
   const estadoRegistro = (socio.estado_registro_nombre as string | null) ?? null
-  const alDia = cuotas < evento.umbral_cuotas_no_socio
+  // "Al día" según el modo del evento (ver ModoToleranciaEvento):
+  //   'config'          → la tolerancia viene resuelta POR SOCIO en la fila (forma y
+  //                       tipo de pago, la fija el desktop). Sin fila = sin cuotas
+  //                       pendientes = al día. Si la fila no trae tolerancia (push
+  //                       anterior a la migración 68) cae a la regla fija.
+  //   'fijo'            → regla histórica: socio con MENOS de umbral_cuotas_no_socio.
+  //   'sin_restriccion' → la deuda no cambia la tarifa ni la admisión.
+  const modo = normalizarModoTolerancia(evento.modo_tolerancia)
+  const toleranciaSocio = (cuotasRow as { tolerancia?: number | null } | null)?.tolerancia
+  const alDia = modo === 'sin_restriccion'
+    ? true
+    : modo === 'config' && typeof toleranciaSocio === 'number'
+      ? cuotas <= toleranciaSocio
+      : cuotas < evento.umbral_cuotas_no_socio
   const estadoEsSocio = esEstadoSocio(estadoRegistro, estadosSocio)
   const tipo: TipoParticipante = estadoEsSocio && alDia ? 'socio' : 'no_socio'
 
@@ -934,6 +949,15 @@ export async function buscarInscripcionPrevia(
  */
 export function normalizarRegistroPermitido(v: unknown): RegistroPermitido {
   return v === 'padron' || v === 'socios_al_dia' ? v : 'todos'
+}
+
+/**
+ * Modo de tolerancia del evento. Un evento publicado antes de la migración 68 (o
+ * por un desktop viejo) no trae la columna: se trata como 'fijo', que es
+ * exactamente la regla que regía hasta entonces.
+ */
+export function normalizarModoTolerancia(v: unknown): ModoToleranciaEvento {
+  return v === 'config' || v === 'sin_restriccion' ? v : 'fijo'
 }
 
 export function proyectarResolucionPublica(
