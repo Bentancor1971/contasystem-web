@@ -836,7 +836,7 @@ export function FichaForm({
               {vis('mail') && (
                 <div className="sm:col-span-2">
                   <Campo id="mail" label="Email" obligatorio={obl('mail')} falta={falta('mail')}>
-                    <input id="mail" type="email" className="field" value={valores.mail ?? ''} maxLength={200}
+                    <input id="mail" type="email" multiple className="field" value={valores.mail ?? ''} maxLength={200}
                       onChange={(e) => setCampo('mail', e.target.value)} autoComplete="email" />
                   </Campo>
                 </div>

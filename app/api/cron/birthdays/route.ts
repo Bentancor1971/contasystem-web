@@ -293,19 +293,26 @@ export async function GET(req: NextRequest) {
         return
       }
 
-      const mail = (socio.mail ?? '').trim()
+      const mailCampo = (socio.mail ?? '').trim()
       const empresaId = socio.empresa_id
-      if (!mail || !empresaId) {
+      if (!mailCampo || !empresaId) {
         skipped++
         return
       }
 
       // Pidió no recibir. No se logea como error ni se reintenta: no es una
-      // falla, es la decisión de la persona.
-      if (bajas.has(`${empresaId}|${mail.toLowerCase()}`)) {
+      // falla, es la decisión de la persona. El campo puede traer varias
+      // direcciones (`a@x.com, b@y.com`) y la baja es de cada una: se saca la
+      // que la pidió y el resto recibe.
+      const destinos = mailCampo
+        .split(/[;,]+/)
+        .map((d) => d.trim())
+        .filter((d) => d && !bajas.has(`${empresaId}|${d.toLowerCase()}`))
+      if (destinos.length === 0) {
         skipped++
         return
       }
+      const mail = destinos.join(', ')
 
       const data: ActiveEmpresa | undefined = empresasActivas.get(empresaId)
       if (!data) {

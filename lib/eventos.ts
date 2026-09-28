@@ -227,15 +227,43 @@ export async function loadCategoriasEvento(
   return [...porCat.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
-/** Catálogo de categorías de socio activas de la empresa (sin precio). */
+/**
+ * Empresas entre las que se busca el catálogo de categorías de socio: todas las
+ * que comparten el padrón de `empresaId` (ella incluida).
+ *
+ * En un grupo, el catálogo es el de la empresa padre, pero el desktop lo
+ * publicaba una vez por empresa del grupo con el MISMO id de categoría, y
+ * `categorias_socio_remoto` tiene PK sólo en `id`: cada push le cambiaba el
+ * dueño a la fila y quedaba a nombre de la última empresa sincronizada. Buscar
+ * por `empresa_id = evento.empresa_id` devolvía 0 filas y el formulario exigía
+ * una categoría sin ofrecer ninguna (Sorteo XV Congreso, ATRI, 28/09/2026).
+ * Buscar en todo el padrón no depende de quién publicó último.
+ */
+async function empresasDelPadron(admin: SupabaseClient, empresaId: string): Promise<string[]> {
+  const padron = await padronDeEmpresa(admin, empresaId)
+  const { data, error } = await admin
+    .from('empresa_padron_remoto')
+    .select('empresa_id')
+    .eq('padron_empresa_id', padron.empresaId)
+  if (error) {
+    if (esTablaInexistente(error)) return [empresaId]
+    throw new Error(`Error leyendo el padrón de la empresa: ${error.message}`)
+  }
+  const ids = new Set<string>([empresaId, padron.empresaId])
+  for (const r of (data ?? []) as { empresa_id: string }[]) ids.add(r.empresa_id)
+  return [...ids]
+}
+
+/** Catálogo de categorías de socio activas del padrón de la empresa (sin precio). */
 export async function loadCategoriasSocio(
   admin: SupabaseClient,
   empresaId: string,
 ): Promise<CategoriaSocioPublica[]> {
+  const empresas = await empresasDelPadron(admin, empresaId)
   const { data, error } = await admin
     .from('categorias_socio_remoto')
     .select('id, nombre')
-    .eq('empresa_id', empresaId)
+    .in('empresa_id', empresas)
     .eq('activa', 1)
     .order('nombre')
   if (error) throw new Error(`Error consultando categorías de socio: ${error.message}`)
@@ -251,10 +279,11 @@ export async function nombreCategoriaSocio(
   empresaId: string,
   categoriaId: string,
 ): Promise<string | null> {
+  const empresas = await empresasDelPadron(admin, empresaId)
   const { data, error } = await admin
     .from('categorias_socio_remoto')
     .select('nombre')
-    .eq('empresa_id', empresaId)
+    .in('empresa_id', empresas)
     .eq('id', categoriaId)
     .maybeSingle()
   if (error) throw new Error(`Error consultando categoría: ${error.message}`)
@@ -867,14 +896,21 @@ function maskTexto(v: string): string | null {
   return `${s.slice(0, visibles)}•••`
 }
 
-/** "bentancor@gmail.com" → "b•••@gmail.com". Deja visible el dominio. */
+/**
+ * "bentancor@gmail.com" → "b•••@gmail.com". Deja visible el dominio.
+ * Si el campo trae varias direcciones ("a@x.com, b@y.com") enmascara cada
+ * una: si no, la segunda quedaba entera a la vista.
+ */
 export function maskMail(v: string): string | null {
-  const s = v.trim()
-  const at = s.indexOf('@')
-  if (at <= 0) return null // sin @ o sin local: no arriesgamos, no mostramos nada
-  const local = s.slice(0, at)
-  const dominio = s.slice(at) // incluye la "@"
-  return `${local.slice(0, 1)}•••${dominio}`
+  const partes = v.split(/[;,]+/).map((p) => p.trim()).filter(Boolean)
+  if (partes.length === 0) return null
+  const out: string[] = []
+  for (const s of partes) {
+    const at = s.indexOf('@')
+    if (at <= 0) return null // sin @ o sin local: no arriesgamos, no mostramos nada
+    out.push(`${s.slice(0, 1)}•••${s.slice(at)}`) // el dominio incluye la "@"
+  }
+  return out.join(', ')
 }
 
 /** "Mario Bentancor" → "Ma••• Be•••". Enmascara cada parte por separado. */
