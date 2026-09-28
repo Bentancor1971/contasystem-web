@@ -15,7 +15,7 @@ import type {
   EventoWebConfig,
   ModalidadInscripcion,
 } from '@/lib/eventos-types'
-import { datosDepositoDe, esSoloSorteo, simboloDe } from '@/lib/eventos-types'
+import { datosDepositoDe, esSoloSorteo, formatNumeroSorteo, simboloDe } from '@/lib/eventos-types'
 import { normalizarDatosDepositoMonedas, normalizarMonedas } from '@/lib/eventos'
 import { buscarEntradaEmitida } from '@/lib/entradas'
 import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
@@ -209,6 +209,11 @@ export async function enviarAcuseInscripcion(
       inscripcion.moneda_codigo,
     )
 
+    // Número de sorteo con los ceros del evento ("01", "001"), el mismo en el
+    // cuerpo por defecto y en la variable de las plantillas propias.
+    const numeroSorteo =
+      inscripcion.numero_sorteo == null ? null : formatNumeroSorteo(inscripcion.numero_sorteo, evento)
+
     // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
     // El asunto es texto plano; el cuerpo es HTML (variables escapadas y saneado).
     const varsTexto: Record<string, string> = {
@@ -217,8 +222,7 @@ export async function enviarAcuseInscripcion(
       numero: inscripcion.numero ?? '',
       // Vacío si no participa del sorteo: una plantilla propia que use
       // {numero_sorteo} en un evento sin sorteo no muestra nada, no "null".
-      numero_sorteo:
-        inscripcion.numero_sorteo == null ? '' : String(inscripcion.numero_sorteo),
+      numero_sorteo: numeroSorteo ?? '',
       total: `${monedaSimbolo} ${total.toFixed(2)}`,
     }
     const varsHtml = Object.fromEntries(
@@ -282,7 +286,7 @@ export async function enviarAcuseInscripcion(
         entrada: entrada?.recibo ?? null,
         datosDeposito,
         numero: inscripcion.numero,
-        numeroSorteo: inscripcion.numero_sorteo,
+        numeroSorteo,
         urlPago,
         referenciaDeclarada: inscripcion.referencia_transferencia,
         cambios,

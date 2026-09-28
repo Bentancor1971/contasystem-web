@@ -405,6 +405,30 @@ export function elegibleParaSorteo(
 }
 
 /**
+ * Número de sorteo tal como se muestra: con ceros a la izquierda hasta el ancho
+ * del número más alto que el evento puede entregar ("01" si no pasa de 99,
+ * "001" si llega a 100 o más). Ese tope es el `hasta` del rango, recortado por
+ * el cupo cuando lo hay: un rango 0–100 con cupo 99 nunca pasa del 98.
+ *
+ * Sólo formato: en la base el número sigue siendo entero (el índice único y el
+ * máximo+1 de `proximoNumeroSorteo` dependen de eso). El desktop replica esta
+ * regla en `formatNumeroSorteo` (src/utils/numero-sorteo.ts): la persona tiene
+ * que ver el mismo número en su mail que en la lista del sorteo.
+ */
+export function formatNumeroSorteo(
+  numero: number,
+  ev: Pick<EventoRemoto, 'sorteo_numero_desde' | 'sorteo_numero_hasta' | 'cupo_maximo'>,
+): string {
+  const desde = Number(ev.sorteo_numero_desde ?? 0)
+  let tope = Number(ev.sorteo_numero_hasta ?? 100)
+  const cupo = Number(ev.cupo_maximo ?? 0)
+  if (Number.isFinite(cupo) && cupo > 0) tope = Math.min(tope, desde + cupo - 1)
+  if (!Number.isFinite(tope) || tope < numero) tope = numero
+  const ancho = String(Math.max(0, Math.trunc(tope))).length
+  return String(numero).padStart(ancho, '0')
+}
+
+/**
  * Eventos que corren en modo "solo sorteo", por slug.
  *
  * Es una lista a mano, y es deliberado: la condición estructural (sin costo +

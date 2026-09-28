@@ -206,6 +206,8 @@ interface Resultado {
   participa_sorteo: boolean
   /** Correlativo asignado. OJO: 0 es válido — comparar contra null, no truthiness. */
   numero_sorteo: number | null
+  /** El mismo número con los ceros del evento ("01"). Falta en respuestas viejas. */
+  numero_sorteo_texto?: string | null
   /** Pidió sorteo pero el rango ya estaba agotado. */
   sorteo_completo: boolean
   total: number
@@ -686,7 +688,7 @@ export function EventoForm({
           <div className="mb-6 rounded-xl border-2 border-amber-deep px-5 py-4 text-center">
             <span className="label-mono block text-ink-3">Tu número para el sorteo</span>
             <span className="block font-mono text-4xl font-semibold text-amber-deep mt-1 leading-tight">
-              {resultado.numero_sorteo}
+              {resultado.numero_sorteo_texto ?? resultado.numero_sorteo}
             </span>
             <span className="block text-sm text-ink-2 mt-1">
               Te lo enviamos por correo. Guardalo: es el que participa del sorteo.

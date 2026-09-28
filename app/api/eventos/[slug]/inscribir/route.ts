@@ -33,6 +33,7 @@ import {
   elegibleParaSorteo,
   esMonedaDelEvento,
   esSoloSorteo,
+  formatNumeroSorteo,
   motivoNoPuedeInscribirse,
   opcionesConSinRestriccion,
   precioExtra,
@@ -754,6 +755,8 @@ export async function POST(
         alimentacion_tipo: (inserted.alimentacion_tipo as string | null) ?? null,
         participa_sorteo: !!inserted.participa_sorteo,
         numero_sorteo: numeroSorteo,
+        // Para mostrar: con los ceros del evento, igual que en el mail.
+        numero_sorteo_texto: numeroSorteo == null ? null : formatNumeroSorteo(numeroSorteo, evento),
         // Pidió sorteo pero no hubo número: el rango se agotó. El form lo avisa.
         sorteo_completo: participaSorteo && numeroSorteo == null,
         total:

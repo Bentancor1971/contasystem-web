@@ -126,9 +126,10 @@ export interface ReciboEventoEmailData {
   /**
    * Número correlativo del sorteo. null = no participa.
    * OJO: el rango arranca en 0 por defecto, así que 0 es un número VÁLIDO.
-   * Chequear siempre `!= null`, nunca por truthiness.
+   * Chequear siempre `!= null`, nunca por truthiness. Llega ya formateado con
+   * los ceros del evento (`formatNumeroSorteo`); el número crudo también sirve.
    */
-  numeroSorteo?: number | null
+  numeroSorteo?: number | string | null
   /** Link al formulario público de "registrar mi pago" (sólo preinscripción). */
   urlPago?: string | null
   /** Referencia de transferencia que la persona declaró (modalidad "pago realizado"). */
