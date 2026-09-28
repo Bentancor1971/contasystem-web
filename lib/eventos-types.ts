@@ -412,12 +412,14 @@ export function elegibleParaSorteo(
  * que SÍ es un evento al que se va y donde el sorteo es un extra opcional.
  * Distinguir los dos casos pide un flag por evento —columna en
  * evento_web_config con su toggle en /configuracion/eventos, que es donde
- * termina yendo—; mientras tanto se nombra el único evento que lo necesita.
+ * termina yendo—; mientras tanto se nombran los eventos que lo necesitan.
  * Para agregar otro alcanza con sumar su slug acá.
  */
 const SLUGS_SOLO_SORTEO = new Set([
   // Grupo GREI — Sorteo de Becas: Diplomado en Resonancia Magnética (ago/2026).
   'sorteo-de-becas-diplomado-en-resonancia-magnetica-d67d65e4',
+  // A.T.R.I. — Sorteo de cupos: XV Congreso Uruguayo de Imagenología (oct/2026).
+  'sorteo-xv-congreso-uruguayo-de-imagenologia-1673a2de',
 ])
 
 /**
