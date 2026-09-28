@@ -23,7 +23,7 @@ import { loadEmpresaBranding } from '@/lib/empresa-branding'
 import { sendInscripcionEmail } from '@/lib/mailer'
 import { qrPng } from '@/lib/qr'
 import { aplicarVariables, escapeHtml, sanitizeHtml } from '@/lib/sanitize-html'
-import type { CambioDato, EntradaRecibo } from '@/lib/recibo-evento-email'
+import type { CambioDato, EntradaRecibo, ReciboEventoEmailData } from '@/lib/recibo-evento-email'
 
 /** Datos de la inscripción tal como quedaron guardados (lo que se le comprueba). */
 export interface InscripcionAcuse {
@@ -135,8 +135,9 @@ async function resolverEntrada(
 
 export async function enviarAcuseInscripcion(
   admin: SupabaseClient,
-  { evento, cfg, destino, documento, nombre, apellido, inscripcion, cambios = [], origen }: EnviarAcuseParams,
+  params: EnviarAcuseParams,
 ): Promise<ResultadoAcuse> {
+  const { evento, cfg, destino, documento, inscripcion, origen } = params
   const to = destino.trim()
   if (!to) return { ok: false, motivo: 'sin_destino' }
 
@@ -161,136 +162,32 @@ export async function enviarAcuseInscripcion(
     // organización pierda el registro en los demás.
     const copiaOculta = cfg.copia_oculta ?? cuenta.copiaOcultaAcuse
 
-    const total =
-      Number(inscripcion.importe) +
-      Number(inscripcion.transporte_importe) +
-      Number(inscripcion.alimentacion_importe)
-
-    // Registro sin costo: evento sin costo cuya inscripción no genera pago. Sus
-    // plantillas propias son de flujos de pago (preinscripción a pagar / pago
-    // declarado), que acá no aplican: se ignoran y se usa el recibo branded, ya
-    // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
-    const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
-
-    // Evento que existe sólo para el sorteo: el comprobante habla del sorteo y
-    // no del evento. Se resuelve con los mismos flags que el formulario público
-    // y /inscribir, para que los tres cuenten la misma historia.
-    const soloSorteo = esSoloSorteo({
-      slug: evento.slug,
-      tipo: evento.tipo,
-      sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
-      transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,
-      alimentacionVisible: !!evento.alimentacion_disponible && cfg.mostrar_alimentacion,
-    })
-
     // Confirmada por la organización: el comprobante cambia de naturaleza. Ya no
     // hay trámite pendiente que reclamar, y si el desktop emitió la entrada, ESA
     // es la parte útil del mail (ver el bloque de entrada en el recibo).
     //
     // 'importado' NO es esto (E1): sólo dice que el desktop bajó la fila a su
-    // cola, no que alguien validó el pago. El desktop TODAVÍA NO ESCRIBE
-    // 'confirmado' (ver docs/supabase/60_eventos_web_fixes.sql), así que hoy
-    // este mail nunca sale como "confirmada" — se queda en "recibida" hasta que
-    // el desktop lo haga.
+    // cola, no que alguien validó el pago. El desktop escribe 'confirmado' al
+    // validar (autoPushEstadoInscripcionWeb), pero este mail sólo sale así en el
+    // reenvío de copia: la web no manda nada cuando llega la confirmación.
     const confirmada = inscripcion.estado === 'confirmado'
     const entrada = confirmada
       ? await resolverEntrada(admin, evento, documento, origen)
       : null
 
-    // Moneda de ESTA inscripción (la que eligió la persona, no la base del
-    // evento): define con qué símbolo se muestran los importes y a qué cuenta
-    // se le pide transferir. Nadie transfiere dólares a una cuenta en pesos.
-    const monedaSimbolo = simboloDe(normalizarMonedas(evento), inscripcion.moneda_codigo)
-    const datosDeposito = datosDepositoDe(
-      {
-        datos_deposito: evento.datos_deposito,
-        datos_deposito_monedas: normalizarDatosDepositoMonedas(evento),
-      },
-      inscripcion.moneda_codigo,
+    const { data, override } = prepararAcuse(
+      params,
+      marca?.empresa ?? { nombre: cuenta.fromName },
+      entrada?.recibo ?? null,
     )
-
-    // Número de sorteo con los ceros del evento ("01", "001"), el mismo en el
-    // cuerpo por defecto y en la variable de las plantillas propias.
-    const numeroSorteo =
-      inscripcion.numero_sorteo == null ? null : formatNumeroSorteo(inscripcion.numero_sorteo, evento)
-
-    // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
-    // El asunto es texto plano; el cuerpo es HTML (variables escapadas y saneado).
-    const varsTexto: Record<string, string> = {
-      nombre: `${nombre} ${apellido}`.trim(),
-      evento: evento.nombre,
-      numero: inscripcion.numero ?? '',
-      // Vacío si no participa del sorteo: una plantilla propia que use
-      // {numero_sorteo} en un evento sin sorteo no muestra nada, no "null".
-      numero_sorteo: numeroSorteo ?? '',
-      total: `${monedaSimbolo} ${total.toFixed(2)}`,
-    }
-    const varsHtml = Object.fromEntries(
-      Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
-    )
-    // Plantilla según la modalidad: pago declarado usa la propia (con el aviso de
-    // verificación de transferencia); preinscripción usa la suya. Si el campo del
-    // caso está vacío, cae al recibo branded por defecto.
-    //
-    // Una inscripción CONFIRMADA también las ignora, por el mismo motivo que el
-    // registro sin costo: las dos plantillas propias que existen están redactadas
-    // para un trámite pendiente (pagá / vamos a verificar), ninguna sirve para
-    // quien ya está confirmado, y además el HTML propio reemplaza el cuerpo
-    // entero — se llevaría puesta la entrada con el QR, que es lo único que la
-    // persona necesita en la puerta.
-    const esPago = inscripcion.modalidad === 'pago_transferencia'
-    const sinPlantillaPropia = registroSinCosto || confirmada
-    const asuntoTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
-    const htmlTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
-
-    // Link al registro de pago: sólo tiene sentido en la preinscripción con pago
-    // pendiente y sólo si el form público lo ofrece (misma condición que
-    // EventoForm/RegistrarPago: transferencia habilitada y datos de depósito
-    // cargados). En un registro sin costo no hay pago que registrar.
-    const urlPago =
-      !esPago && !registroSinCosto && origen && cfg.permitir_pago_transferencia && datosDeposito
-        ? `${origen}/e/${evento.slug}?pago=1`
-        : null
 
     const envio = await sendInscripcionEmail({
       cuenta,
       to,
       branding: marca?.branding,
       copiaOculta,
-      override: {
-        asunto: asuntoTpl ? aplicarVariables(asuntoTpl, varsTexto) : null,
-        html: htmlTpl ? sanitizeHtml(aplicarVariables(htmlTpl, varsHtml)) : null,
-      },
-      data: {
-        empresa: marca?.empresa ?? { nombre: cuenta.fromName },
-        eventoNombre: evento.nombre,
-        eventoFecha: evento.fecha_inicio,
-        eventoFechaFin: evento.fecha_fin,
-        socioNombre: `${nombre} ${apellido}`.trim(),
-        socioDocumento: documento,
-        categoriaNombre: inscripcion.categoria_nombre,
-        tipoParticipante: inscripcion.tipo_participante,
-        importe: Number(inscripcion.importe),
-        llevaTransporte: !!inscripcion.lleva_transporte,
-        transporteImporte: Number(inscripcion.transporte_importe),
-        llevaAlimentacion: !!inscripcion.lleva_alimentacion,
-        alimentacionImporte: Number(inscripcion.alimentacion_importe),
-        alimentacionTipo: inscripcion.alimentacion_tipo,
-        total,
-        monedaCodigo: inscripcion.moneda_codigo,
-        monedaSimbolo,
-        modalidad: inscripcion.modalidad,
-        registroSinCosto,
-        soloSorteo,
-        confirmada,
-        entrada: entrada?.recibo ?? null,
-        datosDeposito,
-        numero: inscripcion.numero,
-        numeroSorteo,
-        urlPago,
-        referenciaDeclarada: inscripcion.referencia_transferencia,
-        cambios,
-      },
+      override,
+      data,
       attachments: entrada?.png
         ? [
             {
@@ -306,5 +203,142 @@ export async function enviarAcuseInscripcion(
     return { ok: true }
   } catch (err) {
     return { ok: false, motivo: 'error', error: err instanceof Error ? err.message : 'Error' }
+  }
+}
+
+/** El acuse listo para dibujar: los datos del recibo y, si aplica, la plantilla propia. */
+export interface AcusePreparado {
+  data: ReciboEventoEmailData
+  override: { asunto: string | null; html: string | null }
+}
+
+/**
+ * Arma el acuse SIN enviarlo ni tocar la base: todas las decisiones del mail
+ * (registro sin costo, solo sorteo, plantilla propia, link de pago, número de
+ * sorteo con ceros) viven acá. Lo usan el envío real y la vista previa que pide
+ * el desktop (/api/preview/acuse), para que lo que se revisa sea lo que sale.
+ *
+ * `entrada` es la entrada ya resuelta (sólo en una inscripción confirmada con
+ * entrada emitida); null = el mail sale sin el bloque de entrada.
+ */
+export function prepararAcuse(
+  { evento, cfg, documento, nombre, apellido, inscripcion, cambios = [], origen }: Omit<EnviarAcuseParams, 'destino'>,
+  empresa: ReciboEventoEmailData['empresa'],
+  entrada: EntradaRecibo | null,
+): AcusePreparado {
+  const total =
+    Number(inscripcion.importe) +
+    Number(inscripcion.transporte_importe) +
+    Number(inscripcion.alimentacion_importe)
+
+  // Registro sin costo: evento sin costo cuya inscripción no genera pago. Sus
+  // plantillas propias son de flujos de pago (preinscripción a pagar / pago
+  // declarado), que acá no aplican: se ignoran y se usa el recibo branded, ya
+  // adaptado para no mencionar pagos (y que sí incluye el número de sorteo).
+  const registroSinCosto = evento.tipo !== 'con_costo' && total === 0
+
+  // Evento que existe sólo para el sorteo: el comprobante habla del sorteo y
+  // no del evento. Se resuelve con los mismos flags que el formulario público
+  // y /inscribir, para que los tres cuenten la misma historia.
+  const soloSorteo = esSoloSorteo({
+    slug: evento.slug,
+    tipo: evento.tipo,
+    sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
+    transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,
+    alimentacionVisible: !!evento.alimentacion_disponible && cfg.mostrar_alimentacion,
+  })
+
+  const confirmada = inscripcion.estado === 'confirmado'
+
+  // Moneda de ESTA inscripción (la que eligió la persona, no la base del
+  // evento): define con qué símbolo se muestran los importes y a qué cuenta
+  // se le pide transferir. Nadie transfiere dólares a una cuenta en pesos.
+  const monedaSimbolo = simboloDe(normalizarMonedas(evento), inscripcion.moneda_codigo)
+  const datosDeposito = datosDepositoDe(
+    {
+      datos_deposito: evento.datos_deposito,
+      datos_deposito_monedas: normalizarDatosDepositoMonedas(evento),
+    },
+    inscripcion.moneda_codigo,
+  )
+
+  // Número de sorteo con los ceros del evento ("01", "001"), el mismo en el
+  // cuerpo por defecto y en la variable de las plantillas propias.
+  const numeroSorteo =
+    inscripcion.numero_sorteo == null ? null : formatNumeroSorteo(inscripcion.numero_sorteo, evento)
+
+  // Plantilla propia del evento (si la cargaron en /configuracion/eventos).
+  // El asunto es texto plano; el cuerpo es HTML (variables escapadas y saneado).
+  const varsTexto: Record<string, string> = {
+    nombre: `${nombre} ${apellido}`.trim(),
+    evento: evento.nombre,
+    numero: inscripcion.numero ?? '',
+    // Vacío si no participa del sorteo: una plantilla propia que use
+    // {numero_sorteo} en un evento sin sorteo no muestra nada, no "null".
+    numero_sorteo: numeroSorteo ?? '',
+    total: `${monedaSimbolo} ${total.toFixed(2)}`,
+  }
+  const varsHtml = Object.fromEntries(
+    Object.entries(varsTexto).map(([k, v]) => [k, escapeHtml(v)]),
+  )
+  // Plantilla según la modalidad: pago declarado usa la propia (con el aviso de
+  // verificación de transferencia); preinscripción usa la suya. Si el campo del
+  // caso está vacío, cae al recibo branded por defecto.
+  //
+  // Una inscripción CONFIRMADA también las ignora, por el mismo motivo que el
+  // registro sin costo: las dos plantillas propias que existen están redactadas
+  // para un trámite pendiente (pagá / vamos a verificar), ninguna sirve para
+  // quien ya está confirmado, y además el HTML propio reemplaza el cuerpo
+  // entero — se llevaría puesta la entrada con el QR, que es lo único que la
+  // persona necesita en la puerta.
+  const esPago = inscripcion.modalidad === 'pago_transferencia'
+  const sinPlantillaPropia = registroSinCosto || confirmada
+  const asuntoTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_asunto : cfg.mail_acuse_asunto
+  const htmlTpl = sinPlantillaPropia ? null : esPago ? cfg.mail_acuse_pago_html : cfg.mail_acuse_html
+
+  // Link al registro de pago: sólo tiene sentido en la preinscripción con pago
+  // pendiente y sólo si el form público lo ofrece (misma condición que
+  // EventoForm/RegistrarPago: transferencia habilitada y datos de depósito
+  // cargados). En un registro sin costo no hay pago que registrar.
+  const urlPago =
+    !esPago && !registroSinCosto && origen && cfg.permitir_pago_transferencia && datosDeposito
+      ? `${origen}/e/${evento.slug}?pago=1`
+      : null
+
+  return {
+    override: {
+      asunto: asuntoTpl ? aplicarVariables(asuntoTpl, varsTexto) : null,
+      html: htmlTpl ? sanitizeHtml(aplicarVariables(htmlTpl, varsHtml)) : null,
+    },
+    data: {
+      empresa,
+      eventoNombre: evento.nombre,
+      eventoFecha: evento.fecha_inicio,
+      eventoFechaFin: evento.fecha_fin,
+      socioNombre: `${nombre} ${apellido}`.trim(),
+      socioDocumento: documento,
+      categoriaNombre: inscripcion.categoria_nombre,
+      tipoParticipante: inscripcion.tipo_participante,
+      importe: Number(inscripcion.importe),
+      llevaTransporte: !!inscripcion.lleva_transporte,
+      transporteImporte: Number(inscripcion.transporte_importe),
+      llevaAlimentacion: !!inscripcion.lleva_alimentacion,
+      alimentacionImporte: Number(inscripcion.alimentacion_importe),
+      alimentacionTipo: inscripcion.alimentacion_tipo,
+      total,
+      monedaCodigo: inscripcion.moneda_codigo,
+      monedaSimbolo,
+      modalidad: inscripcion.modalidad,
+      registroSinCosto,
+      soloSorteo,
+      confirmada,
+      entrada,
+      datosDeposito,
+      numero: inscripcion.numero,
+      numeroSorteo,
+      urlPago,
+      referenciaDeclarada: inscripcion.referencia_transferencia,
+      cambios,
+    },
   }
 }

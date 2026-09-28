@@ -19,7 +19,7 @@ export const config = {
      *   Sin esta exclusión, cada visita anónima a /e/{slug} pedía el manifest,
      *   recibía un 307 a /login y el HTML del login como "manifest".
      * - api/cron — se autentica con CRON_SECRET; un redirect a /login lo rompe.
-     * - t/, b/, api/tracking, api/events, api/health, api/bajas — pixel,
+     * - t/, b/, api/tracking, api/events, api/health, api/bajas, api/preview/ — pixel,
      *   clicks y bajas de los mails (los abre el destinatario, sin sesión) y
      *   los endpoints que consume el desktop con x-api-key. `api/events` no
      *   captura `api/eventos`: divergen en la 's'.
@@ -34,6 +34,6 @@ export const config = {
      *   de estas rutas NO depende del proxy: las páginas lo fijan en
      *   next.config.ts (headers) y los handlers en su _comun.ts.
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|api/cron|api/tracking|api/events|api/health|api/bajas|api/eventos/|api/votacion/|api/mesa/|api/postulacion/|api/certificados/|api/ficha/|t/|b/|e/|a/|c/|p/|v$|v/|f/|mesa$|mesa/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sitemap.xml|api/cron|api/tracking|api/events|api/health|api/bajas|api/preview/|api/eventos/|api/votacion/|api/mesa/|api/postulacion/|api/certificados/|api/ficha/|t/|b/|e/|a/|c/|p/|v$|v/|f/|mesa$|mesa/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|woff2?)$).*)',
   ],
 }
