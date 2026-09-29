@@ -7,6 +7,10 @@
  * sale— y ofrece la consulta por cédula para que cada uno sepa lo suyo. Abajo,
  * plegado, lo necesario para verificar el sorteo contra el acta: el hash de la
  * lista sellada y la semilla.
+ *
+ * Tres modalidades (71_sorteos_modalidad.sql): por sistema (con semilla), un
+ * sorteo hecho fuera del sistema y la adjudicación directa, que no sorteó nada.
+ * Las dos últimas no tienen semilla y el plegable cuenta cómo se asignó.
  */
 
 import { useState } from 'react'
@@ -26,6 +30,11 @@ function fechaLarga(iso: string): string {
 
 function textoConsulta(r: ConsultaSorteoPublica): { titulo: string; detalle: string; ok: boolean } {
   const num = r.numero_texto ? `Tu número, el ${r.numero_texto}, ` : 'Tu número '
+  if (r.modalidad === 'directa') {
+    return r.resultado === 'titular'
+      ? { ok: true, titulo: 'Tenés cupo asignado', detalle: 'No hizo falta sortear: hubo lugar para todos los participantes. La organización se va a comunicar con vos.' }
+      : { ok: false, titulo: 'No figura entre los asignados', detalle: 'No encontramos un registro con esta cédula entre quienes tienen cupo.' }
+  }
   if (r.resultado === 'titular') {
     return { ok: true, titulo: '¡Resultaste sorteado!', detalle: `${num}salió en el lugar ${r.posicion}. La organización se va a comunicar con vos.` }
   }
@@ -91,36 +100,43 @@ export function ResultadoSorteo({ slug, sorteo }: { slug: string; sorteo: Sorteo
 
   const desiertos = sorteo.cantidad_cupos - sorteo.titulares.length
   const r = respuesta ? textoConsulta(respuesta) : null
+  const directa = sorteo.modalidad === 'directa'
+  const participantes = `${sorteo.cantidad_participantes} participante${sorteo.cantidad_participantes === 1 ? '' : 's'}`
+  const bajada = directa
+    ? `Asignado el ${fechaLarga(sorteo.fecha)} sin sorteo: los ${participantes} tuvieron cupo`
+    : sorteo.modalidad === 'externo'
+      ? `Sorteado el ${fechaLarga(sorteo.fecha)} fuera del sistema, entre ${participantes}`
+      : `Sorteado el ${fechaLarga(sorteo.fecha)} entre ${participantes}`
 
   return (
     <section className="card p-6 sm:p-8 mb-8 rise">
       <div className="flex items-start gap-3 mb-5">
         <Gift className="w-5 h-5 mt-1 shrink-0 text-amber-deep" />
         <div>
-          <span className="label-mono">Resultado del sorteo</span>
+          <span className="label-mono">{directa ? 'Adjudicación de cupos' : 'Resultado del sorteo'}</span>
           <h2 className="font-display text-2xl font-medium leading-tight mt-1">
             {sorteo.premio_descripcion || sorteo.nombre}
           </h2>
-          <p className="font-mono text-xs text-ink-2 mt-1">
-            Sorteado el {fechaLarga(sorteo.fecha)} entre {sorteo.cantidad_participantes} participante
-            {sorteo.cantidad_participantes === 1 ? '' : 's'}
-          </p>
+          <p className="font-mono text-xs text-ink-2 mt-1">{bajada}</p>
         </div>
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Lista titulo={sorteo.cantidad_cupos === 1 ? 'Sorteado' : 'Sorteados'} filas={sorteo.titulares} />
+        <Lista titulo={directa ? 'Con cupo' : sorteo.cantidad_cupos === 1 ? 'Sorteado' : 'Sorteados'} filas={sorteo.titulares} />
         <Lista titulo="Suplentes, en orden" filas={sorteo.suplentes} />
       </div>
       {desiertos > 0 && (
         <p className="text-sm text-ink-2 mt-3">
-          {desiertos === 1 ? 'Un cupo quedó desierto' : `${desiertos} cupos quedaron desiertos`}: no hubo participantes suficientes.
+          {desiertos === 1 ? 'Un cupo quedó desierto' : `${desiertos} cupos quedaron desiertos`}
+          {sorteo.modalidad === 'sistema' ? ': no hubo participantes suficientes.' : '.'}
         </p>
       )}
 
       {/* ¿Salí sorteado? */}
       <div className="border-t border-line mt-6 pt-5">
-        <label htmlFor={`sorteo-doc-${sorteo.id}`} className="label-mono block mb-1">¿Participaste? Consultá con tu cédula</label>
+        <label htmlFor={`sorteo-doc-${sorteo.id}`} className="label-mono block mb-1">
+          {directa ? '¿Te inscribiste? Consultá con tu cédula' : '¿Participaste? Consultá con tu cédula'}
+        </label>
         <div className="flex items-end gap-3">
           <input
             id={`sorteo-doc-${sorteo.id}`}
@@ -149,22 +165,36 @@ export function ResultadoSorteo({ slug, sorteo }: { slug: string; sorteo: Sorteo
       {sorteo.acta_url && (
         <a href={sorteo.acta_url} target="_blank" rel="noopener noreferrer"
           className="mt-5 inline-flex items-center gap-1.5 text-sm text-ink-2 underline underline-offset-2 hover:text-ink">
-          <FileText size={15} /> Descargar el acta del sorteo (PDF)
+          <FileText size={15} /> {directa ? 'Descargar el acta de adjudicación (PDF)' : 'Descargar el acta del sorteo (PDF)'}
         </a>
       )}
 
       <details className="mt-5 text-xs text-ink-3">
         <summary className="cursor-pointer inline-flex items-center gap-1.5">
-          <ShieldCheck size={13} /> Cómo verificar este sorteo
+          <ShieldCheck size={13} /> {sorteo.modalidad === 'sistema' ? 'Cómo verificar este sorteo' : directa ? 'Cómo se asignaron los cupos' : 'Cómo se hizo este sorteo'}
         </summary>
         <div className="mt-2 space-y-2">
-          <p>
-            El sorteo se hizo por sistema. Primero se selló la lista de participantes y se calculó su hash; después se
-            generó una semilla al azar. Cada número se ordenó por SHA-256 de &quot;semilla:número&quot;, de menor a mayor.
-            Con la lista del acta y estos dos datos, cualquiera puede reproducir el resultado.
-          </p>
+          {sorteo.modalidad === 'sistema' && sorteo.semilla ? (
+            <p>
+              El sorteo se hizo por sistema. Primero se selló la lista de participantes y se calculó su hash; después se
+              generó una semilla al azar. Cada número se ordenó por SHA-256 de &quot;semilla:número&quot;, de menor a mayor.
+              Con la lista del acta y estos dos datos, cualquiera puede reproducir el resultado.
+            </p>
+          ) : sorteo.modalidad === 'externo' ? (
+            <p>
+              El sorteo se hizo fuera del sistema: {sorteo.metodo_descripcion || 'según consta en el acta'}. Antes de
+              registrar el resultado se selló la lista de participantes con su hash; los números se cargaron en el orden
+              en que salieron.
+            </p>
+          ) : (
+            <p>
+              {sorteo.cupos_originales != null
+                ? `No se realizó sorteo. Había ${sorteo.cupos_originales} cupo${sorteo.cupos_originales === 1 ? '' : 's'} y se ampliaron a ${sorteo.cantidad_cupos} para dar lugar a todos los participantes${sorteo.motivo_ampliacion ? `: ${sorteo.motivo_ampliacion}` : ''}.`
+                : `No se realizó sorteo: los ${participantes} no superaron los ${sorteo.cantidad_cupos} cupos, así que todos quedaron con cupo.`}
+            </p>
+          )}
           <p className="break-all font-mono">Hash de la lista: {sorteo.participantes_hash}</p>
-          <p className="break-all font-mono">Semilla: {sorteo.semilla}</p>
+          {sorteo.semilla && <p className="break-all font-mono">Semilla: {sorteo.semilla}</p>}
         </div>
       </details>
     </section>

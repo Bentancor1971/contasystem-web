@@ -15,6 +15,7 @@ import type {
   CategoriaSocioPublica,
   ConceptoExtra,
   ConsultaSorteoPublica,
+  ModalidadSorteo,
   EventoPublico,
   EventoRemoto,
   EventoWebConfig,
@@ -620,8 +621,18 @@ interface FilaSorteoRemoto {
   cantidad_suplentes: number
   cantidad_participantes: number
   participantes_hash: string
-  semilla: string
+  semilla: string | null
   acta_url?: string | null
+  // 71_sorteos_modalidad.sql: opcionales porque se lee con `*` y antes de ese
+  // SQL no existen. Sin modalidad, es un sorteo por sistema.
+  modalidad?: string | null
+  metodo_descripcion?: string | null
+  cupos_originales?: number | null
+  motivo_ampliacion?: string | null
+}
+
+function modalidadDe(s: FilaSorteoRemoto): ModalidadSorteo {
+  return s.modalidad === 'externo' || s.modalidad === 'directa' ? s.modalidad : 'sistema'
 }
 
 async function sorteosPublicadosDe(admin: SupabaseClient, eventoId: string): Promise<FilaSorteoRemoto[]> {
@@ -666,6 +677,10 @@ export async function loadSorteosPublicados(
     })
     return {
       id: s.id,
+      modalidad: modalidadDe(s),
+      metodo_descripcion: s.metodo_descripcion ?? null,
+      cupos_originales: s.cupos_originales ?? null,
+      motivo_ampliacion: s.motivo_ampliacion ?? null,
       nombre: s.nombre,
       premio_descripcion: s.premio_descripcion,
       fecha: s.fecha,
@@ -673,7 +688,7 @@ export async function loadSorteosPublicados(
       cantidad_suplentes: s.cantidad_suplentes,
       cantidad_participantes: s.cantidad_participantes,
       participantes_hash: s.participantes_hash,
-      semilla: s.semilla,
+      semilla: s.semilla || null,
       acta_url: s.acta_url ?? null,
       titulares: propias.filter((f) => f.tipo === 'titular').map(item),
       suplentes: propias.filter((f) => f.tipo === 'suplente').map(item),
@@ -716,6 +731,7 @@ export async function consultarSorteoPorCedula(
       posicion: f.tipo === 'titular' ? f.orden : f.orden - s.cantidad_cupos,
       numero_texto: formatNumeroSorteo(f.numero, ev),
       sorteo_nombre: s.nombre,
+      modalidad: modalidadDe(s),
     }
   }
 
@@ -735,6 +751,7 @@ export async function consultarSorteoPorCedula(
     posicion: null,
     numero_texto: numero == null ? null : formatNumeroSorteo(numero, ev),
     sorteo_nombre: sorteos[0].nombre,
+    modalidad: modalidadDe(sorteos[0]),
   }
 }
 

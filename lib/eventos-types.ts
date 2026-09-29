@@ -408,8 +408,22 @@ export function textoCuposSorteo(s: { cupos: number; suplentes: number }): strin
  * Un sorteo ya realizado y publicado por el desktop (docs/supabase/69_sorteos.sql).
  * De cada ganador sólo viaja el número y "Nombre I.": la cédula nunca sale.
  */
+/**
+ * Cómo se llegó al resultado (docs/supabase/71_sorteos_modalidad.sql, repo desktop):
+ *   sistema → semilla + SHA-256, verificable
+ *   externo → sorteo hecho fuera del sistema (bolillero, Quiniela); sin semilla
+ *   directa → no hubo sorteo: todos los participantes tuvieron cupo
+ */
+export type ModalidadSorteo = 'sistema' | 'externo' | 'directa'
+
 export interface SorteoResultadoPublico {
   id: string
+  modalidad: ModalidadSorteo
+  /** Externo: cómo se hizo ("Bolillero en sala ante la Comisión"). */
+  metodo_descripcion: string | null
+  /** Directa con ampliación: cuántos cupos había antes y por qué se ampliaron. */
+  cupos_originales: number | null
+  motivo_ampliacion: string | null
   nombre: string
   premio_descripcion: string | null
   fecha: string
@@ -418,7 +432,8 @@ export interface SorteoResultadoPublico {
   cantidad_participantes: number
   /** Para verificar: hash de la lista sellada y semilla, tal como figuran en el acta. */
   participantes_hash: string
-  semilla: string
+  /** null en un sorteo externo o una adjudicación directa. */
+  semilla: string | null
   /** Acta pública en PDF (nombre e inicial, sin cédulas). null si todavía no se subió (SQL 70). */
   acta_url: string | null
   titulares: { orden: number; numero_texto: string; nombre_publico: string }[]
@@ -438,6 +453,8 @@ export interface ConsultaSorteoPublica {
   posicion: number | null
   numero_texto: string | null
   sorteo_nombre: string
+  /** Una adjudicación directa no "sortea": el texto de la respuesta cambia. */
+  modalidad: ModalidadSorteo
 }
 
 /**
