@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     const avisos: string[] = []
     if (!cuenta) avisos.push('La empresa no tiene casilla Gmail configurada en la web: hoy este mail NO sale.')
     const soloSorteo = esSoloSorteo({
-      slug: evento.slug,
+      marcado: evento.solo_sorteo === true,
       tipo: evento.tipo,
       sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
       transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,

@@ -14,6 +14,7 @@ import type {
   CategoriaEvento,
   CategoriaSocioPublica,
   ConceptoExtra,
+  ConsultaSorteoPublica,
   EventoPublico,
   EventoRemoto,
   EventoWebConfig,
@@ -24,11 +25,13 @@ import type {
   RegistroPermitido,
   ResolucionParticipante,
   ResolucionPublica,
+  SorteoResultadoPublico,
   TipoParticipante,
 } from '@/lib/eventos-types'
 import {
   esEstadoSocio,
   esSoloSorteo,
+  formatNumeroSorteo,
   opcionesConSinRestriccion,
   puedeInscribirse,
 } from '@/lib/eventos-types'
@@ -454,7 +457,7 @@ async function loadEventoPublicoImpl(
 
   // El cupo de transporte tiene su propio conteo (sólo si hay tope definido).
   const transporteConCupo = ev.transporte_disponible && ev.transporte_cupo_maximo != null
-  const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos, sorteoMax] =
+  const [categorias, inscriptos, categoriasSocio, config, transporteInscriptos, sorteoMax, sorteosPublicados] =
     await Promise.all([
       loadCategoriasEvento(admin, ev.id, monedas[0].codigo),
       ev.cupo_maximo != null ? contarInscriptos(admin, ev) : Promise.resolve(0),
@@ -467,6 +470,9 @@ async function loadEventoPublicoImpl(
       loadEventoWebConfig(admin, ev.id),
       transporteConCupo ? contarConTransporte(admin, ev) : Promise.resolve(0),
       ev.sorteo_disponible ? maxNumeroSorteo(admin, ev.id) : Promise.resolve(null),
+      // No depende de `sorteo_disponible`: un sorteo ya hecho se sigue
+      // mostrando aunque después apaguen el sorteo en el evento.
+      loadSorteosPublicados(admin, ev),
     ])
 
   const cupoCompleto = ev.cupo_maximo != null && inscriptos >= ev.cupo_maximo
@@ -483,7 +489,7 @@ async function loadEventoPublicoImpl(
   // Evento "solo sorteo": el registro ES la participación (ver `esSoloSorteo`).
   // Se evalúa con la config web ya cargada, igual que en el formulario.
   const soloSorteo = esSoloSorteo({
-    slug: ev.slug,
+    marcado: ev.solo_sorteo === true,
     tipo: ev.tipo,
     sorteoVisible: !!ev.sorteo_disponible && config.mostrar_sorteo,
     transporteVisible: !!ev.transporte_disponible && config.mostrar_transporte,
@@ -585,7 +591,10 @@ async function loadEventoPublicoImpl(
       ocupacion_nivel:
         rango && sorteoMax != null ? nivelOcupacion(sorteoAsignados, sorteoTotal) : null,
       completo: sorteoCompleto,
+      cupos: Math.max(1, Number(ev.sorteo_cupos ?? 1)),
+      suplentes: Math.max(0, Number(ev.sorteo_suplentes ?? 0)),
     },
+    sorteos_publicados: sorteosPublicados,
     solo_sorteo: soloSorteo,
   }
 }
@@ -593,6 +602,141 @@ async function loadEventoPublicoImpl(
 /** Ver el comentario de `loadEventoPublicoImpl`: dedupe por request entre
  * `generateMetadata` y la página de `/e/{slug}`. */
 export const loadEventoPublico = cache(loadEventoPublicoImpl)
+
+// ────────────────────────────────────────────────────────────────
+// Sorteos publicados (docs/supabase/69_sorteos.sql, repo desktop).
+//
+// El desktop sortea y sube el resultado; acá sólo se lee. Si la migración 69
+// todavía no se aplicó la tabla no existe: se devuelve lista vacía en vez de
+// tumbar la página del evento, que es lo que la gente abre.
+// ────────────────────────────────────────────────────────────────
+
+interface FilaSorteoRemoto {
+  id: string
+  nombre: string
+  premio_descripcion: string | null
+  fecha: string
+  cantidad_cupos: number
+  cantidad_suplentes: number
+  cantidad_participantes: number
+  participantes_hash: string
+  semilla: string
+  acta_url?: string | null
+}
+
+async function sorteosPublicadosDe(admin: SupabaseClient, eventoId: string): Promise<FilaSorteoRemoto[]> {
+  const { data, error } = await admin
+    .from('sorteos_remoto')
+    // `*` y no la lista de columnas: `acta_url` llega con el SQL 70, y pedirla
+    // por nombre antes de aplicarlo haría fallar la consulta y desaparecer el
+    // resultado entero de la página.
+    .select('*')
+    .eq('evento_id', eventoId)
+    .eq('publicado', true)
+    .order('realizado_at', { ascending: false })
+  if (error) {
+    console.error('[sorteos_remoto] no se pudo leer (¿falta el SQL 69?):', error.message)
+    return []
+  }
+  return (data ?? []) as FilaSorteoRemoto[]
+}
+
+export async function loadSorteosPublicados(
+  admin: SupabaseClient,
+  ev: EventoRemoto,
+): Promise<SorteoResultadoPublico[]> {
+  const sorteos = await sorteosPublicadosDe(admin, ev.id)
+  if (sorteos.length === 0) return []
+  const { data, error } = await admin
+    .from('sorteo_resultados_remoto')
+    .select('sorteo_id, orden, tipo, numero, nombre_publico')
+    .in('sorteo_id', sorteos.map((s) => s.id))
+    .order('orden', { ascending: true })
+  if (error) {
+    console.error('[sorteo_resultados_remoto] no se pudo leer:', error.message)
+    return []
+  }
+  const filas = (data ?? []) as { sorteo_id: string; orden: number; tipo: string; numero: number; nombre_publico: string }[]
+  return sorteos.map((s) => {
+    const propias = filas.filter((f) => f.sorteo_id === s.id)
+    const item = (f: (typeof filas)[number]) => ({
+      orden: f.orden,
+      numero_texto: formatNumeroSorteo(f.numero, ev),
+      nombre_publico: f.nombre_publico,
+    })
+    return {
+      id: s.id,
+      nombre: s.nombre,
+      premio_descripcion: s.premio_descripcion,
+      fecha: s.fecha,
+      cantidad_cupos: s.cantidad_cupos,
+      cantidad_suplentes: s.cantidad_suplentes,
+      cantidad_participantes: s.cantidad_participantes,
+      participantes_hash: s.participantes_hash,
+      semilla: s.semilla,
+      acta_url: s.acta_url ?? null,
+      titulares: propias.filter((f) => f.tipo === 'titular').map(item),
+      suplentes: propias.filter((f) => f.tipo === 'suplente').map(item),
+    }
+  })
+}
+
+/**
+ * Qué le tocó a una cédula en el sorteo publicado del evento. Si hay más de
+ * uno publicado, gana el primero donde la cédula salió; si no salió en ninguno,
+ * se contesta por el más reciente. null = el evento no tiene sorteo publicado.
+ *
+ * El match es por `documento_hash` (SHA-256 del documento normalizado, el mismo
+ * que usa inscripciones_evento_remoto): la cédula en claro no está en la nube.
+ */
+export async function consultarSorteoPorCedula(
+  admin: SupabaseClient,
+  ev: EventoRemoto,
+  documento: string,
+): Promise<ConsultaSorteoPublica | null> {
+  const sorteos = await sorteosPublicadosDe(admin, ev.id)
+  if (sorteos.length === 0) return null
+  const hash = hashDocumento(documento)
+
+  const { data, error } = await admin
+    .from('sorteo_resultados_remoto')
+    .select('sorteo_id, orden, tipo, numero')
+    .in('sorteo_id', sorteos.map((s) => s.id))
+    .eq('documento_hash', hash)
+  if (error) throw new Error(`Error consultando el sorteo: ${error.message}`)
+  const filas = (data ?? []) as { sorteo_id: string; orden: number; tipo: string; numero: number }[]
+
+  for (const s of sorteos) {
+    const f = filas.find((x) => x.sorteo_id === s.id)
+    if (!f) continue
+    return {
+      resultado: f.tipo === 'titular' ? 'titular' : 'suplente',
+      // El orden es la posición en la extracción: el 1° suplente viene después
+      // del último cupo.
+      posicion: f.tipo === 'titular' ? f.orden : f.orden - s.cantidad_cupos,
+      numero_texto: formatNumeroSorteo(f.numero, ev),
+      sorteo_nombre: s.nombre,
+    }
+  }
+
+  // No salió. ¿Participaba? Se busca su número en la inscripción web.
+  const { data: insc, error: errInsc } = await admin
+    .from('inscripciones_evento_remoto')
+    .select('numero_sorteo')
+    .eq('evento_id', ev.id)
+    .eq('documento_hash', hash)
+    .neq('estado', 'anulado')
+    .limit(1)
+    .maybeSingle()
+  if (errInsc) throw new Error(`Error consultando la inscripción: ${errInsc.message}`)
+  const numero = (insc?.numero_sorteo as number | null | undefined) ?? null
+  return {
+    resultado: insc ? 'ninguno' : 'sin_registro',
+    posicion: null,
+    numero_texto: numero == null ? null : formatNumeroSorteo(numero, ev),
+    sorteo_nombre: sorteos[0].nombre,
+  }
+}
 
 /** Parsea el JSON de opciones de alimentación. Tolera null / texto inválido. */
 export function parseOpcionesAlimentacion(raw: string | null | undefined): string[] {

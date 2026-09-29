@@ -28,6 +28,7 @@ import {
   motivoNoPuedeInscribirse,
   precioExtra,
   simboloDe,
+  textoCuposSorteo,
 } from '@/lib/eventos-types'
 import { RegistrarPago } from './RegistrarPago'
 
@@ -1866,6 +1867,7 @@ export function EventoForm({
                     {sorteo.descripcion && (
                       <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
                     )}
+                    <span className="block text-sm text-ink-2 mt-0.5">{textoCuposSorteo(sorteo)}</span>
                   </span>
                 </div>
               ) : (
@@ -1900,6 +1902,7 @@ export function EventoForm({
                   {sorteo.descripcion && (
                     <span className="block text-sm text-ink-2 mt-0.5">{sorteo.descripcion}</span>
                   )}
+                  <span className="block text-sm text-ink-2 mt-0.5">{textoCuposSorteo(sorteo)}</span>
                 </span>
               </label>
               )}

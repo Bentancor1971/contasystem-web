@@ -25,6 +25,7 @@ import { eleccionPublica } from '@/lib/elecciones'
 import { sanitizeHtml } from '@/lib/sanitize-html'
 import { EleccionPublicaPage, metadataEleccion } from './EleccionPublica'
 import { EventoForm } from './EventoForm'
+import { ResultadoSorteo } from './ResultadoSorteo'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -229,6 +230,14 @@ export default async function EventoPublicoPage({
             `mail_acuse_html`/`mail_acuse_pago_html`/`certificado_html`/
             `pagina_html_*` y las leyendas CRUDAS — un logo de 300 KB en base64
             pegado en el encabezado son 600 KB extra por carga. */}
+        {/* Resultado del sorteo: arriba del formulario, esté abierto o cerrado.
+            Lo normal es que el sorteo se haga con los registros ya cerrados, y
+            entonces el formulario es sólo el cartel de cierre: la consulta por
+            cédula vive acá, no en el lookup de inscripción. */}
+        {evento.sorteos_publicados.map((s) => (
+          <ResultadoSorteo key={s.id} slug={evento.slug} sorteo={s} />
+        ))}
+
         <EventoForm
           evento={proyectarEventoFormProps(evento)}
           leyendas={leyendas}

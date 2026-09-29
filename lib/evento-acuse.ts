@@ -241,7 +241,7 @@ export function prepararAcuse(
   // no del evento. Se resuelve con los mismos flags que el formulario público
   // y /inscribir, para que los tres cuenten la misma historia.
   const soloSorteo = esSoloSorteo({
-    slug: evento.slug,
+    marcado: evento.solo_sorteo === true,
     tipo: evento.tipo,
     sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
     transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,

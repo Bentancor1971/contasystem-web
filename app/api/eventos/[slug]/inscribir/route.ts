@@ -397,7 +397,7 @@ export async function POST(
     // form (ver `esSoloSorteo`)—, así que un cliente viejo en caché, que sigue
     // mandando `participa_sorteo: false`, anota igual.
     const soloSorteo = esSoloSorteo({
-      slug: evento.slug,
+      marcado: evento.solo_sorteo === true,
       tipo: evento.tipo,
       sorteoVisible: !!evento.sorteo_disponible && cfg.mostrar_sorteo,
       transporteVisible: !!evento.transporte_disponible && cfg.mostrar_transporte,

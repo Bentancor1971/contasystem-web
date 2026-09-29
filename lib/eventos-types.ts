@@ -310,6 +310,15 @@ export interface EventoRemoto {
   /** Rango del número correlativo sorteable (default 0–100). */
   sorteo_numero_desde: number
   sorteo_numero_hasta: number
+  /**
+   * El evento existe sólo para el sorteo (lo marca el desktop; ver
+   * `esSoloSorteo`). Opcionales: un evento pusheado antes de la migración 69
+   * no las trae.
+   */
+  solo_sorteo?: boolean | null
+  /** Cuántos ganadores y cuántos suplentes se sortean. Se anuncian en la página. */
+  sorteo_cupos?: number | null
+  sorteo_suplentes?: number | null
 }
 
 /**
@@ -383,6 +392,52 @@ export interface SorteoPublico {
   ocupacion_nivel: 'baja' | 'media' | 'alta' | null
   /** Rango agotado: la inscripción sigue abierta, pero ya no se dan números. */
   completo: boolean
+  /** Cuántos ganadores y suplentes se sortean (ver `textoCuposSorteo`). */
+  cupos: number
+  suplentes: number
+}
+
+/** "Se sortean 10 cupos y 2 suplentes entre los registrados." */
+export function textoCuposSorteo(s: { cupos: number; suplentes: number }): string {
+  const cupos = s.cupos === 1 ? '1 cupo' : `${s.cupos} cupos`
+  const suplentes = s.suplentes === 0 ? '' : s.suplentes === 1 ? ' y 1 suplente' : ` y ${s.suplentes} suplentes`
+  return `Se sortea${s.cupos === 1 ? '' : 'n'} ${cupos}${suplentes} entre los registrados.`
+}
+
+/**
+ * Un sorteo ya realizado y publicado por el desktop (docs/supabase/69_sorteos.sql).
+ * De cada ganador sólo viaja el número y "Nombre I.": la cédula nunca sale.
+ */
+export interface SorteoResultadoPublico {
+  id: string
+  nombre: string
+  premio_descripcion: string | null
+  fecha: string
+  cantidad_cupos: number
+  cantidad_suplentes: number
+  cantidad_participantes: number
+  /** Para verificar: hash de la lista sellada y semilla, tal como figuran en el acta. */
+  participantes_hash: string
+  semilla: string
+  /** Acta pública en PDF (nombre e inicial, sin cédulas). null si todavía no se subió (SQL 70). */
+  acta_url: string | null
+  titulares: { orden: number; numero_texto: string; nombre_publico: string }[]
+  suplentes: { orden: number; numero_texto: string; nombre_publico: string }[]
+}
+
+/**
+ * Respuesta de POST /api/eventos/[slug]/sorteo: qué le tocó a UNA cédula.
+ * Nunca devuelve el nombre: quien pregunta ya sabe de quién es la cédula.
+ *   titular   → salió sorteada, `posicion` es su lugar (1° cupo, 2° cupo…)
+ *   suplente  → `posicion` es su orden de suplente (1, 2…)
+ *   ninguno   → participó y no salió (`numero_texto` con su número si lo tiene)
+ *   sin_registro → no hay inscripción con esa cédula en el evento
+ */
+export interface ConsultaSorteoPublica {
+  resultado: 'titular' | 'suplente' | 'ninguno' | 'sin_registro'
+  posicion: number | null
+  numero_texto: string | null
+  sorteo_nombre: string
 }
 
 /**
@@ -429,24 +484,6 @@ export function formatNumeroSorteo(
 }
 
 /**
- * Eventos que corren en modo "solo sorteo", por slug.
- *
- * Es una lista a mano, y es deliberado: la condición estructural (sin costo +
- * sorteo + sin servicios) también da true en "Evento Imagenología Agosto 2026",
- * que SÍ es un evento al que se va y donde el sorteo es un extra opcional.
- * Distinguir los dos casos pide un flag por evento —columna en
- * evento_web_config con su toggle en /configuracion/eventos, que es donde
- * termina yendo—; mientras tanto se nombran los eventos que lo necesitan.
- * Para agregar otro alcanza con sumar su slug acá.
- */
-const SLUGS_SOLO_SORTEO = new Set([
-  // Grupo GREI — Sorteo de Becas: Diplomado en Resonancia Magnética (ago/2026).
-  'sorteo-de-becas-diplomado-en-resonancia-magnetica-d67d65e4',
-  // A.T.R.I. — Sorteo de cupos: XV Congreso Uruguayo de Imagenología (oct/2026).
-  'sorteo-xv-congreso-uruguayo-de-imagenologia-1673a2de',
-])
-
-/**
  * El evento existe SÓLO para el sorteo: no se cobra nada y no hay ningún
  * servicio que reservar, así que registrarse no significa "voy a ir a algo"
  * sino "quiero entrar al sorteo".
@@ -460,8 +497,13 @@ const SLUGS_SOLO_SORTEO = new Set([
  *   - agotado el rango de números el registro se cierra, porque anotarse sin
  *     número ya no deja nada.
  *
- * La condición estructural se exige IGUAL que el slug: si al evento le agregan
- * un costo o un servicio, el modo se apaga solo en vez de mentir.
+ * Hasta la migración 69 se reconocía por una lista de slugs escrita a mano;
+ * ahora lo marca el desktop en el evento ("Este evento es sólo un sorteo",
+ * `eventos_remoto.solo_sorteo`). La marca sola no alcanza: la condición
+ * estructural (sin costo + sorteo + sin servicios) se exige IGUAL, así que si al
+ * evento le agregan un costo o un servicio el modo se apaga solo en vez de
+ * mentir. Y al revés: la condición estructural sola tampoco alcanza, porque da
+ * true en eventos gratuitos a los que sí se va y donde el sorteo es un extra.
  *
  * Se resuelve con lo que la persona VE, no con lo que el evento tiene cargado:
  * un transporte que la config web oculta no existe para quien completa el
@@ -469,13 +511,14 @@ const SLUGS_SOLO_SORTEO = new Set([
  * que los dos llegan al mismo veredicto.
  */
 export function esSoloSorteo(v: {
-  slug: string
+  /** `eventos_remoto.solo_sorteo`: la marca que puso el desktop. */
+  marcado: boolean
   tipo: 'con_costo' | 'sin_costo'
   sorteoVisible: boolean
   transporteVisible: boolean
   alimentacionVisible: boolean
 }): boolean {
-  if (!SLUGS_SOLO_SORTEO.has(v.slug)) return false
+  if (!v.marcado) return false
   return (
     v.tipo !== 'con_costo' &&
     v.sorteoVisible &&
@@ -677,6 +720,11 @@ export interface EventoPublico {
   transporte: TransportePublico
   alimentacion: AlimentacionPublica
   sorteo: SorteoPublico
+  /**
+   * Sorteos realizados y publicados, el más reciente primero. Vacío mientras no
+   * se sorteó. Lo lee la página (bloque de resultado), no el formulario.
+   */
+  sorteos_publicados: SorteoResultadoPublico[]
   /**
    * El evento existe sólo para el sorteo. Lo resuelve el server con
    * `esSoloSorteo` y viaja resuelto para que la página, el formulario y
