@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
       // La ficha del socio: tras el segundo factor la página muestra los
       // datos personales completos — nada de eso queda en caché de disco.
       { source: "/f/:path*", headers: SIN_CACHE },
+      // La confirmación del cupo: el estado cambia con la respuesta.
+      { source: "/s/:path*", headers: SIN_CACHE },
     ];
   },
 };

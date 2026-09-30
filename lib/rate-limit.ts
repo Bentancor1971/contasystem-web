@@ -226,6 +226,13 @@ export const LIMITES = {
   /** Confirmar sin cambios. Una persona lo hace una vez; margen para el reintento. */
   fichaConfirmar: { nombre: 'ficha_confirmar', limite: 5, ventanaSegundos: 300 },
 
+  // Confirmación del cupo de un sorteo (/s/[token]). El token es inadivinable y
+  // no hay factor que martillar: esto sólo acota al que prueba links a ciegas.
+  /** Abrir el link. */
+  sorteoVer: { nombre: 'sorteo_ver', limite: 30, ventanaSegundos: 60 },
+  /** Responder. Una persona lo hace una vez; margen para el reintento. */
+  sorteoResponder: { nombre: 'sorteo_responder', limite: 10, ventanaSegundos: 300 },
+
   /**
    * Probar el acceso (`/v/prueba-acceso`, `/p/prueba-acceso`).
    *

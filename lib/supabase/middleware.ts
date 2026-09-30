@@ -64,6 +64,8 @@ const PUBLIC_SIN_SESION = [
   '/api/mesa/',
   '/f/',
   '/api/ficha/',
+  '/s/',
+  '/api/sorteo/',
 ]
 
 /**
@@ -99,6 +101,8 @@ const SIN_CACHE = [
   '/api/mesa/',
   '/f/',
   '/api/ficha/',
+  '/s/',
+  '/api/sorteo/',
 ]
 
 // Auto-login SÓLO en desarrollo: con estas credenciales seteadas, el middleware
