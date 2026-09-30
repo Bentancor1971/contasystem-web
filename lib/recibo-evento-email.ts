@@ -263,7 +263,7 @@ export function renderReciboEventoEmail(
               <p style="margin:0;font-size:16px;color:${C.grayText};">Hola, <strong style="color:${C.primary};">${esc(d.socioNombre)}</strong></p>
               <p style="margin:8px 0 0;font-size:14px;color:${C.grayText};">${soloSorteo
                 ? (tieneSorteo
-                  ? 'Quedaste anotado al sorteo. Abajo va tu número: guardalo, es el que participa.'
+                  ? 'Registro confirmado para el sorteo.'
                   : 'Tu registro quedó guardado.')
                 : confirmada
                 ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`
@@ -403,7 +403,7 @@ export function renderReciboEventoEmail(
           <tr><td style="height:16px;"></td></tr>`
 
   const subject = soloSorteo
-    ? `Quedaste anotado al sorteo — ${d.eventoNombre}`
+    ? `Registro confirmado para el sorteo — ${d.eventoNombre}`
     : confirmada
     ? `Inscripción confirmada — ${d.eventoNombre}`
     : registroSinCosto
@@ -415,12 +415,12 @@ export function renderReciboEventoEmail(
   const html = baseLayout(d.empresa, contenido, b)
 
   const lineas: string[] = [
-    `${soloSorteo ? 'Quedaste anotado al sorteo' : confirmada ? 'Inscripción confirmada' : registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
+    `${soloSorteo ? 'Registro confirmado para el sorteo' : confirmada ? 'Inscripción confirmada' : registroSinCosto ? 'Inscripción registrada' : esTransferencia ? 'Inscripción con pago declarado' : 'Preinscripción'} — ${d.eventoNombre}`,
     '',
     `Hola ${d.socioNombre},`,
     soloSorteo
       ? (tieneSorteo
-        ? 'Quedaste anotado al sorteo. Abajo va tu número: guardalo, es el que participa.'
+        ? 'Registro confirmado para el sorteo.'
         : 'Tu registro quedó guardado.')
       : confirmada
       ? `Tu inscripción está confirmada. No tenés que hacer nada más; te esperamos.${entrada ? ' Abajo va tu entrada al evento.' : ''}`

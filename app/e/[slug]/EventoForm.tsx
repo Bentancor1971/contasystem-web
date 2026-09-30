@@ -648,7 +648,7 @@ export function EventoForm({
           ) : soloSorteo ? (
             /* No hay a qué asistir: lo que la persona hizo fue entrar al sorteo,
                y eso —no un "te esperamos"— es lo que tiene que leer. */
-            <>Quedaste anotado al sorteo de <strong>{evento.nombre}</strong>. Guardá tu número: es el que participa.</>
+            <>Registro confirmado para el sorteo de <strong>{evento.nombre}</strong>. Guardá tu número: es el que participa.</>
           ) : registroSinCosto ? (
             <>Te inscribiste a <strong>{evento.nombre}</strong>. Tu registro quedó confirmado; te esperamos.</>
           ) : (
