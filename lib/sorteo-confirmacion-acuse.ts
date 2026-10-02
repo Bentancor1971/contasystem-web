@@ -8,7 +8,7 @@
  *
  *   - Confirmó: el cupo quedó a su nombre; si se usa en un evento de la app,
  *     queda inscripto ahí (la entrada con QR, si la hay, llega aparte).
- *   - Rechazó: el cupo pasa al siguiente; si fue un error, que responda ya.
+ *   - Rechazó: el cupo se asigna a un suplente; si fue un error, que responda ya.
  *
  * Mismo molde que el acuse de la ficha web: casilla y marca de la empresa,
  * texto + HTML, sin copia oculta (el registro de la organización es el
@@ -65,7 +65,7 @@ function contenido(d: DatosConstancia, empresa: string): Contenido {
         ...(d.destino_evento_nombre
           ? [`Quedás inscripto en "${d.destino_evento_nombre}". Si ese evento usa entrada con código QR, te llega en un correo aparte.`]
           : []),
-        'Si finalmente no podés asistir, avisanos respondiendo este correo lo antes posible: así el cupo puede pasar al siguiente en el orden del sorteo.',
+        'Si finalmente no podés asistir, avisanos respondiendo este correo lo antes posible: así el cupo se puede asignar a un suplente del sorteo.',
       ],
     }
   }
@@ -74,7 +74,7 @@ function contenido(d: DatosConstancia, empresa: string): Contenido {
     titulo: 'Registramos que no vas a usar el cupo',
     parrafos: [
       `Hola ${d.nombre_publico}: registramos el ${cuando} que no vas a usar tu cupo del sorteo de "${d.evento_nombre}"${premio}, número ${d.numero_texto}.`,
-      'El cupo pasa al siguiente en el orden del sorteo. Gracias por avisar.',
+      'El cupo se asignará a un suplente del sorteo. Gracias por avisar.',
       'Si fue un error, respondé este correo cuanto antes: la organización todavía puede revisarlo mientras no haya pasado el cupo a otra persona.',
     ],
   }
