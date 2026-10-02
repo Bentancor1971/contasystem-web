@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { DatosConstancia } from '@/lib/sorteo-confirmacion-acuse'
 import type {
   ConfirmacionSorteo,
   ErrorConfirmacion,
@@ -67,7 +68,7 @@ export async function responderConfirmacionSorteo(
   admin: SupabaseClient,
   token: string,
   acepta: boolean,
-): Promise<{ ok: true; respuesta: RespuestaCupo; respuesta_at: string } | ErrorConfirmacion> {
+): Promise<{ ok: true; respuesta: RespuestaCupo; respuesta_at: string; constancia: DatosConstancia | null } | ErrorConfirmacion> {
   const d = await llamar(admin, 'responder_confirmacion_sorteo', { p_token: token, p_acepta: acepta })
   if (d.ok !== true) {
     return {
@@ -76,5 +77,19 @@ export async function responderConfirmacionSorteo(
       estado: d.estado ? estadoDe(d.estado) : undefined,
     }
   }
-  return { ok: true, respuesta: respuestaDe(d.respuesta) ?? (acepta ? 'confirmo' : 'rechazo'), respuesta_at: texto(d.respuesta_at) }
+  const respuesta = respuestaDe(d.respuesta) ?? (acepta ? 'confirmo' : 'rechazo')
+  const respuesta_at = texto(d.respuesta_at)
+  // Fase 10 (73_): lo necesario para la constancia. Sin mail (o sin el SQL 73)
+  // no hay constancia, y la respuesta vale igual.
+  const mail = texto(d.mail)
+  const constancia: DatosConstancia | null = mail
+    ? {
+        token, respuesta, respuesta_at, mail,
+        empresa_id: texto(d.empresa_id), empresa_nombre: texto(d.empresa_nombre),
+        evento_nombre: texto(d.evento_nombre), premio: texto(d.premio),
+        numero_texto: texto(d.numero_texto), nombre_publico: texto(d.nombre_publico),
+        destino_evento_nombre: texto(d.destino_evento_nombre),
+      }
+    : null
+  return { ok: true, respuesta, respuesta_at, constancia }
 }

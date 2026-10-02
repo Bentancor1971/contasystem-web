@@ -11,9 +11,11 @@
  * antivirus de correo siguen los links solos.
  */
 
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { responderConfirmacionSorteo } from '@/lib/sorteo-confirmacion'
+import { enviarConstanciaCupo } from '@/lib/sorteo-confirmacion-acuse'
+import { loadGmailAccountForEmpresa } from '@/lib/birthday-template-store'
 import { tokenValido } from '@/lib/sorteo-confirmacion-types'
 import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
 
@@ -48,6 +50,21 @@ export async function POST(
     }
 
     const r = await responderConfirmacionSorteo(admin, token, body.acepta)
+    if ('ok' in r && r.ok) {
+      // Constancia por mail (fase 10). Con `after()`: el SMTP son 1-3 s que no
+      // tienen por qué demorar la respuesta, que ya quedó guardada. El mail no
+      // viaja al navegador: la pantalla sólo sabe si va a salir una constancia.
+      // Antes de decir "te enviamos una constancia" se mira que la empresa tenga
+      // casilla: es una consulta liviana, como hace la inscripción con su acuse.
+      const constancia = r.constancia && (await loadGmailAccountForEmpresa(admin, r.constancia.empresa_id))
+        ? r.constancia
+        : null
+      if (constancia) after(() => enviarConstanciaCupo(admin, constancia).then(() => undefined))
+      return NextResponse.json(
+        { ok: true, respuesta: r.respuesta, respuesta_at: r.respuesta_at, constancia: !!constancia },
+        { headers: SIN_CACHE },
+      )
+    }
     return NextResponse.json(r, { headers: SIN_CACHE })
   } catch (err) {
     console.error('[POST /api/sorteo/[token]/responder] error:', err)

@@ -23,6 +23,8 @@ export function ConfirmarCupo({
 }) {
   const [paso, setPaso] = useState<Paso>(preseleccion === 'rechazar' ? 'seguro_rechazo' : 'elegir')
   const [error, setError] = useState<string | null>(null)
+  // Si sale la constancia por mail (fase 10), la pantalla lo dice.
+  const [constancia, setConstancia] = useState(false)
 
   async function responder(acepta: boolean) {
     const volverA: Paso = acepta ? 'elegir' : 'seguro_rechazo'
@@ -34,13 +36,14 @@ export function ConfirmarCupo({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ acepta }),
       })
-      const d = (await res.json()) as { ok?: boolean; respuesta?: RespuestaCupo; error?: string }
+      const d = (await res.json()) as { ok?: boolean; respuesta?: RespuestaCupo; error?: string; constancia?: boolean }
       if (res.status === 429) {
         setError('Demasiados intentos. Esperá un momento y volvé a probar.')
         setPaso(volverA)
         return
       }
       if (d.ok && d.respuesta) {
+        setConstancia(!!d.constancia)
         setPaso(d.respuesta)
         return
       }
@@ -61,7 +64,8 @@ export function ConfirmarCupo({
       <div className="voto-aviso voto-aviso--ok" role="status">
         <h2 className="font-display text-2xl font-medium leading-tight mb-2">¡Listo, tu cupo está confirmado!</h2>
         <p className="text-ink-2 text-[17px] leading-relaxed">
-          En los próximos días nos comunicamos con vos para coordinar. Ya podés cerrar esta página.
+          En los próximos días nos comunicamos con vos para coordinar.
+          {constancia ? ' Te enviamos una constancia por mail.' : ''} Ya podés cerrar esta página.
         </p>
       </div>
     )
@@ -72,6 +76,7 @@ export function ConfirmarCupo({
         <h2 className="font-display text-2xl font-medium leading-tight mb-2">Registramos que no vas a usar el cupo</h2>
         <p className="text-ink-2 text-[17px] leading-relaxed">
           Gracias por avisar: el cupo pasa al siguiente en el orden del sorteo.
+          {constancia ? ' Te enviamos una constancia por mail.' : ''}
         </p>
       </div>
     )
