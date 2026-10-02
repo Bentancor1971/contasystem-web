@@ -64,14 +64,14 @@ export function motivoCerrado(c: ConfirmacionSorteo): { titulo: string; detalle:
   if (respuesta === 'rechazo') {
     return {
       titulo: 'Rechazaste el cupo',
-      detalle: 'Ya lo registramos: el cupo pasa al siguiente en el orden del sorteo. Si fue un error, escribinos respondiendo el correo.',
+      detalle: 'Ya lo registramos: el cupo se asignará a un suplente del sorteo. Si fue un error, escribinos respondiendo el correo.',
       tono: 'medio',
     }
   }
   if (c.estado === 'reasignado') {
     return {
       titulo: 'Este cupo ya no está a tu nombre',
-      detalle: 'Pasó al siguiente en el orden del sorteo. Si tenés dudas, escribinos respondiendo el correo.',
+      detalle: 'Se asignó a un suplente del sorteo. Si tenés dudas, escribinos respondiendo el correo.',
       tono: 'alto',
     }
   }

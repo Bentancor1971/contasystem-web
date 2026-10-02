@@ -75,7 +75,7 @@ export function ConfirmarCupo({
       <div className="voto-aviso voto-aviso--medio" role="status">
         <h2 className="font-display text-2xl font-medium leading-tight mb-2">Registramos que no vas a usar el cupo</h2>
         <p className="text-ink-2 text-[17px] leading-relaxed">
-          Gracias por avisar: el cupo pasa al siguiente en el orden del sorteo.
+          Gracias por avisar: el cupo se asignará a un suplente del sorteo.
           {constancia ? ' Te enviamos una constancia por mail.' : ''}
         </p>
       </div>
@@ -89,7 +89,7 @@ export function ConfirmarCupo({
       {paso === 'seguro_rechazo' ? (
         <>
           <p className="text-ink text-[17px] leading-relaxed">
-            <strong>¿Seguro que no vas a usar el cupo?</strong> Si lo rechazás pasa al siguiente en el orden del
+            <strong>¿Seguro que no vas a usar el cupo?</strong> Si lo rechazás, se asignará a un suplente del
             sorteo, y desde acá no se puede deshacer.
           </p>
           <div className="mt-6 flex flex-col gap-3">
@@ -104,8 +104,10 @@ export function ConfirmarCupo({
       ) : (
         <>
           <p className="text-ink-2 text-[17px] leading-relaxed">
-            Para quedarte con el cupo tenés que confirmarlo hasta el <strong>{venceTexto}</strong> inclusive. Si no
-            podés ir, rechazalo así se lo damos al siguiente.
+            Para quedarte con el cupo, confirmalo hasta el <strong>{venceTexto}</strong> inclusive.
+          </p>
+          <p className="text-ink-2 text-[17px] leading-relaxed mt-3">
+            Si no podés ir, tocá «Rechazar cupo» y se asignará a un suplente del sorteo.
           </p>
           <div className="mt-6 flex flex-col gap-3">
             <button type="button" className="btn-primary w-full" disabled={enviando} onClick={() => responder(true)}>
