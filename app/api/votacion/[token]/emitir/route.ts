@@ -16,7 +16,7 @@ import { after, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enviarConstanciaVoto } from '@/lib/eleccion-constancia'
 import { emitirVoto, ocultarInexistente } from '@/lib/elecciones'
-import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
+import { clientIp, LIMITES, permitidoPorIpYClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import {
   digitosValidos,
   tokenValido,
@@ -82,7 +82,11 @@ export async function POST(
     }
 
     const admin = createAdminClient()
-    if (!(await permitido(admin, req, LIMITES.votoEmitir))) {
+    // Por IP + credencial, con un global por IP más alto (revisión 24/10/2026):
+    // una asamblea votando desde el wifi del club ya no comparte un solo cupo.
+    if (
+      !(await permitidoPorIpYClave(admin, clientIp(req), token, LIMITES.votoEmitir, LIMITES.votoEmitirIp))
+    ) {
       return NextResponse.json(RESPUESTA_429, { status: 429, headers: SIN_CACHE })
     }
 

@@ -20,11 +20,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   buscarEnPadron,
+  cierreWebEfectivo,
   dondeVoto,
+  dondeVotoPorOrigen,
   esErrorMesa,
   estadoDe,
   horaCorta,
+  horaOFecha,
   indexar,
+  leerRespuestaMesa,
   mensajeErrorMesa,
   MINIMO_BUSQUEDA,
   type ErrorMesa,
@@ -61,6 +65,11 @@ export function Padron({
   const [cerradaAt, setCerradaAt] = useState<string | null>(null)
   /** Desde 61_ (E5b): el canal web de esta elección sigue abierto. */
   const [canalWebAbierto, setCanalWebAbierto] = useState(false)
+  /** Desde 75_: los dos cierres del acto, para decirlos arriba de la lista. */
+  const [cierres, setCierres] = useState<{ mesas: string | null; web: string | null }>({
+    mesas: null,
+    web: null,
+  })
 
   const [q, setQ] = useState('')
   const [aviso, setAviso] = useState<(MensajeMesa & { tono: 'ok' | 'medio' | 'alto' }) | null>(null)
@@ -111,6 +120,12 @@ export function Padron({
           return m
         })
         setCanalWebAbierto(d.canal_web_abierto === true)
+        setCierres({
+          mesas: d.fecha_cierre ?? null,
+          // Un cierre web igual o posterior al de las mesas no es un cierre
+          // propio: cierran juntos.
+          web: cierreWebEfectivo(d.fecha_cierre, d.fecha_cierre_web),
+        })
         setCaido(false)
         setFase('listo')
         return
@@ -204,7 +219,9 @@ export function Padron({
         body: JSON.stringify({ habilitado_id: p.habilitado_id }),
         cache: 'no-store',
       })
-      const d = (await r.json()) as MarcaOk | ErrorMesa
+      // Un 5xx o algo que no es JSON sale como `sin_respuesta`: la marca pudo
+      // haber entrado igual (ver `leerRespuestaMesa`).
+      const d = await leerRespuestaMesa<MarcaOk>(r)
 
       if (!esErrorMesa(d)) {
         aplicar(p.habilitado_id, {
@@ -212,16 +229,13 @@ export function Padron({
           voto_origen: 'urna',
           mesa_id: mesaId,
         })
-        // Desde 61_ (E5b): no bloquea la marca, pero el canal web sigue
-        // abierto y la comisión tiene que cerrarlo cuanto antes.
+        // Desde 61_ (E5b) el server avisa si el canal web sigue abierto. Desde
+        // 74_ la base ya impide el doble voto, así que no se insiste en cada
+        // marca: queda el aviso informativo de arriba.
         if (d.advertencia === 'canal_web_abierto') setCanalWebAbierto(true)
         setAviso({
           titulo: `Votó ${p.nombre_completo}`,
-          detalle:
-            `Registrado a las ${horaCorta(d.emitido_at)}.` +
-            (d.advertencia === 'canal_web_abierto'
-              ? ' El voto por internet de esta elección sigue abierto: avisale a la comisión que lo cierre.'
-              : ''),
+          detalle: `Registrado a las ${horaCorta(d.emitido_at)}.`,
           tono: 'ok',
         })
         setPorMarcar(null)
@@ -236,8 +250,9 @@ export function Padron({
           voto_origen: d.voto_origen ?? p.voto_origen,
         })
         const cuando = horaCorta(d.emitido_at)
-        const donde =
-          d.voto_origen === 'web' ? 'por internet' : d.mesa ? `en ${d.mesa}` : 'en otra mesa'
+        // Desde 76_: 'terminal' (la terminal del local) y 'presencial' (la mesa
+        // del sistema) se dicen como lo que son, no como internet u otra mesa.
+        const donde = dondeVotoPorOrigen(d.voto_origen, d.mesa)
         setAviso({
           titulo: 'Esa persona ya votó',
           detalle: `${p.nombre_completo} votó ${donde}${cuando ? ` a las ${cuando}` : ''}. No puede volver a votar.`,
@@ -246,6 +261,11 @@ export function Padron({
         setPorMarcar(null)
       } else if (d.error === 'sesion_invalida') {
         setVencida(true)
+      } else if (d.error === 'sin_respuesta') {
+        // Mismo camino que el corte de red: no sabemos si quedó, se recarga.
+        setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
+        setPorMarcar(null)
+        void cargar(false)
       } else {
         const m = mensajeErrorMesa(d)
         setAviso({ ...m, tono: 'alto' })
@@ -276,7 +296,7 @@ export function Padron({
         body: JSON.stringify({ habilitado_id: p.habilitado_id, motivo }),
         cache: 'no-store',
       })
-      const d = (await r.json()) as { ok: true } | ErrorMesa
+      const d = await leerRespuestaMesa<{ ok: true }>(r)
 
       if (!esErrorMesa(d)) {
         aplicar(p.habilitado_id, { voto_emitido_at: null, voto_origen: null, mesa_id: null })
@@ -289,6 +309,10 @@ export function Padron({
         setMotivo('')
       } else if (d.error === 'sesion_invalida') {
         setVencida(true)
+      } else if (d.error === 'sin_respuesta') {
+        setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
+        setPorDesmarcar(null)
+        void cargar(false)
       } else {
         setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
       }
@@ -351,16 +375,31 @@ export function Padron({
         )}
       </div>
 
-      {/* Desde 61_ (E5b): persistente mientras el canal web siga abierto, no un
-          aviso que se borra con la próxima acción. La marca en papel vale
-          igual, pero la misma persona podría estar votando por internet en
-          este instante. */}
+      {/* Desde 75_: los dos horarios del acto. Sin el script no viene la fecha
+          de cierre y la línea no aparece. */}
+      {cierres.mesas && (
+        <p className="font-mono text-xs text-ink-2 mb-3">
+          {/* `horaOFecha`: con fecha cuando no es hoy (internet pudo cerrar
+              ayer). `cierres.web` ya viene en null si no cierra antes que las
+              mesas: ahí cierran juntos. */}
+          {!cierres.web
+            ? `El voto por internet y las mesas cierran a las ${horaOFecha(cierres.mesas)}`
+            : canalWebAbierto
+              ? `Internet cierra a las ${horaOFecha(cierres.web)} · las mesas, a las ${horaOFecha(cierres.mesas)}`
+              : `Internet cerró a las ${horaOFecha(cierres.web)} · las mesas cierran a las ${horaOFecha(cierres.mesas)}`}
+        </p>
+      )}
+
+      {/* Desde 61_ (E5b): persistente mientras el canal web siga abierto. Antes
+          era una alerta roja que pedía cerrar el canal cuanto antes; desde 74_
+          la base cruza la credencial con este padrón en el acto y el doble voto
+          no puede pasar, así que queda como dato, en tono medio. */}
       {canalWebAbierto && (
-        <div className="voto-aviso voto-aviso--alto mb-4" role="alert">
+        <div className="voto-aviso voto-aviso--medio mb-4" role="status">
           <p className="font-medium text-[15px] leading-snug">El voto por internet sigue abierto</p>
           <p className="text-ink-2 text-sm leading-relaxed mt-1">
-            Mientras siga así, alguien podría estar votando por internet al mismo tiempo que en
-            esta mesa. Avisale a la comisión que cierre el canal web cuanto antes.
+            El sistema no deja votar dos veces: quien vota por internet aparece en esta lista como
+            que ya votó, y desde ese momento no se lo puede registrar en la mesa.
           </p>
         </div>
       )}

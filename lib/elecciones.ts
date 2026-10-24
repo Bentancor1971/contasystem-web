@@ -181,6 +181,12 @@ export function normalizarEstadoCredencial(d: Record<string, unknown>): EstadoCr
     // Desde 54_. Con la base sin ese script la clave no viene y queda `null`:
     // la pantalla dice "ya votaste" sin fecha, que es como se comportaba antes.
     emitido_at: texto(d.emitido_at),
+    // Desde 76_. Sin ese script no viene y queda `null`: las pantallas dicen
+    // lo de siempre.
+    voto_canal:
+      d.voto_canal === 'web' || d.voto_canal === 'urna' || d.voto_canal === 'presencial'
+        ? d.voto_canal
+        : null,
     bloqueado: d.bloqueado === true,
     ventana: ventana(d.ventana),
   }

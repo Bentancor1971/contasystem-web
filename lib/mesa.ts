@@ -25,6 +25,7 @@ import type {
   RespuestaMarca,
   RespuestaPadronRpc,
 } from '@/lib/mesa-types'
+import { esErrorMesa } from '@/lib/mesa-types'
 
 class ErrorRpc extends Error {}
 
@@ -97,6 +98,11 @@ function control(d: Record<string, unknown>): ControlMesa {
     cerrada_at: texto(d.cerrada_at),
     recuento_cargado_at: texto(d.recuento_cargado_at),
     difiere: d.difiere === true,
+    // Desde 76_. Sin ese script no vienen y la pantalla no muestra el aviso de
+    // hora (la base vieja tampoco lo exige).
+    eleccion_estado: texto(d.eleccion_estado),
+    fecha_cierre: texto(d.fecha_cierre),
+    fecha_cierre_web: texto(d.fecha_cierre_web),
   }
 }
 
@@ -174,6 +180,8 @@ export async function mesaPadron(
     // Desde 61_. Sin ese script la clave no viene y queda `false`, que es el
     // valor seguro: no mostrar el banner es preferible a mostrarlo mal.
     canal_web_abierto: d.canal_web_abierto === true,
+    fecha_cierre: typeof d.fecha_cierre === 'string' ? d.fecha_cierre : null,
+    fecha_cierre_web: typeof d.fecha_cierre_web === 'string' ? d.fecha_cierre_web : null,
   }
 }
 
@@ -299,6 +307,59 @@ export async function mesaCerrar(
     p_sobres_en_urna: sobresEnUrna,
     p_observacion: observacion,
   })
+  if (d.ok !== true) return d as unknown as ErrorMesa
+  return { ok: true, marcas: entero(d.marcas, 0), sobres: entero(d.sobres, sobresEnUrna) }
+}
+
+/** PGRST202 / 42883: la función todavía no existe (falta aplicar el script). */
+function esRpcNoAplicada(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false
+  return (
+    err.code === 'PGRST202' ||
+    err.code === '42883' ||
+    (err.message ?? '').includes('Could not find the function')
+  )
+}
+
+/**
+ * Cierra la urna con la grilla que el presidente está mirando (76_, §1.4).
+ *
+ * `mesa_cerrar_con_recuento` guarda el recuento y cierra en la MISMA
+ * transacción, y si el cierre no procede deshace también el guardado. Antes la
+ * pantalla controlaba con la grilla y la base cerraba con lo último guardado:
+ * corregir 50/30 → 40/40 y cerrar sin guardar dejaba 50/30, sin vuelta atrás.
+ *
+ * Sin 76_ aplicado, cae a guardar + cerrar en dos llamadas — que ya es mejor
+ * que lo de antes (lo cerrado es lo que se ve), pero sin el todo o nada: si
+ * el cierre se rechaza, la grilla queda guardada igual.
+ */
+export async function mesaCerrarConRecuento(
+  admin: SupabaseClient,
+  sesion: string,
+  filas: FilaRecuento[],
+  sobresEnUrna: number,
+  observacion: string | null,
+): Promise<{ ok: true; marcas: number; sobres: number } | ErrorMesa> {
+  const { data, error } = await admin.rpc('mesa_cerrar_con_recuento', {
+    p_sesion: sesion,
+    p_rows: filas,
+    p_sobres_en_urna: sobresEnUrna,
+    p_observacion: observacion,
+  })
+
+  if (error) {
+    if (!esRpcNoAplicada(error)) throw new ErrorRpc(`mesa_cerrar_con_recuento: ${error.message}`)
+    console.warn(
+      '[mesa] mesa_cerrar_con_recuento no existe todavía: aplicar 76_elecciones_revision.sql. ' +
+        'Sigue con guardar + cerrar en dos llamadas.',
+    )
+    const g = await mesaRecuentoGuardar(admin, sesion, filas)
+    if (esErrorMesa(g)) return g
+    return mesaCerrar(admin, sesion, sobresEnUrna, observacion)
+  }
+  if (!data || typeof data !== 'object') throw new ErrorRpc('mesa_cerrar_con_recuento: respuesta vacía')
+
+  const d = data as Record<string, unknown>
   if (d.ok !== true) return d as unknown as ErrorMesa
   return { ok: true, marcas: entero(d.marcas, 0), sobres: entero(d.sobres, sobresEnUrna) }
 }

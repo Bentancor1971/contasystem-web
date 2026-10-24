@@ -13,6 +13,7 @@
  * Preferimos un evento que funciona sin límite a un formulario público caído.
  */
 
+import { createHash } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
@@ -123,6 +124,40 @@ export async function permitidoPorClave(
   }
 }
 
+/**
+ * Clave de bucket para un secreto (token de votación, código de mesa): un hash,
+ * nunca el valor. La tabla de topes la puede leer más gente que la de
+ * credenciales, y un token en claro ahí es un link para votar.
+ */
+export function claveHash(valor: string): string {
+  return createHash('sha256').update(`rate-limit:${valor}`, 'utf8').digest('hex').slice(0, 32)
+}
+
+/**
+ * Dos topes a la vez: uno por IP + algo (la credencial, la mesa) y uno global
+ * por IP, más alto. Cuentan los dos siempre —en paralelo— y alcanza con que
+ * uno corte.
+ *
+ * Existe por el local de votación: con el wifi del club, cien personas votando
+ * son una sola IP, y un tope sólo por IP las trancaba a todas juntas. Contando
+ * por IP + credencial cada una tiene su cupo; el global queda como red contra
+ * quien barre muchas credenciales (o muchas mesas) desde la misma conexión. El
+ * control fuerte sigue siendo el bloqueo por credencial/mesa que hace la base.
+ */
+export async function permitidoPorIpYClave(
+  admin: SupabaseClient,
+  ip: string,
+  clave: string,
+  reglaClave: RateLimitRule,
+  reglaIp: RateLimitRule,
+): Promise<boolean> {
+  const [porClave, porIp] = await Promise.all([
+    permitidoPorClave(admin, `${ip}:${claveHash(clave)}`, reglaClave),
+    permitidoPorClave(admin, ip, reglaIp),
+  ])
+  return porClave && porIp
+}
+
 /** Límites por endpoint. Pensados para un humano inscribiéndose, no para un script. */
 export const LIMITES = {
   /** Verificar cédula: es el endpoint que un enumerador martillaría. */
@@ -144,12 +179,25 @@ export const LIMITES = {
   // desde datos móviles, donde el CGNAT del operador mete a cientos de personas
   // detrás de la misma IP. Un límite estrecho no frena un ataque —quien lo hace
   // en serio rota IPs— pero sí puede dejar sin votar a un socio real.
-  /** Abrir el link. */
-  votoVer: { nombre: 'voto_ver', limite: 30, ventanaSegundos: 60 },
-  /** Probar los dígitos. */
-  votoValidar: { nombre: 'voto_validar', limite: 20, ventanaSegundos: 60 },
-  /** Emitir. Una persona lo hace una vez; el margen es para el reintento. */
-  votoEmitir: { nombre: 'voto_emitir', limite: 15, ventanaSegundos: 300 },
+  //
+  // Revisión del 24/10/2026: ver, validar y emitir cuentan por IP + credencial
+  // (hash del token) con un tope global por IP más alto (`permitidoPorIpYClave`).
+  // Con un solo tope por IP, una asamblea votando desde el wifi del club
+  // compartía 15 emisiones cada 5 minutos entre todos. Desde 76_ emitir también
+  // cuenta para el bloqueo por credencial, así que el control real de quien
+  // martilla los dígitos de un link es ese, no este.
+  /** Abrir el link, por IP + credencial. */
+  votoVer: { nombre: 'voto_ver_t', limite: 20, ventanaSegundos: 60 },
+  /** Abrir el link, global por IP: la asamblea entera abriendo su link a la vez. */
+  votoVerIp: { nombre: 'voto_ver_ip', limite: 300, ventanaSegundos: 60 },
+  /** Probar los dígitos, por IP + credencial. La base bloquea a los 5 fallos. */
+  votoValidar: { nombre: 'voto_validar_t', limite: 10, ventanaSegundos: 60 },
+  /** Probar los dígitos, global por IP. Red contra quien prueba muchos links. */
+  votoValidarIp: { nombre: 'voto_validar_ip', limite: 150, ventanaSegundos: 60 },
+  /** Emitir, por IP + credencial. Una persona lo hace una vez; el margen es para el reintento. */
+  votoEmitir: { nombre: 'voto_emitir_t', limite: 10, ventanaSegundos: 300 },
+  /** Emitir, global por IP. */
+  votoEmitirIp: { nombre: 'voto_emitir_ip', limite: 300, ventanaSegundos: 300 },
   /**
    * Canjear el código impreso de la credencial.
    *
@@ -193,7 +241,14 @@ export const LIMITES = {
    * todas por la misma conexión y el operador que tipea mal no puede quedar
    * afuera de su propio acto electoral.
    */
-  mesaLogin: { nombre: 'mesa_login', limite: 20, ventanaSegundos: 300 },
+  //
+  // Revisión del 24/10/2026: por IP + mesa (hash del código normalizado), con un
+  // tope global por IP más alto. Antes eran 20 logins cada 5 minutos para TODAS
+  // las mesas del local juntas. El de IP + mesa cubre a quien martilla una
+  // mesa (la base igual la bloquea a los 5 PIN mal); el global, a quien barre.
+  mesaLogin: { nombre: 'mesa_login_m', limite: 15, ventanaSegundos: 300 },
+  /** Entrar a un puesto de mesa, global por IP. */
+  mesaLoginIp: { nombre: 'mesa_login_ip', limite: 60, ventanaSegundos: 300 },
 
   // Postulación a una convocatoria (/p/[token]). Mismo criterio y mismos topes
   // holgados que la votación, por la misma razón: la defensa fuerte contra el

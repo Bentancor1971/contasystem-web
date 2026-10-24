@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ocultarInexistente, validarCredencial } from '@/lib/elecciones'
 import { digitosValidos, tokenValido } from '@/lib/elecciones-types'
-import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
+import { clientIp, LIMITES, permitidoPorIpYClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { SIN_CACHE } from '../_comun'
 
 export const runtime = 'nodejs'
@@ -43,7 +43,10 @@ export async function POST(
     }
 
     const admin = createAdminClient()
-    if (!(await permitido(admin, req, LIMITES.votoValidar))) {
+    // Por IP + credencial, con un global por IP más alto (revisión 24/10/2026).
+    if (
+      !(await permitidoPorIpYClave(admin, clientIp(req), token, LIMITES.votoValidar, LIMITES.votoValidarIp))
+    ) {
       return NextResponse.json(RESPUESTA_429, { status: 429, headers: SIN_CACHE })
     }
 

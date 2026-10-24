@@ -19,11 +19,16 @@
  */
 
 import { cookies } from 'next/headers'
+import { sesionMesaValida } from '@/lib/mesa-types'
 
 export const COOKIE_SESION = 'mesa_sesion'
 export const COOKIE_INFO = 'mesa_info'
 
-/** La sesión de la base dura 12 horas; la cookie no tiene por qué durar más. */
+/**
+ * La sesión de la base dura 12 horas desde el último uso (76_; antes, desde el
+ * login). La cookie dura lo mismo y se renueva con el padrón: ver
+ * `renovarCookiesMesa`.
+ */
 const HORAS = 12
 
 export interface InfoMesa {
@@ -50,8 +55,25 @@ function opciones() {
 /** El UUID de sesión, o `null`. Todo lo que llama a una RPC de mesa empieza acá. */
 export async function leerSesionMesa(): Promise<string | null> {
   const c = await cookies()
-  const v = c.get(COOKIE_SESION)?.value
-  return v && v.trim() !== '' ? v : null
+  const v = c.get(COOKIE_SESION)?.value?.trim()
+  // Una cookie que no es un UUID es una sesión vencida, no un error del
+  // servidor: con basura, la RPC fallaba por tipo y salía un 500 eterno.
+  return sesionMesaValida(v) ? v : null
+}
+
+/**
+ * Vuelve a poner las dos cookies con 12 h más de vida. Lo llama la ruta del
+ * padrón —que la pantalla consulta cada 12 s— cuando la base contestó bien: la
+ * sesión de la base se renueva con el uso (76_) y la cookie no puede vencerse
+ * antes que ella con el puesto atendiendo.
+ */
+export async function renovarCookiesMesa(): Promise<void> {
+  const c = await cookies()
+  const sesion = c.get(COOKIE_SESION)?.value
+  const info = c.get(COOKIE_INFO)?.value
+  if (!sesionMesaValida(sesion) || !info) return
+  c.set(COOKIE_SESION, sesion, opciones())
+  c.set(COOKIE_INFO, info, opciones())
 }
 
 /** Los datos de la mesa para dibujar la pantalla. `null` si no hay o está rota. */

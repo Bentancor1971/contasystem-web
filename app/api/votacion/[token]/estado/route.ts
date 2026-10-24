@@ -22,7 +22,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarCredencial } from '@/lib/elecciones'
 import { esError, tokenValido } from '@/lib/elecciones-types'
-import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
+import { clientIp, LIMITES, permitidoPorIpYClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { SIN_CACHE } from '../_comun'
 
 export const runtime = 'nodejs'
@@ -39,7 +39,7 @@ export async function POST(
     }
 
     const admin = createAdminClient()
-    if (!(await permitido(admin, req, LIMITES.votoVer))) {
+    if (!(await permitidoPorIpYClave(admin, clientIp(req), token, LIMITES.votoVer, LIMITES.votoVerIp))) {
       return NextResponse.json(RESPUESTA_429, { status: 429, headers: SIN_CACHE })
     }
 
@@ -47,7 +47,9 @@ export async function POST(
     if (esError(estado)) return NextResponse.json(estado, { headers: SIN_CACHE })
 
     return NextResponse.json(
-      { ok: true, ya_voto: estado.ya_voto, emitido_at: estado.emitido_at },
+      // `voto_canal` (76_): si figura votando en una mesa, la pantalla no tiene
+      // que mostrarle "voto registrado" como si lo hubiera emitido desde acá.
+      { ok: true, ya_voto: estado.ya_voto, emitido_at: estado.emitido_at, voto_canal: estado.voto_canal },
       { headers: SIN_CACHE },
     )
   } catch (err) {

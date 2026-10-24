@@ -29,13 +29,14 @@ import {
   horaAperturaPasada,
   mensajeDeError,
   tokenValido,
+  votoEnMesa,
   type BoletaValidada,
   type EleccionPublica,
   type VentanaEleccion,
 } from '@/lib/elecciones-types'
 import { diagnosticarAcceso, esTokenDePrueba } from '@/lib/prueba-acceso'
 import { PruebaAcceso } from '@/components/PruebaAcceso'
-import { ipDeHeaders, LIMITES, permitidoPorIp } from '@/lib/rate-limit'
+import { ipDeHeaders, LIMITES, permitidoPorIpYClave } from '@/lib/rate-limit'
 import { Votacion } from './Votacion'
 
 export const runtime = 'nodejs'
@@ -147,7 +148,7 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
               : `La votación abre el ${fechaHoraCorta(eleccion.fecha_apertura)}`
             : ventana === 'cerrada_web'
               ? // La votación NO cerró: cerró el canal web. Ver `cerrada_web`.
-                'El voto por internet cerró · se vota en el local'
+                `El voto por internet cerró · se vota en el local hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
               : cierreDeLaVotacion(eleccion, null).linea}
       </p>
       {/* Regla común a las cuatro pantallas públicas (esta, la elección sin
@@ -215,7 +216,7 @@ export default async function VotacionPage({
   // Tope por IP. El token es inadivinable, pero los N dígitos del segundo factor
   // son pocas combinaciones: esto encarece al que prueba muchas credenciales.
   const ip = ipDeHeaders(await headers())
-  if (!(await permitidoPorIp(admin, ip, LIMITES.votoVer))) {
+  if (!(await permitidoPorIpYClave(admin, ip, token, LIMITES.votoVer, LIMITES.votoVerIp))) {
     return (
       <Cortada
         titulo="Demasiados intentos"
@@ -241,8 +242,22 @@ export default async function VotacionPage({
 
   // Qué impide votar, si algo lo impide. El orden importa: "ya votaste" es más
   // informativo que "la votación cerró" para quien votó y vuelve a entrar.
+  // Desde 76_: votó en una mesa (la del local o la del sistema). No recibe
+  // constancia por mail, y si no fue esa persona lo que corresponde es ir a la
+  // mesa: puede ser una marca equivocada que la mesa todavía puede deshacer.
+  const votoEnLaMesa = estado.ya_voto && votoEnMesa(estado.voto_canal)
+
   const impedimento: Impedimento | null =
-    estado.ya_voto
+    votoEnLaMesa
+      ? {
+          titulo: 'Ya figura tu voto',
+          detalle:
+            'Figura que votaste en la mesa del local' +
+            (estado.emitido_at ? ` el ${fechaHoraCorta(estado.emitido_at)}` : '') +
+            '. Si no fuiste vos, acercate a la mesa.',
+          tono: 'ok',
+        }
+      : estado.ya_voto
       ? {
           titulo: 'Ya votaste',
           // La fecha es el punto de esta pantalla. Al votar le dijimos a esta
@@ -296,8 +311,10 @@ export default async function VotacionPage({
                     (eleccion.fecha_cierre_web
                       ? `Cerró el ${fechaHoraCorta(eleccion.fecha_cierre_web)}. `
                       : '') +
-                    `La votación sigue abierta: ahora se vota en el local, en persona. ` +
-                    `Llevá tu documento.${escribinos}`,
+                    // Desde 76_ (§4.6): hasta cuándo, que es lo que decide si
+                    // la persona llega.
+                    `La votación sigue abierta: ahora se vota en el local, en persona, hasta el ` +
+                    `${fechaHoraCorta(eleccion.fecha_cierre)}. Llevá tu documento.${escribinos}`,
                   tono: 'medio',
                 }
               : estado.bloqueado
@@ -391,7 +408,9 @@ export default async function VotacionPage({
               se contó. Terminado el acto, el aviso de arriba dice todo lo que
               hay para decir. Misma regla que el instructivo: ver
               `puedeVotarTodavia`. */}
-          {estado.ya_voto && !actoTerminado && eleccion.texto_despues && (
+          {/* Tampoco para quien votó en la mesa: ese texto habla de la
+              constancia por mail y del voto por internet (76_). */}
+          {estado.ya_voto && !votoEnLaMesa && !actoTerminado && eleccion.texto_despues && (
             <p className="text-ink-2 text-[17px] leading-relaxed mb-8 whitespace-pre-line">
               {eleccion.texto_despues}
             </p>

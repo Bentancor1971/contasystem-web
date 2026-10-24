@@ -52,7 +52,10 @@ export interface PersonaPadron {
   habilitado: boolean
   motivo_inhabilitacion: string | null
   voto_emitido_at: string | null
-  /** 'web' | 'urna' | null */
+  /**
+   * 'urna' (una mesa del local) | 'web' (por internet) | 'terminal' (la terminal
+   * del local, desde 76_) | 'presencial' (la mesa del sistema/desktop) | null
+   */
   voto_origen: string | null
   /** Mesa que lo marcó, si votó en urna. */
   mesa_id: string | null
@@ -71,6 +74,13 @@ export interface RespuestaPadron {
    * banner es el comportamiento seguro por defecto).
    */
   canal_web_abierto: boolean
+  /**
+   * Desde 75_: los dos cierres, en cada consulta (la comisión puede adelantar
+   * el del voto por internet en pleno acto). `null` en `fecha_cierre_web` =
+   * cierra con la elección. Sin ese script no vienen y la línea no se muestra.
+   */
+  fecha_cierre: string | null
+  fecha_cierre_web: string | null
 }
 
 export interface MarcaOk {
@@ -96,6 +106,14 @@ export interface ControlMesa {
   cerrada_at: string | null
   recuento_cargado_at: string | null
   difiere: boolean
+  /**
+   * Desde 76_: estado y cierres de la elección, para avisar en `/mesa/recuento`
+   * que la votación sigue abierta. `null` contra una base sin ese script (ahí
+   * la base tampoco exige observación para cerrar antes de hora).
+   */
+  eleccion_estado: string | null
+  fecha_cierre: string | null
+  fecha_cierre_web: string | null
 }
 
 export interface OpcionMesa {
@@ -143,6 +161,9 @@ export interface ErrorMesa {
   /** `requiere_observacion` */
   marcas?: number
   sobres?: number
+  recuento?: number
+  /** `requiere_observacion_cierre_anticipado` (76_): hasta cuándo se vota. */
+  fecha_cierre?: string
 }
 
 export type RespuestaLogin = SesionMesa | ErrorMesa
@@ -153,6 +174,87 @@ export type RespuestaBoleta = BoletaMesa | ErrorMesa
 
 export function esErrorMesa<T extends { ok: true }>(r: T | ErrorMesa): r is ErrorMesa {
   return !('ok' in r) || r.ok !== true
+}
+
+/**
+ * Lee la respuesta de una ruta de `/api/mesa/` desde el navegador.
+ *
+ * Un 5xx o un cuerpo que no es JSON NO es un fallo de la operación: el server
+ * pudo haber escrito en la base y caerse después. Se devuelve `sin_respuesta`
+ * — "no sabemos si llegó" — para que la pantalla recargue lo que de verdad
+ * quedó en vez de afirmar que no se registró. Si se mostrara como fallo, el
+ * reintento de una marca que sí entró sale como "ya votó en Mesa 1" y parece
+ * fraude.
+ */
+export async function leerRespuestaMesa<T extends { ok: true }>(res: Response): Promise<T | ErrorMesa> {
+  if (res.status >= 500) return { error: 'sin_respuesta' }
+  let d: unknown
+  try {
+    d = await res.json()
+  } catch {
+    return { error: 'sin_respuesta' }
+  }
+  if (!d || typeof d !== 'object') return { error: 'sin_respuesta' }
+  const o = d as Record<string, unknown>
+  if (o.ok === true) return o as unknown as T
+  if (typeof o.error === 'string') return o as unknown as ErrorMesa
+  return { error: 'sin_respuesta' }
+}
+
+/**
+ * La sesión de mesa es el UUID que devuelve `mesa_login`. Una cookie con otra
+ * cosa (rota, recortada, de otra versión) se trata como sesión vencida: la RPC
+ * espera un `uuid` y con basura Postgres tira un error de tipo, que salía como
+ * 500 y la pantalla mostraba "sin conexión" para siempre.
+ */
+export function sesionMesaValida(v: string | null | undefined): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
+// ── El recuento que manda la pantalla ───────────────────────────────────────
+
+/** Techos de tamaño. Una boleta real tiene un puñado de papeletas y opciones. */
+const MAX_FILAS_RECUENTO = 2000
+/** Ningún club tiene una mesa con más votos que esto. Frena el dedo pegado. */
+export const MAX_CANTIDAD_RECUENTO = 100000
+
+/**
+ * Normaliza las filas de recuento que llegan por body. `null` = vino con una
+ * forma que no se puede usar. La usan `/api/mesa/recuento` (guardar) y
+ * `/api/mesa/cerrar` (guardar y cerrar en una sola operación, 76_).
+ */
+export function parseFilasRecuento(v: unknown): FilaRecuento[] | null {
+  if (!Array.isArray(v) || v.length > MAX_FILAS_RECUENTO) return null
+  const out: FilaRecuento[] = []
+  for (const f of v) {
+    if (!f || typeof f !== 'object') return null
+    const o = f as Record<string, unknown>
+    if (!idValido(o.papeleta_id)) return null
+
+    const opcion = o.opcion_id
+    if (opcion !== null && opcion !== undefined && !idValido(opcion)) return null
+
+    const n = typeof o.cantidad === 'number' ? o.cantidad : Number(o.cantidad)
+    if (!Number.isFinite(n) || n < 0 || n > MAX_CANTIDAD_RECUENTO) return null
+
+    out.push({
+      papeleta_id: o.papeleta_id,
+      opcion_id: typeof opcion === 'string' ? opcion : null,
+      es_blanco: o.es_blanco === true,
+      es_anulado: o.es_anulado === true,
+      cantidad: Math.trunc(n),
+    })
+  }
+  return out
+}
+
+/** Mismo criterio que `mesa_control`: el total de la urna es el máximo entre papeletas. */
+export function totalDeFilas(filas: readonly FilaRecuento[]): number {
+  const porPapeleta = new Map<string, number>()
+  for (const f of filas) porPapeleta.set(f.papeleta_id, (porPapeleta.get(f.papeleta_id) ?? 0) + f.cantidad)
+  let max = 0
+  for (const t of porPapeleta.values()) max = Math.max(max, t)
+  return max
 }
 
 // ── Búsqueda: nombre y cédula en el mismo campo ─────────────────────────────
@@ -243,11 +345,32 @@ export function estadoDe(p: PersonaPadron): EstadoPersona {
  * en el mostrador a quien viene a votar y ya figura votando.
  */
 export function dondeVoto(p: PersonaPadron, mesaPropia: string | null): string {
-  if (p.voto_origen === 'web') return 'por internet'
   if (p.voto_origen === 'urna') {
     return p.mesa_id && p.mesa_id === mesaPropia ? 'en esta mesa' : 'en otra mesa'
   }
-  return 'ya registrado'
+  return dondeVotoPorOrigen(p.voto_origen, null)
+}
+
+/**
+ * Lo mismo, a partir del `voto_origen` que devuelve `mesa_marcar_voto` en un
+ * `ya_voto` (con el nombre de la mesa, si fue en urna). Desde 76_ la terminal
+ * del local llega como 'terminal' y no como 'web', y la mesa del desktop como
+ * 'presencial' — antes la primera se leía "por internet" y la segunda "en otra
+ * mesa", y el operador le decía a la persona algo que no había pasado.
+ */
+export function dondeVotoPorOrigen(origen: string | null | undefined, mesa: string | null | undefined): string {
+  switch (origen) {
+    case 'web':
+      return 'por internet'
+    case 'terminal':
+      return 'en la terminal del local'
+    case 'presencial':
+      return 'en la mesa del sistema'
+    case 'urna':
+      return mesa ? `en ${mesa}` : 'en otra mesa'
+    default:
+      return 'ya registrado'
+  }
 }
 
 // ── Mensajes ────────────────────────────────────────────────────────────────
@@ -348,8 +471,21 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
           typeof r.marcas === 'number' && typeof r.sobres === 'number'
             ? `La mesa marcó ${r.marcas} ${r.marcas === 1 ? 'persona' : 'personas'} y contaste ${r.sobres} ${
                 r.sobres === 1 ? 'sobre' : 'sobres'
+              }${
+                typeof r.recuento === 'number'
+                  ? ` y ${r.recuento} ${r.recuento === 1 ? 'voto' : 'votos'} en el recuento`
+                  : ''
               }. Escribí una observación para poder cerrar.`
             : 'Escribí una observación para poder cerrar.',
+      }
+    case 'requiere_observacion_cierre_anticipado':
+      return {
+        titulo: 'La votación todavía no terminó',
+        detalle:
+          (r.fecha_cierre
+            ? `Se vota hasta las ${horaOFecha(r.fecha_cierre)}. `
+            : 'La hora de cierre de la elección todavía no llegó. ') +
+          'Para cerrar la urna antes, escribí en la observación por qué.',
       }
     case 'sin_respuesta':
       return {
@@ -379,6 +515,51 @@ export function horaCorta(iso: string | null | undefined): string {
     minute: '2-digit',
     hour12: false,
   }).format(d)
+}
+
+/** "2026-10-24" del día de ese instante en Montevideo. */
+function diaUY(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+}
+
+/**
+ * "18:42" si es hoy en Montevideo, "23/10 18:42" si es otro día. Para los
+ * cierres: "internet cerró a las 20:00" leído al día siguiente parece de hoy.
+ */
+export function horaOFecha(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  if (diaUY(d) === diaUY(new Date())) return horaCorta(iso)
+  const dm = new Intl.DateTimeFormat('es-UY', {
+    timeZone: TZ,
+    day: '2-digit',
+    month: '2-digit',
+  }).format(d)
+  return `${dm} ${horaCorta(iso)}`
+}
+
+/**
+ * El cierre del voto por internet que vale la pena mostrar. `null` cuando no
+ * hay uno propio: sin fecha, o una que no es anterior al de las mesas (el
+ * voto por internet nunca sigue abierto después de la elección, así que
+ * cierran juntos).
+ */
+export function cierreWebEfectivo(
+  fechaCierre: string | null | undefined,
+  fechaCierreWeb: string | null | undefined,
+): string | null {
+  if (!fechaCierreWeb) return null
+  const w = new Date(fechaCierreWeb).getTime()
+  if (isNaN(w)) return null
+  const m = fechaCierre ? new Date(fechaCierre).getTime() : NaN
+  if (!isNaN(m) && w >= m) return null
+  return fechaCierreWeb
 }
 
 // ── Validación de entrada ───────────────────────────────────────────────────

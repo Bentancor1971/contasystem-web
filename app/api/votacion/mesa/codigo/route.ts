@@ -79,7 +79,11 @@ export async function POST(req: Request) {
 
     // Lo que impide votar, en el orden en que le sirve a quien está parado
     // adelante: "ya votaste" es más informativo que "la votación cerró".
-    if (estado.ya_voto) return json({ error: 'ya_voto', emitido_at: estado.emitido_at })
+    // `voto_canal` (76_): si ya figura votando en una mesa, la pantalla se lo
+    // dice así —y que vaya a la mesa si no fue esa persona—.
+    if (estado.ya_voto) {
+      return json({ error: 'ya_voto', emitido_at: estado.emitido_at, voto_canal: estado.voto_canal })
+    }
     if (!estado.habilitado) return json({ error: 'no_habilitado' })
     if (estado.bloqueado) return json({ error: 'bloqueado' })
     if (estado.ventana === 'no_abierta') {

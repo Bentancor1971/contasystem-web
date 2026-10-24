@@ -34,6 +34,7 @@ import {
   mensajeDeError,
   problemaDePapeleta,
   SELECCION_VACIA,
+  votoEnMesa,
   type BoletaValidada,
   type CierreCtx,
   type ErrorVotacion,
@@ -376,8 +377,10 @@ export function Votacion({
         }
       }
       if (r.err.error === 'digitos_incorrectos') {
-        // Sólo puede pasar si la credencial cambió mientras estaba abierta la
-        // pantalla. Se vuelve al segundo factor.
+        // Pasa si la credencial cambió mientras estaba abierta la pantalla.
+        // Desde 76_ este fallo también cuenta para el bloqueo (5 → 15 min) y
+        // trae `intentos_restantes`: `mostrar` lo dice, y con 0 corta como
+        // bloqueo. Se vuelve al segundo factor.
         setDigitos('')
         setFase('factor')
         arriba()
@@ -403,13 +406,23 @@ export function Votacion({
     if (enVuelo.current) return
     enVuelo.current = true
     setOcupado(true)
-    const r = await pedir<{ ok: true; ya_voto: boolean; emitido_at: string | null }>(
-      `${base}/estado`,
-      {},
-    )
+    const r = await pedir<{
+      ok: true
+      ya_voto: boolean
+      emitido_at: string | null
+      voto_canal?: string | null
+    }>(`${base}/estado`, {})
     enVuelo.current = false
     setOcupado(false)
 
+    if (r.estado === 'ok' && r.data.ya_voto && votoEnMesa(r.data.voto_canal)) {
+      // Desde 76_: figura votando en una mesa, no por acá. No es "tu voto quedó
+      // registrado" (no lo emitió este emitir): es el aviso de la mesa.
+      setDudoso(false)
+      setAviso(null)
+      mostrar({ error: 'ya_voto', emitido_at: r.data.emitido_at ?? undefined, voto_canal: r.data.voto_canal })
+      return
+    }
     if (r.estado === 'ok' && r.data.ya_voto) {
       setDudoso(false)
       setAviso(null)
@@ -422,11 +435,15 @@ export function Votacion({
       return
     }
     if (r.estado === 'ok') {
-      // El servidor lo afirma: la duda se cierra y vuelve a haber algo que hacer.
-      setDudoso(false)
+      // Que todavía no figure NO prueba que no vaya a figurar: el emitir que se
+      // cortó puede seguir corriendo en el servidor y confirmar en un segundo.
+      // Por eso no se afirma que no quedó, y la caja de la duda —con su botón
+      // de verificar— sigue en pie. Si se vuelve a emitir y el primero había
+      // entrado, la base contesta `ya_voto`: no hay forma de votar dos veces.
       setAviso({
-        titulo: 'Tu voto no quedó registrado',
-        detalle: 'Podés emitirlo de nuevo con el botón de abajo.',
+        titulo: 'Todavía no figura registrado',
+        detalle:
+          'Esperá unos segundos y verificá de nuevo. Si sigue sin figurar, podés emitirlo otra vez con el botón de abajo.',
         terminal: false,
         tono: 'medio',
       })

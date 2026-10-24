@@ -14,7 +14,7 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mesaBoleta, mesaControl, mesaRecuentoActual } from '@/lib/mesa'
 import { leerInfoMesa, leerSesionMesa } from '@/lib/mesa-sesion'
-import { esErrorMesa } from '@/lib/mesa-types'
+import { esErrorMesa, mensajeErrorMesa, type ErrorMesa } from '@/lib/mesa-types'
 import { BarraMesa, Aviso, Marco } from '../Marco'
 import { BotonSalir } from '../LoginMesa'
 import { Recuento } from './Recuento'
@@ -60,17 +60,35 @@ export default async function RecuentoPage() {
     mesaRecuentoActual(admin, sesion),
   ])
 
-  // Cualquiera de las tres puede venir con la sesión vencida. Se ofrece volver a
-  // entrar en vez de redirigir solo: con la cookie todavía puesta, un redirect a
-  // /mesa y de vuelta acá sería un rebote sin explicación.
+  // Cualquiera de las tres puede venir con un error. Se muestra el que vino —
+  // antes todo se leía "la sesión venció", también una urna cerrada o una
+  // mesa desactivada—. Se ofrece volver a entrar en vez de redirigir solo: con
+  // la cookie todavía puesta, un redirect a /mesa y de vuelta acá sería un
+  // rebote sin explicación.
   if (esErrorMesa(boleta) || esErrorMesa(control) || esErrorMesa(guardado)) {
+    const error: ErrorMesa = esErrorMesa(boleta)
+      ? boleta
+      : esErrorMesa(control)
+        ? control
+        : (guardado as ErrorMesa)
+    const vencida = error.error === 'sesion_invalida'
+    const m = mensajeErrorMesa(error)
     return marco(
       <Aviso
-        titulo="La sesión de la mesa venció"
-        detalle="Volvé a entrar con el código y el PIN de presidente. Lo que ya se marcó está guardado."
+        titulo={m.titulo}
+        detalle={
+          vencida
+            ? 'Volvé a entrar con el código y el PIN de presidente. Lo que ya se marcó está guardado.'
+            : m.detalle
+        }
         tono="alto"
       >
-        <div className="mt-4">
+        <div className="mt-4 flex flex-col gap-2">
+          {!vencida && (
+            <a href="/mesa/padron" className="btn-secondary w-full inline-block text-center">
+              Volver al padrón
+            </a>
+          )}
           <BotonSalir etiqueta="Volver a entrar" />
         </div>
       </Aviso>,

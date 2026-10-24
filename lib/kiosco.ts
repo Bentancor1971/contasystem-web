@@ -20,17 +20,27 @@
  *     vino a evitar. La llave NO va adentro; va su huella, que es lo único que
  *     permite darse cuenta después de que el desktop la regeneró.
  *
- *  3. **El pase** — un sobre firmado y corto que ata el token de un votante a
- *     ESTA terminal y a ESTA elección. Se emite al canjear el código y viaja en
- *     memoria del browser hasta que la persona emite o se va. Evita que
- *     `validar` y `emitir` tengan que volver a preguntarle a la base de qué
- *     elección era el token en cada llamada, y hace imposible mandar a esta
- *     terminal un token que ella misma no canjeó.
+ *  3. **El pase** — un sobre CIFRADO y corto que ata el token de un votante a
+ *     ESTA elección. Se emite al canjear el código y viaja en memoria del
+ *     browser hasta que la persona emite o se va. Evita que `validar` y
+ *     `emitir` tengan que volver a preguntarle a la base de qué elección era el
+ *     token en cada llamada, y hace imposible mandar a esta terminal un token
+ *     que no se canjeó en una terminal de esta elección. Desde la revisión del
+ *     24/10/2026 va cifrado (AES-256-GCM) y no sólo firmado: firmado, el token
+ *     se leía en claro en el JavaScript de una tablet compartida, y el token
+ *     ES el link personal de esa persona.
  *
  * Contrato: docs/supabase/46_voto_kiosco.sql del repo desktop.
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
@@ -218,19 +228,80 @@ interface Pase {
   e: string
 }
 
-export function firmarPase(token: string, eleccionId: string): string {
-  return firmar({ t: token, e: eleccionId }, MINUTOS_PASE * 60 * 1000)
+/** Versión del formato del pase. Un pase sin este prefijo (el viejo, firmado y legible) se rechaza. */
+const PREFIJO_PASE = 'v2.'
+const AAD_PASE = Buffer.from('kiosco-pase-v2', 'utf8')
+const IV_BYTES = 12
+const TAG_BYTES = 16
+
+/**
+ * Clave AES-256 del pase, derivada con HKDF del mismo secreto que firma la
+ * cookie. Otra etiqueta (`info`) que la de la firma: la misma clave nunca se
+ * usa para dos cosas.
+ */
+function clavePase(): Buffer {
+  return Buffer.from(hkdfSync('sha256', secreto(), 'contasystem-kiosco', 'kiosco-pase-v2', 32))
 }
 
 /**
- * Devuelve el token del pase, o `null` si la firma no cierra, venció, o es de
- * otra elección que la que atiende esta terminal.
+ * Cifra y autentica el pase (AES-256-GCM): el tag de GCM cumple el papel que
+ * antes cumplía el HMAC, y además el token no se puede leer. Formato:
+ * `v2.` + base64url(iv ‖ cifrado ‖ tag).
+ */
+export function firmarPase(token: string, eleccionId: string): string {
+  const pase: Pase & { exp: number } = {
+    t: token,
+    e: eleccionId,
+    exp: Date.now() + MINUTOS_PASE * 60 * 1000,
+  }
+  const iv = randomBytes(IV_BYTES)
+  const c = createCipheriv('aes-256-gcm', clavePase(), iv)
+  c.setAAD(AAD_PASE)
+  const cifrado = Buffer.concat([c.update(JSON.stringify(pase), 'utf8'), c.final()])
+  return PREFIJO_PASE + Buffer.concat([iv, cifrado, c.getAuthTag()]).toString('base64url')
+}
+
+/**
+ * Devuelve el token del pase, o `null` si no descifra (manipulado, de otra
+ * clave, o del formato viejo firmado), venció, o es de otra elección que la
+ * que atiende esta terminal.
+ *
+ * Un pase viejo (sin `v2.`) se rechaza a propósito y sale como `pase_vencido`:
+ * duran 20 minutos, así que el costo de no aceptarlos es que quien estaba
+ * votando justo durante el deploy vuelva a tipear su código.
  */
 export function leerPase(sobre: unknown, eleccionId: string): string | null {
-  const d = abrir<Pase>(sobre)
-  if (!d || typeof d.t !== 'string' || d.t === '') return null
-  if (d.e !== eleccionId) return null
-  return d.t
+  if (typeof sobre !== 'string' || !sobre.startsWith(PREFIJO_PASE)) return null
+
+  let crudo: Buffer
+  try {
+    crudo = Buffer.from(sobre.slice(PREFIJO_PASE.length), 'base64url')
+  } catch {
+    return null
+  }
+  if (crudo.length <= IV_BYTES + TAG_BYTES) return null
+
+  let d: unknown
+  try {
+    const iv = crudo.subarray(0, IV_BYTES)
+    const tag = crudo.subarray(crudo.length - TAG_BYTES)
+    const cifrado = crudo.subarray(IV_BYTES, crudo.length - TAG_BYTES)
+    const dc = createDecipheriv('aes-256-gcm', clavePase(), iv)
+    dc.setAAD(AAD_PASE)
+    dc.setAuthTag(tag)
+    const claro = Buffer.concat([dc.update(cifrado), dc.final()])
+    d = JSON.parse(claro.toString('utf8'))
+  } catch {
+    // Tag que no cierra, clave rotada o JSON roto: todo es "no sirve".
+    return null
+  }
+
+  if (!d || typeof d !== 'object') return null
+  const p = d as Partial<Pase> & { exp?: unknown }
+  if (typeof p.exp !== 'number' || Date.now() > p.exp) return null
+  if (typeof p.t !== 'string' || p.t === '') return null
+  if (p.e !== eleccionId) return null
+  return p.t
 }
 
 // ── Supabase ────────────────────────────────────────────────────────────────

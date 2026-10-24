@@ -100,8 +100,22 @@ export interface EstadoCredencial {
    * pantallas tienen que aguantar: dicen "ya votaste" sin la fecha—.
    */
   emitido_at: string | null
+  /**
+   * Desde 76_: por qué canal votó. 'web' (internet o la terminal del local),
+   * 'urna' (la mesa del local) o 'presencial' (la mesa del sistema). `null` si
+   * no votó — y también contra una base sin ese script, donde las pantallas
+   * dicen lo de siempre.
+   */
+  voto_canal: CanalVoto | null
   bloqueado: boolean
   ventana: VentanaEleccion
+}
+
+export type CanalVoto = 'web' | 'urna' | 'presencial'
+
+/** Votó en una mesa (del local o del sistema): no recibe constancia por mail. */
+export function votoEnMesa(canal: string | null | undefined): boolean {
+  return canal === 'urna' || canal === 'presencial'
 }
 
 export interface BoletaValidada {
@@ -171,6 +185,8 @@ export interface ErrorVotacion {
   desde?: string
   /** `ya_voto` */
   emitido_at?: string
+  /** `ya_voto`, cuando lo sabe quien lo arma (76_): por qué canal votó. */
+  voto_canal?: string | null
   /** Errores de boleta: título de la papeleta que falló. */
   papeleta?: string
   /**
@@ -439,6 +455,18 @@ export function mensajeDeError(
 
     case 'ya_voto': {
       const cuando = fechaHoraCorta(r.emitido_at)
+      // Desde 76_: quien figura votando en una mesa no votó por acá. Si no fue
+      // esa persona, lo que corresponde es ir a la mesa, no esperar un mail.
+      if (votoEnMesa(r.voto_canal)) {
+        return {
+          titulo: 'Ya figura tu voto',
+          detalle:
+            `Figura que votaste en la mesa del local${cuando ? ` el ${cuando}` : ''}. ` +
+            'Si no fuiste vos, acercate a la mesa.',
+          terminal: true,
+          tono: 'ok',
+        }
+      }
       return {
         titulo: 'Ya votaste',
         detalle: cuando
@@ -483,11 +511,17 @@ export function mensajeDeError(
       // NO decir que la votación terminó: no terminó. Quien lee esto todavía
       // puede votar, en persona. Es el mensaje más caro de equivocar del módulo.
       const desde = fechaHoraCorta(r.desde)
+      // Hasta cuándo se vota en el local, si se sabe (la elección viene en el
+      // contexto): es lo que la persona necesita para decidir si llega.
+      const hasta = eleccion ? fechaHoraCorta(eleccion.fecha_cierre) : ''
       return {
         titulo: 'El voto por internet cerró',
         detalle:
           (desde ? `Cerró el ${desde}. ` : '') +
-          `La votación sigue abierta: se vota en el local, en persona.${contacto}`,
+          (hasta
+            ? `La votación sigue abierta: se vota en el local, en persona, hasta el ${hasta}.`
+            : 'La votación sigue abierta: se vota en el local, en persona.') +
+          contacto,
         terminal: true,
         // No es un error ni un cierre: es un cambio de canal, y esta persona
         // todavía tiene algo que hacer.

@@ -13,6 +13,7 @@
  */
 
 import { mesaPadron } from '@/lib/mesa'
+import { renovarCookiesMesa } from '@/lib/mesa-sesion'
 import { conSesion, errorInterno, json } from '../_comun'
 
 export const runtime = 'nodejs'
@@ -28,7 +29,11 @@ export async function GET(req: Request) {
     // se quedaría congelada sin avisar. Se ignora y se manda el padrón entero.
     const valida = desde && !isNaN(new Date(desde).getTime()) ? desde : null
 
-    return json(await mesaPadron(s.admin, s.sesion, valida))
+    const r = await mesaPadron(s.admin, s.sesion, valida)
+    // Desde 76_ la sesión de la base se renueva con el uso; la cookie la sigue
+    // para no vencerse a las 12 h del login con el puesto atendiendo.
+    if ('ok' in r && r.ok === true) await renovarCookiesMesa()
+    return json(r)
   } catch (err) {
     return errorInterno('GET /api/mesa/padron', err)
   }

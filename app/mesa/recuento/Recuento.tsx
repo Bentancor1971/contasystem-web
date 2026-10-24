@@ -16,13 +16,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   esErrorMesa,
+  horaOFecha,
+  leerRespuestaMesa,
   mensajeErrorMesa,
+  totalDeFilas,
   type ControlMesa,
-  type ErrorMesa,
   type FilaRecuento,
   type MensajeMesa,
   type PapeletaMesa,
 } from '@/lib/mesa-types'
+
+/** Cada cuánto se reevalúa si ya llegó la hora de cierre de la elección. */
+const RELOJ_MS = 30_000
 import { Aviso } from '../Marco'
 
 /** Clave de una casilla de la grilla. `opcion_id` null para blanco y anulado. */
@@ -60,8 +65,20 @@ export function Recuento({
   const [observacion, setObservacion] = useState('')
   const [aviso, setAviso] = useState<(MensajeMesa & { tono: 'ok' | 'medio' | 'alto' }) | null>(null)
   const [ocupado, setOcupado] = useState(false)
-  const [confirmando, setConfirmando] = useState(false)
+  /**
+   * La grilla que se va a mandar al cerrar, congelada al abrir la confirmación.
+   * El diálogo muestra los números de ESTAS filas y `cerrar` manda estas
+   * mismas: lo que se confirma es exactamente lo que se cierra (76_, §1.4).
+   */
+  const [porCerrar, setPorCerrar] = useState<FilaRecuento[] | null>(null)
   const [cerrada, setCerrada] = useState<{ marcas: number; sobres: number } | null>(null)
+
+  /** Reloj de la pantalla, para saber si ya llegó la hora de cierre. */
+  const [ahora, setAhora] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), RELOJ_MS)
+    return () => clearInterval(t)
+  }, [])
 
   const set = (k: string, v: string) => {
     const n = Number(v.replace(/\D/g, ''))
@@ -86,6 +103,14 @@ export function Recuento({
   const sobresNum = sobres.trim() === '' ? null : Number(sobres.replace(/\D/g, ''))
   const difiere =
     sobresNum !== null && (sobresNum !== control.marcas || totalRecuento !== control.marcas)
+
+  // Desde 76_ (§2): antes de la hora de cierre de la elección, la base sólo
+  // deja cerrar la urna con una observación. El reloj del navegador elige las
+  // palabras; quien decide es `mesa_cerrar` contra el NOW() de Postgres.
+  const cierreMs = control.fecha_cierre ? new Date(control.fecha_cierre).getTime() : NaN
+  const antesDeHora = control.eleccion_estado === 'abierta' && !isNaN(cierreMs) && ahora < cierreMs
+  const observacionObligatoria = difiere || antesDeHora
+  const faltaObservacion = observacionObligatoria && observacion.trim() === ''
 
   const filas = (): FilaRecuento[] => {
     const out: FilaRecuento[] = []
@@ -115,8 +140,8 @@ export function Recuento({
   const refrescarControl = async () => {
     try {
       const r = await fetch('/api/mesa/control', { cache: 'no-store' })
-      const d = (await r.json()) as ControlMesa | ErrorMesa
-      if ('ok' in d && d.ok === true) setControl(d)
+      const d = await leerRespuestaMesa<ControlMesa>(r)
+      if (!esErrorMesa(d)) setControl(d)
     } catch {
       /* el control de la pantalla sigue siendo el último que llegó */
     }
@@ -133,7 +158,7 @@ export function Recuento({
         body: JSON.stringify({ filas: filas() }),
         cache: 'no-store',
       })
-      const d = (await r.json()) as { ok: true; filas: number } | ErrorMesa
+      const d = await leerRespuestaMesa<{ ok: true; filas: number }>(r)
       if (!esErrorMesa(d)) {
         await refrescarControl()
         setAviso({
@@ -143,6 +168,7 @@ export function Recuento({
         })
       } else {
         setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
+        if (d.error === 'sin_respuesta') await refrescarControl()
       }
     } catch {
       setAviso({ ...mensajeErrorMesa({ error: 'sin_respuesta' }), tono: 'alto' })
@@ -151,30 +177,46 @@ export function Recuento({
     setOcupado(false)
   }
 
+  /** Abre la confirmación con la grilla congelada y el control al día. */
+  const pedirCierre = async () => {
+    if (ocupado || sobresNum === null || faltaObservacion) return
+    setAviso(null)
+    // Las marcas pueden haber cambiado desde que se abrió la pantalla (la mesa
+    // siguió marcando en otro dispositivo): el diálogo tiene que mostrar las
+    // de ahora.
+    await refrescarControl()
+    setPorCerrar(filas())
+  }
+
   const cerrar = async () => {
-    if (ocupado || sobresNum === null) return
+    if (ocupado || sobresNum === null || !porCerrar) return
     setOcupado(true)
     setAviso(null)
     try {
       const r = await fetch('/api/mesa/cerrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sobres_en_urna: sobresNum, observacion }),
+        // Desde 76_ (§1.4) se manda la grilla: la base la guarda y cierra en la
+        // misma transacción. Lo que se cierra es lo que se confirmó.
+        body: JSON.stringify({ filas: porCerrar, sobres_en_urna: sobresNum, observacion }),
         cache: 'no-store',
       })
-      const d = (await r.json()) as { ok: true; marcas: number; sobres: number } | ErrorMesa
+      const d = await leerRespuestaMesa<{ ok: true; marcas: number; sobres: number }>(r)
       if (!esErrorMesa(d)) {
         setCerrada({ marcas: d.marcas, sobres: d.sobres })
-        setConfirmando(false)
       } else {
-        // `requiere_observacion` no es un rechazo: es "escribí por qué y dale".
+        // `requiere_observacion` y `requiere_observacion_cierre_anticipado` no
+        // son un rechazo: son "escribí por qué y dale".
         setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
-        setConfirmando(false)
+        // No sabemos si cerró: el control lo dice (si cerró, la pantalla pasa
+        // sola a "esta urna ya está cerrada").
+        if (d.error === 'sin_respuesta') await refrescarControl()
       }
     } catch {
       setAviso({ ...mensajeErrorMesa({ error: 'sin_respuesta' }), tono: 'alto' })
-      setConfirmando(false)
+      await refrescarControl()
     }
+    setPorCerrar(null)
     setOcupado(false)
   }
 
@@ -218,6 +260,18 @@ export function Recuento({
 
   return (
     <div>
+      {/* Desde 76_ (§2): mientras no llegó la hora de cierre de la elección,
+          se dice. Cerrar antes se puede, con una observación. */}
+      {antesDeHora && control.fecha_cierre && (
+        <div className="mb-4">
+          <Aviso
+            titulo={`La votación sigue abierta hasta las ${horaOFecha(control.fecha_cierre)}`}
+            detalle="Todavía puede llegar gente a votar. Si hay que cerrar la urna antes, escribí el motivo en la observación."
+            tono="medio"
+          />
+        </div>
+      )}
+
       <Control marcas={control.marcas} recuento={totalRecuento} sobres={sobresNum} />
 
       {aviso && (
@@ -279,7 +333,12 @@ export function Recuento({
 
       <section className="mt-6">
         <label htmlFor="observacion" className="label-mono block mb-2">
-          Observación {difiere ? '(obligatoria: la cuenta no cierra)' : '(opcional)'}
+          Observación{' '}
+          {difiere
+            ? '(obligatoria: la cuenta no cierra)'
+            : antesDeHora
+              ? '(obligatoria: la votación sigue abierta)'
+              : '(opcional)'}
         </label>
         <textarea
           id="observacion"
@@ -299,27 +358,29 @@ export function Recuento({
         <button
           type="button"
           className="btn-primary"
-          disabled={ocupado || sobresNum === null || (difiere && observacion.trim() === '')}
-          onClick={() => setConfirmando(true)}
+          disabled={ocupado || sobresNum === null || faltaObservacion}
+          onClick={() => void pedirCierre()}
         >
           Cerrar la urna
         </button>
         <p className="text-ink-3 text-[13px] leading-relaxed">
-          {difiere && observacion.trim() === ''
-            ? 'La cuenta no cierra: escribí una observación arriba para poder cerrar.'
-            : 'Cerrar la urna no se deshace desde la web y termina la sesión de esta mesa, incluida la tuya. Antes hay que guardar el recuento.'}
+          {faltaObservacion
+            ? difiere
+              ? 'La cuenta no cierra: escribí una observación arriba para poder cerrar.'
+              : 'La votación sigue abierta: escribí arriba por qué se cierra la urna antes.'
+            : 'Cerrar la urna guarda el recuento tal como se ve en pantalla, no se deshace desde la web y termina la sesión de esta mesa, incluida la tuya.'}
         </p>
       </div>
 
-      {confirmando && (
+      {porCerrar && (
         <ConfirmarCierre
           marcas={control.marcas}
           sobresNum={sobresNum}
-          totalRecuento={totalRecuento}
-          difiere={difiere}
+          totalRecuento={totalDeFilas(porCerrar)}
+          difiere={sobresNum !== null && (sobresNum !== control.marcas || totalDeFilas(porCerrar) !== control.marcas)}
           ocupado={ocupado}
           onConfirmar={cerrar}
-          onCancelar={() => setConfirmando(false)}
+          onCancelar={() => setPorCerrar(null)}
         />
       )}
     </div>

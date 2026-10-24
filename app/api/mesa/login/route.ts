@@ -17,7 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { mesaLogin } from '@/lib/mesa'
 import { guardarSesionMesa } from '@/lib/mesa-sesion'
 import { codigoMesaValido, pinValido } from '@/lib/mesa-types'
-import { LIMITES, permitido, RESPUESTA_429 } from '@/lib/rate-limit'
+import { clientIp, LIMITES, permitidoPorIpYClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { errorInterno, json } from '../_comun'
 
 export const runtime = 'nodejs'
@@ -35,7 +35,21 @@ export async function POST(req: Request) {
     const admin = createAdminClient()
     // El tope corre ANTES de evaluar el código y el PIN: cada intento cuenta,
     // incluidos los que ni llegan a la base por venir mal formados.
-    if (!(await permitido(admin, req, LIMITES.mesaLogin))) {
+    //
+    // Por IP + mesa (el código normalizado como lo normaliza `_norm_codigo`, y
+    // hasheado: nunca en claro en la tabla de topes), con un global por IP más
+    // alto. Antes las mesas de un mismo local compartían un único cupo.
+    const codigoNorm =
+      typeof body.codigo === 'string' ? body.codigo.replace(/[^A-Za-z0-9]/g, '').toUpperCase() : ''
+    if (
+      !(await permitidoPorIpYClave(
+        admin,
+        clientIp(req),
+        `mesa:${codigoNorm}`,
+        LIMITES.mesaLogin,
+        LIMITES.mesaLoginIp,
+      ))
+    ) {
       return json(RESPUESTA_429, 429)
     }
 
