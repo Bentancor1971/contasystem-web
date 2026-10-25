@@ -90,6 +90,20 @@ function integrantes(v: unknown): IntegranteOpcion[] {
     .filter((x) => x.nombre !== '')
 }
 
+/**
+ * Un link de compartir de Google Drive (`/file/d/ID/view`) es una página, no una
+ * imagen: en un <img> no muestra nada. Se convierte a la dirección directa
+ * (24/10/2026, la foto de la lista no salía al votar). El desktop nuevo ya la
+ * publica convertida; esto cubre lo publicado antes. Mismo criterio que
+ * `normalizarDriveUrl` del desktop.
+ */
+function imagenDirecta(url: string | null): string | null {
+  if (!url) return url
+  const id = url.match(/drive\.google\.com\/file\/d\/([^/?#]+)/)?.[1]
+    ?? (/drive\.google\.com\/(open|uc|thumbnail)\b/.test(url) ? url.match(/[?&]id=([^&#]+)/)?.[1] : undefined)
+  return id ? `https://lh3.googleusercontent.com/d/${id}=w1600` : url
+}
+
 function opcion(v: Record<string, unknown>): OpcionPapeleta {
   return {
     id: String(v.id),
@@ -97,7 +111,7 @@ function opcion(v: Record<string, unknown>): OpcionPapeleta {
     titulo: String(v.titulo ?? ''),
     lema: texto(v.lema),
     descripcion: texto(v.descripcion),
-    imagen_url: texto(v.imagen_url),
+    imagen_url: imagenDirecta(texto(v.imagen_url)),
     integrantes: integrantes(v.integrantes),
   }
 }
@@ -169,7 +183,7 @@ export function normalizarEstadoCredencial(d: Record<string, unknown>): EstadoCr
       texto_antes: texto(e.texto_antes),
       texto_despues: texto(e.texto_despues),
       email_contacto: texto(e.email_contacto),
-      imagen_url: texto(e.imagen_url),
+      imagen_url: imagenDirecta(texto(e.imagen_url)),
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
       fecha_cierre_web: texto(e.fecha_cierre_web),
@@ -300,7 +314,7 @@ export async function eleccionPublica(
       // La página pública no lo recibe: `texto_despues` es de después de votar.
       texto_despues: null,
       email_contacto: texto(e.email_contacto),
-      imagen_url: texto(e.imagen_url),
+      imagen_url: imagenDirecta(texto(e.imagen_url)),
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
       // `eleccion_publica` no lo devuelve, y es a propósito: la página que se
