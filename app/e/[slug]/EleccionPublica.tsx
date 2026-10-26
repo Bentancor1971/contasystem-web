@@ -126,6 +126,13 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
   const e = pagina.eleccion
   const titular = titularDe(pagina)
   const cerrada = pagina.ventana === 'cerrada'
+  // Con el voto por internet ya cerrado y la votación todavía abierta en el
+  // local (26/10/2026): queda el aviso con el horario del local. Los textos de
+  // apertura, el instructivo y "Cómo se vota" hablan del link personal, que ya
+  // no sirve. Misma regla que con la votación terminada.
+  const webPropio = cierreWebPropio(e)
+  const sinVotoWeb = cerrada
+    || (pagina.ventana === 'abierta' && !!webPropio && Date.now() > new Date(webPropio).getTime())
 
   return (
     <main className="min-h-screen bg-paper">
@@ -148,7 +155,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
               nombre, la imagen y el aviso de estado. La `descripcion` no se
               esconde por larga ni por sensible — se esconde porque presenta un
               acto que ya pasó como si estuviera por pasar. */}
-          {!cerrada && e.descripcion && (
+          {!sinVotoWeb && e.descripcion && (
             <p className="text-ink-2 text-[17px] leading-relaxed whitespace-pre-line">
               {e.descripcion}
             </p>
@@ -170,7 +177,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
 
             Con la elección todavía sin abrir sí se muestran: ahí el instructivo
             es justo lo que la persona viene a leer. */}
-        {!cerrada && e.texto_antes && (
+        {!sinVotoWeb && e.texto_antes && (
           <p className="rise text-ink-2 text-[17px] leading-relaxed whitespace-pre-line mt-8">
             {e.texto_antes}
           </p>
@@ -178,7 +185,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
 
         {/* El instructivo va COMPLETO y sin plegar: es donde la persona se entera
             de que el voto es nominal, y tiene derecho a saberlo antes de votar. */}
-        {!cerrada && e.instructivo && (
+        {!sinVotoWeb && e.instructivo && (
           <section className="card rise p-6 sm:p-7 mt-8">
             <span className="label-mono">Instructivo</span>
             <p className="text-ink-2 text-[17px] leading-relaxed whitespace-pre-line mt-3">
@@ -189,7 +196,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
 
         {/* Cómo se vota: es lo que viene a buscar quien abre el link repartido.
             Se omite con la votación cerrada — ahí ya no hay nada que hacer. */}
-        {!cerrada && (
+        {!sinVotoWeb && (
           <section className="card rise p-6 sm:p-7 mt-6">
             <span className="label-mono">Cómo se vota</span>
             <p className="text-ink-2 text-[17px] leading-relaxed mt-3">
@@ -220,7 +227,7 @@ export function EleccionPublicaPage({ pagina }: { pagina: EleccionPublicaPagina 
             no se destraba. Cerrada la votación se ofrece el mail a secas. */}
         {e.email_contacto && (
           <p className="text-ink-3 text-sm leading-relaxed mt-8">
-            {cerrada ? (
+            {sinVotoWeb ? (
               <>
                 ¿Tenés una consulta sobre esta elección? Escribinos a{' '}
                 <a className="underline" href={`mailto:${e.email_contacto}`}>{e.email_contacto}</a>.

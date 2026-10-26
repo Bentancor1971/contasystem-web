@@ -120,6 +120,9 @@ function Cortada({ titulo, detalle }: { titulo: string; detalle: string }) {
  */
 function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana: VentanaEleccion }) {
   const cerrada = ventana === 'cerrada'
+  // Con el voto por internet cerrado tampoco va la descripción (26/10/2026):
+  // la regla es la de la votación terminada, ver `portada`.
+  const sinVotoWeb = cerrada || ventana === 'cerrada_web'
   return (
     <header className="rise mb-8">
       <span className="label-mono">Votación</span>
@@ -161,7 +164,7 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
           la imagen y la línea de estado, y nada más. Los textos que escribe la
           institución están escritos para convocar, y con el acto cerrado
           invitan a algo que ya no se puede hacer. */}
-      {!cerrada && eleccion.descripcion && (
+      {!sinVotoWeb && eleccion.descripcion && (
         <p className="text-ink-2 mt-5 text-[17px] leading-relaxed whitespace-pre-line">
           {eleccion.descripcion}
         </p>
@@ -377,7 +380,14 @@ export default async function VotacionPage({
    * desaparecen juntos: en la pantalla de entrada sí, con la boleta delante no,
    * y nunca cuando esta persona ya no puede votar.
    */
-  const portada = puedeVotarTodavia && (eleccion.texto_antes || eleccion.instructivo) && (
+  // Con el voto por internet cerrado (`cerrada_web`) tampoco (26/10/2026,
+  // decisión del usuario): el texto de apertura invita a recorrer la boleta y el
+  // instructivo explica el link personal y los dígitos de la cédula, cosas que
+  // este link ya no permite. Queda el aviso, que dice hasta cuándo se vota en el
+  // local. Reemplaza el criterio anterior, que lo dejaba por si explicaba cómo
+  // votar en persona.
+  const portada = puedeVotarTodavia && estado.ventana !== 'cerrada_web'
+    && (eleccion.texto_antes || eleccion.instructivo) && (
     <>
       {eleccion.texto_antes && (
         <p className="text-ink-2 text-[17px] leading-relaxed mb-6 whitespace-pre-line">
