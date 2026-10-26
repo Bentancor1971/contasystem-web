@@ -375,3 +375,49 @@ export async function resolverCodigo(
     email_contacto: texto(d.email_contacto),
   }
 }
+
+/**
+ * Qué puede hacer hoy quien llega a `/v` con un código en la mano.
+ *
+ *  - `vigente`: hay alguna elección con el voto por internet abierto o por
+ *    abrir. Se muestra el formulario: el código lleva a SU elección, y ahí
+ *    `/v/{token}` dice la hora exacta. Con dos elecciones a la vez (empresas
+ *    distintas) también: el código es de una sola.
+ *  - `solo_local`: ninguna se vota por internet, pero alguna sigue abierta en
+ *    el local. Pedir el código sería mandarla a leer "cerró" una pantalla más
+ *    tarde, y peor, que entienda que ya no puede votar.
+ *  - `ninguna`: no hay nada en curso.
+ *
+ * No dice qué elección ni de qué institución: la página no sabe de quién es el
+ * código hasta que lo escriben, y nombrar las elecciones abiertas de todas las
+ * empresas a cualquiera que entre no le corresponde a una página sin login.
+ *
+ * El reloj es el del servidor web, no el de Postgres: decide qué texto ver,
+ * nada más. Quien hace cumplir la ventana sigue siendo la base. Si la consulta
+ * falla, `vigente`: mejor un formulario de más que trabar a alguien que podía
+ * votar.
+ */
+export type EntradaPorCodigo = 'vigente' | 'solo_local' | 'ninguna'
+
+export async function estadoEntradaPorCodigo(admin: SupabaseClient): Promise<EntradaPorCodigo> {
+  try {
+    const ahora = Date.now()
+    const { data, error } = await admin
+      .from('elecciones_remoto')
+      .select('estado, fecha_cierre, fecha_cierre_web')
+      .in('estado', ['padron', 'abierta'])
+      .gte('fecha_cierre', new Date(ahora).toISOString())
+    if (error || !data) return 'vigente'
+
+    let soloLocal = false
+    for (const e of data as Record<string, unknown>[]) {
+      const cierreWeb = texto(e.fecha_cierre_web)
+      // `padron` todavía no abrió: el código sirve para ver cuándo abre.
+      if (!cierreWeb || ahora <= new Date(cierreWeb).getTime()) return 'vigente'
+      if (e.estado === 'abierta') soloLocal = true
+    }
+    return soloLocal ? 'solo_local' : 'ninguna'
+  } catch {
+    return 'vigente'
+  }
+}
