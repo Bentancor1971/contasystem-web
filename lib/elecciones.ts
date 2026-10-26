@@ -302,6 +302,19 @@ export async function eleccionPublica(
   if (d.ok !== true) return null
 
   const e = (d.eleccion ?? {}) as Record<string, unknown>
+  // El cierre del voto por internet (26/10/2026). `eleccion_publica` no lo
+  // devuelve; se lee aparte de la elección ya encontrada, así no hace falta
+  // redefinir la función. Si la consulta falla, la página dice el cierre general
+  // como antes.
+  let cierreWeb: string | null = null
+  try {
+    const { data: fila } = await admin
+      .from('elecciones_remoto')
+      .select('fecha_cierre_web')
+      .eq('id', String(e.id))
+      .maybeSingle()
+    cierreWeb = texto((fila as Record<string, unknown> | null)?.fecha_cierre_web)
+  } catch { /* queda el cierre general */ }
   return {
     ok: true,
     eleccion: {
@@ -317,11 +330,11 @@ export async function eleccionPublica(
       imagen_url: imagenDirecta(texto(e.imagen_url)),
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
-      // `eleccion_publica` no lo devuelve, y es a propósito: la página que se
-      // reparte por WhatsApp sigue diciendo "abierta hasta el DD/MM" —que es
-      // verdad— y el tramo presencial lo explica el instructivo. Meterle un
-      // cuarto estado a esa página complica más de lo que aclara (47_).
-      fecha_cierre_web: null,
+      // Hasta el 26/10/2026 iba siempre null ("abierta hasta el cierre
+      // general"), y con mesas en un local la página anunciaba como hora del
+      // voto por internet la de las mesas: quien entraba entre una y otra
+      // encontraba el link cerrado.
+      fecha_cierre_web: cierreWeb,
       estado: estadoActo(e.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),

@@ -26,17 +26,33 @@ import {
 } from '@/lib/elecciones-types'
 
 /** ISO → "13/08 a las 09:00". Mismo formato que usa la pantalla de votación. */
+/**
+ * "26 de octubre a las 19:00", en hora de Montevideo. Armado por partes
+ * (26/10/2026): el formato de `Intl` con mes largo daba "26-octubre a las
+ * 07:00 p. m." y, con el punto de la frase, "p. m.." al final.
+ */
 function fechaHoraLarga(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  const fmt = new Intl.DateTimeFormat('es-UY', {
-    day: '2-digit',
+  const partes = new Intl.DateTimeFormat('es-UY', {
+    day: 'numeric',
     month: 'long',
     hour: '2-digit',
     minute: '2-digit',
+    hourCycle: 'h23',
     timeZone: 'America/Montevideo',
-  })
-  return fmt.format(d).replace(',', ' a las')
+  }).formatToParts(d)
+  const de = (tipo: string) => partes.find((x) => x.type === tipo)?.value ?? ''
+  return `${de('day')} de ${de('month')} a las ${de('hour')}:${de('minute')}`
+}
+
+/** El cierre del voto por internet si es propio y anterior al de la elección. */
+function cierreWebPropio(e: EleccionPublicaPagina['eleccion']): string | null {
+  const web = e.fecha_cierre_web
+  if (!web) return null
+  const tWeb = new Date(web).getTime()
+  const tFin = new Date(e.fecha_cierre).getTime()
+  return Number.isNaN(tWeb) || tWeb >= tFin ? null : web
 }
 
 export function metadataEleccion(p: EleccionPublicaPagina): Metadata {
@@ -75,11 +91,30 @@ function titularDe(
           : `La votación abre el ${fechaHoraLarga(p.eleccion.fecha_apertura)}.`,
         tono: 'voto-aviso--medio',
       }
-    case 'abierta':
+    case 'abierta': {
+      // Con cierre propio del voto por internet (26/10/2026): lo que importa a
+      // quien abre este link es hasta cuándo sirve su link, y después, hasta
+      // cuándo se vota en el local.
+      const web = cierreWebPropio(p.eleccion)
+      if (web && Date.now() > new Date(web).getTime()) {
+        return {
+          titulo: `El voto por internet cerró el ${fechaHoraLarga(web)}.`,
+          detalle: `Se vota sólo en el local, hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
+          tono: 'voto-aviso--medio',
+        }
+      }
+      if (web) {
+        return {
+          titulo: `Se vota por internet hasta el ${fechaHoraLarga(web)}.`,
+          detalle: `En el local, hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
+          tono: 'voto-aviso--ok',
+        }
+      }
       return {
         titulo: `La votación está abierta hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
         tono: 'voto-aviso--ok',
       }
+    }
     default: {
       const cierre = cierreDeLaVotacion(p.eleccion, null)
       return { titulo: cierre.titulo, detalle: cierre.detalle, tono: 'voto-aviso--alto' }

@@ -141,7 +141,12 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
           la persona baje hasta el aviso. */}
       <p className={`font-mono text-sm ${cerrada ? 'text-ink font-medium' : 'text-ink-2'}`}>
         {ventana === 'abierta'
-          ? `Se puede votar hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
+          // Con cierre propio del voto por internet (26/10/2026), el de este link:
+          // antes decía el cierre general, que con mesas es el de las mesas.
+          ? (eleccion.fecha_cierre_web
+              && new Date(eleccion.fecha_cierre_web).getTime() < new Date(eleccion.fecha_cierre).getTime()
+            ? `Se puede votar por internet hasta el ${fechaHoraCorta(eleccion.fecha_cierre_web)}`
+            : `Se puede votar hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`)
           : ventana === 'no_abierta'
             ? horaAperturaPasada(eleccion.fecha_apertura)
               ? `Apertura prevista: ${fechaHoraCorta(eleccion.fecha_apertura)}`
