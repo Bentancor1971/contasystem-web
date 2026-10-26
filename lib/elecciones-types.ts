@@ -636,6 +636,39 @@ export interface SeleccionLocal {
 export const SELECCION_VACIA: SeleccionLocal = { opciones: [], blanco: false }
 
 /**
+ * Lista única (26/10/2026): la papeleta tiene una sola opción. El desktop la
+ * marca a propósito ("Lista única") y exige exactamente una; acá alcanza con
+ * contarlas. Sin blanco no hay nada que elegir: votar es votar esa lista.
+ */
+export function esListaUnica(p: Papeleta): boolean {
+  return p.opciones.length === 1
+}
+
+/** Lista única sin blanco: la opción viene marcada y no se puede desmarcar. */
+export function sinNadaQueElegir(p: Papeleta): boolean {
+  return esListaUnica(p) && !p.permite_blanco
+}
+
+/**
+ * La selección con la que arranca la boleta: las papeletas de lista única sin
+ * blanco ya vienen con su lista marcada; el resto, vacías.
+ */
+export function seleccionInicial(papeletas: Papeleta[]): Record<string, SeleccionLocal> {
+  const out: Record<string, SeleccionLocal> = {}
+  for (const p of papeletas) {
+    if (sinNadaQueElegir(p)) out[p.id] = { opciones: [p.opciones[0].id], blanco: false }
+  }
+  return out
+}
+
+/** La línea bajo el título de una papeleta de lista única. */
+export function reglaListaUnica(p: Papeleta): string {
+  return p.permite_blanco
+    ? 'Hay una sola lista: podés votarla o votar en blanco.'
+    : 'Hay una sola lista: al confirmar, votás por ella.'
+}
+
+/**
  * Valida una papeleta contra sus propias reglas. Es AYUDA VISUAL: la decisión
  * la toma `emitir_voto` en la base, que revalida todo. Devuelve `null` si está
  * bien, o el texto del problema.

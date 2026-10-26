@@ -49,6 +49,10 @@ import {
   armarSelecciones,
   problemaDePapeleta,
   SELECCION_VACIA,
+  reglaListaUnica,
+  seleccionInicial,
+  sinNadaQueElegir,
+  esListaUnica,
   type BoletaValidada,
   type ErrorVotacion,
   type MensajeVotacion,
@@ -308,7 +312,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
     })
     if (r.estado === 'ok') {
       setBoleta(r.data)
-      setSel({})
+      setSel(seleccionInicial(r.data.papeletas))
       setErrores({})
       setAviso(null)
       setFase('boleta')
@@ -1018,7 +1022,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
                     {p.descripcion}
                   </p>
                 )}
-                <p className="voto-regla mt-3 mb-4">{reglaDe(p)}</p>
+                <p className="voto-regla mt-3 mb-4">{esListaUnica(p) ? reglaListaUnica(p) : reglaDe(p)}</p>
 
                 {error && (
                   <p className="msg-error mb-4" role="alert">
@@ -1038,7 +1042,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
                         }`}
                       >
                         <label className="voto-fila">
-                          <input
+                          {!sinNadaQueElegir(p) && <input
                             type={multiple ? 'checkbox' : 'radio'}
                             className="voto-control"
                             name={`papeleta-${p.id}`}
@@ -1048,7 +1052,7 @@ export function Terminal({ info }: { info: InfoTerminal }) {
                             onChange={() =>
                               multiple ? alternar(p, o.id) : elegirUnica(p, o.id)
                             }
-                          />
+                          />}
                           <span className="min-w-0">
                             <span className="voto-titulo">
                               {o.numero && <span className="voto-numero">{o.numero}</span>}

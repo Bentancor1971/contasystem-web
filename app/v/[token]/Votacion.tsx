@@ -34,6 +34,10 @@ import {
   mensajeDeError,
   problemaDePapeleta,
   SELECCION_VACIA,
+  reglaListaUnica,
+  seleccionInicial,
+  sinNadaQueElegir,
+  esListaUnica,
   votoEnMesa,
   type BoletaValidada,
   type CierreCtx,
@@ -162,7 +166,9 @@ export function Votacion({
   const [fase, setFase] = useState<Fase>(boletaInicial ? 'boleta' : 'factor')
   const [digitos, setDigitos] = useState('')
   const [boleta, setBoleta] = useState<BoletaValidada | null>(boletaInicial)
-  const [sel, setSel] = useState<Record<string, SeleccionLocal>>({})
+  const [sel, setSel] = useState<Record<string, SeleccionLocal>>(
+    () => (boletaInicial ? seleccionInicial(boletaInicial.papeletas) : {}),
+  )
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<MensajeVotacion | null>(null)
   /**
@@ -238,7 +244,7 @@ export function Votacion({
 
     if (r.estado === 'ok') {
       setBoleta(r.data)
-      setSel({})
+      setSel(seleccionInicial(r.data.papeletas))
       setErrores({})
       setFase('boleta')
       arriba()
@@ -788,7 +794,7 @@ export function Votacion({
                   {p.descripcion}
                 </p>
               )}
-              <p className="voto-regla mt-3 mb-4">{reglaDe(p)}</p>
+              <p className="voto-regla mt-3 mb-4">{esListaUnica(p) ? reglaListaUnica(p) : reglaDe(p)}</p>
 
               {error && (
                 <p className="msg-error mb-4" role="alert">
@@ -808,7 +814,7 @@ export function Votacion({
                       }`}
                     >
                       <label className="voto-fila">
-                        <input
+                        {!sinNadaQueElegir(p) && <input
                           type={multiple ? 'checkbox' : 'radio'}
                           className="voto-control"
                           name={`papeleta-${p.id}`}
@@ -818,7 +824,7 @@ export function Votacion({
                           onChange={() =>
                             multiple ? alternar(p, o.id) : elegirUnica(p, o.id)
                           }
-                        />
+                        />}
                         <span className="min-w-0">
                           <span className="voto-titulo">
                             {o.numero && <span className="voto-numero">{o.numero}</span>}
