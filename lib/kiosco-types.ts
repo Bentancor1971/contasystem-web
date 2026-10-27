@@ -19,6 +19,7 @@
  */
 
 import {
+  fechaHoraCorta,
   mensajeDeError,
   type ErrorVotacion,
   type MensajeVotacion,
@@ -184,13 +185,18 @@ export function mensajeEnTerminal(r: ErrorVotacion): MensajeVotacion {
         tono: 'medio',
       }
 
-    case 'no_abierta':
+    case 'no_abierta': {
+      // `desde` llega con la apertura del local (78_) o la de la elección.
+      const desde = fechaHoraCorta(r.desde)
       return {
         titulo: 'La votación todavía no está abierta',
-        detalle: 'Avisale al operador de la mesa.',
+        detalle: desde
+          ? `En el local se vota desde el ${desde}. Avisale al operador de la mesa.`
+          : 'Avisale al operador de la mesa.',
         terminal: true,
         tono: 'medio',
       }
+    }
 
     case 'eleccion_cerrada':
       return {

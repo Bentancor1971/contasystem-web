@@ -55,6 +55,18 @@ function cierreWebPropio(e: EleccionPublicaPagina['eleccion']): string | null {
   return Number.isNaN(tWeb) || tWeb >= tFin ? null : web
 }
 
+/**
+ * Hasta cuándo —y, si todavía no abrió, desde cuándo— se vota en el local.
+ * La apertura propia del local es de 78_ (27/10/2026): "internet de 9 a 16 y
+ * las mesas de 16 a 18".
+ */
+function tramoLocal(e: EleccionPublicaPagina['eleccion']): string {
+  const abre = e.fecha_apertura_presencial
+  return abre && Date.now() < new Date(abre).getTime()
+    ? `En el local, desde el ${fechaHoraLarga(abre)} hasta el ${fechaHoraLarga(e.fecha_cierre)}.`
+    : `En el local, hasta el ${fechaHoraLarga(e.fecha_cierre)}.`
+}
+
 export function metadataEleccion(p: EleccionPublicaPagina): Metadata {
   return {
     title: `${p.eleccion.nombre} · Votación`,
@@ -89,6 +101,11 @@ function titularDe(
         titulo: horaAperturaPasada(p.eleccion.fecha_apertura)
           ? `La votación estaba prevista para el ${fechaHoraLarga(p.eleccion.fecha_apertura)} y todavía no está habilitada.`
           : `La votación abre el ${fechaHoraLarga(p.eleccion.fecha_apertura)}.`,
+        // Con tramos propios, cada canal con el suyo.
+        detalle: cierreWebPropio(p.eleccion) || p.eleccion.fecha_apertura_presencial
+          ? `Por internet, hasta el ${fechaHoraLarga(cierreWebPropio(p.eleccion) ?? p.eleccion.fecha_cierre)}. ` +
+            tramoLocal(p.eleccion)
+          : undefined,
         tono: 'voto-aviso--medio',
       }
     case 'abierta': {
@@ -99,19 +116,27 @@ function titularDe(
       if (web && Date.now() > new Date(web).getTime()) {
         return {
           titulo: `El voto por internet cerró el ${fechaHoraLarga(web)}.`,
-          detalle: `Se vota sólo en el local, hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
+          detalle: p.eleccion.fecha_apertura_presencial
+            && Date.now() < new Date(p.eleccion.fecha_apertura_presencial).getTime()
+            ? `Ahora se vota sólo en el local, desde el ${fechaHoraLarga(p.eleccion.fecha_apertura_presencial)} ` +
+              `hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`
+            : `Se vota sólo en el local, hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
           tono: 'voto-aviso--medio',
         }
       }
       if (web) {
         return {
           titulo: `Se vota por internet hasta el ${fechaHoraLarga(web)}.`,
-          detalle: `En el local, hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
+          detalle: tramoLocal(p.eleccion),
           tono: 'voto-aviso--ok',
         }
       }
       return {
         titulo: `La votación está abierta hasta el ${fechaHoraLarga(p.eleccion.fecha_cierre)}.`,
+        detalle: p.eleccion.fecha_apertura_presencial
+          && Date.now() < new Date(p.eleccion.fecha_apertura_presencial).getTime()
+          ? tramoLocal(p.eleccion)
+          : undefined,
         tono: 'voto-aviso--ok',
       }
     }

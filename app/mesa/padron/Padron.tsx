@@ -70,6 +70,8 @@ export function Padron({
     mesas: null,
     web: null,
   })
+  /** Desde 78_: desde cuándo se puede marcar en el local. */
+  const [abrenMesas, setAbrenMesas] = useState<string | null>(null)
 
   const [q, setQ] = useState('')
   const [aviso, setAviso] = useState<(MensajeMesa & { tono: 'ok' | 'medio' | 'alto' }) | null>(null)
@@ -126,6 +128,7 @@ export function Padron({
           // propio: cierran juntos.
           web: cierreWebEfectivo(d.fecha_cierre, d.fecha_cierre_web),
         })
+        setAbrenMesas(d.fecha_apertura_mesas ?? null)
         setCaido(false)
         setFase('listo')
         return
@@ -374,6 +377,17 @@ export function Padron({
           </a>
         )}
       </div>
+
+      {/* Desde 78_: antes de la apertura del local la mesa entra y prepara,
+          pero la base no la deja marcar. Se dice arriba de todo, con la hora. */}
+      {abrenMesas && Date.now() < new Date(abrenMesas).getTime() && (
+        <div className="voto-aviso voto-aviso--medio mb-3" role="status">
+          <p className="text-ink-2 text-[15px] leading-relaxed">
+            La mesa abre a las <strong>{horaOFecha(abrenMesas)}</strong>. Hasta entonces se puede
+            revisar el padrón y preparar la urna, pero no marcar votantes.
+          </p>
+        </div>
+      )}
 
       {/* Desde 75_: los dos horarios del acto. Sin el script no viene la fecha
           de cierre y la línea no aparece. */}

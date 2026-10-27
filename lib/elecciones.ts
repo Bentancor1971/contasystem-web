@@ -187,6 +187,8 @@ export function normalizarEstadoCredencial(d: Record<string, unknown>): EstadoCr
       fecha_apertura: String(e.fecha_apertura ?? ''),
       fecha_cierre: String(e.fecha_cierre ?? ''),
       fecha_cierre_web: texto(e.fecha_cierre_web),
+      // `buscar_credencial` no la devuelve: la completa `buscarCredencial`.
+      fecha_apertura_presencial: null,
       estado: estadoActo(e.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),
@@ -212,7 +214,32 @@ export async function buscarCredencial(
 ): Promise<RespuestaEstado> {
   const d = await llamar(admin, 'buscar_credencial', { p_token: token })
   if (d.ok !== true) return d as unknown as ErrorVotacion
-  return normalizarEstadoCredencial(d)
+  const r = normalizarEstadoCredencial(d)
+  r.eleccion.fecha_apertura_presencial = await aperturaLocalPropia(admin, r.eleccion.id)
+  return r
+}
+
+/**
+ * La apertura propia del local (78_, 27/10/2026), leída aparte de la elección
+ * ya encontrada: así no hace falta redefinir `buscar_credencial` ni
+ * `eleccion_publica`. `null` si no tiene, si la base todavía no tiene la
+ * columna o si la consulta falla: las pantallas dicen lo de siempre.
+ */
+export async function aperturaLocalPropia(
+  admin: SupabaseClient,
+  eleccionId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await admin
+      .from('elecciones_remoto')
+      .select('fecha_apertura_presencial')
+      .eq('id', eleccionId)
+      .maybeSingle()
+    if (error) return null
+    return texto((data as Record<string, unknown> | null)?.fecha_apertura_presencial)
+  } catch {
+    return null
+  }
 }
 
 // ── Paso 2 · segundo factor → votante + boleta ──────────────────────────────
@@ -335,6 +362,7 @@ export async function eleccionPublica(
       // voto por internet la de las mesas: quien entraba entre una y otra
       // encontraba el link cerrado.
       fecha_cierre_web: cierreWeb,
+      fecha_apertura_presencial: await aperturaLocalPropia(admin, String(e.id)),
       estado: estadoActo(e.estado),
     },
     verificacion_digitos: Math.max(0, entero(d.verificacion_digitos, 0)),

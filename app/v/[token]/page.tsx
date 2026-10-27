@@ -60,6 +60,12 @@ interface Impedimento {
   tono: 'ok' | 'medio' | 'alto'
 }
 
+/** Si el local tiene apertura propia (78_) y todavía no llegó. */
+function localPorAbrir(e: EleccionPublica): boolean {
+  const abre = e.fecha_apertura_presencial
+  return !!abre && Date.now() < new Date(abre).getTime()
+}
+
 function Marco({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-paper">
@@ -156,7 +162,10 @@ function Encabezado({ eleccion, ventana }: { eleccion: EleccionPublica; ventana:
               : `La votación abre el ${fechaHoraCorta(eleccion.fecha_apertura)}`
             : ventana === 'cerrada_web'
               ? // La votación NO cerró: cerró el canal web. Ver `cerrada_web`.
-                `El voto por internet cerró · se vota en el local hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
+                // Con apertura propia del local todavía por llegar (78_), desde cuándo.
+                localPorAbrir(eleccion)
+                  ? `El voto por internet cerró · en el local se vota desde el ${fechaHoraCorta(eleccion.fecha_apertura_presencial)} hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
+                  : `El voto por internet cerró · se vota en el local hasta el ${fechaHoraCorta(eleccion.fecha_cierre)}`
               : cierreDeLaVotacion(eleccion, null).linea}
       </p>
       {/* Regla común a las cuatro pantallas públicas (esta, la elección sin
@@ -321,7 +330,10 @@ export default async function VotacionPage({
                       : '') +
                     // Desde 76_ (§4.6): hasta cuándo, que es lo que decide si
                     // la persona llega.
-                    `La votación sigue abierta: ahora se vota en el local, en persona, hasta el ` +
+                    (localPorAbrir(eleccion)
+                      ? `La votación sigue: en el local, en persona, se vota desde el ` +
+                        `${fechaHoraCorta(eleccion.fecha_apertura_presencial)} hasta el `
+                      : `La votación sigue abierta: ahora se vota en el local, en persona, hasta el `) +
                     `${fechaHoraCorta(eleccion.fecha_cierre)}. Llevá tu documento.${escribinos}`,
                   tono: 'medio',
                 }

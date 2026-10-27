@@ -81,6 +81,11 @@ export interface RespuestaPadron {
    */
   fecha_cierre: string | null
   fecha_cierre_web: string | null
+  /**
+   * Desde 78_: desde cuándo se puede marcar en el local (la apertura propia de
+   * las mesas o, sin ella, la de la elección). Sin ese script no viene.
+   */
+  fecha_apertura_mesas: string | null
 }
 
 export interface MarcaOk {
@@ -164,6 +169,8 @@ export interface ErrorMesa {
   recuento?: number
   /** `requiere_observacion_cierre_anticipado` (76_): hasta cuándo se vota. */
   fecha_cierre?: string
+  /** `no_abierta` (78_): desde cuándo se puede marcar en el local. */
+  desde?: string
 }
 
 export type RespuestaLogin = SesionMesa | ErrorMesa
@@ -428,10 +435,15 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
         detalle: 'Ya no se pueden registrar votos.',
       }
     case 'no_abierta':
-      return {
-        titulo: 'La elección todavía no está abierta',
-        detalle: 'No se puede registrar ningún voto hasta que la comisión la abra.',
-      }
+      return r.desde
+        ? {
+            titulo: 'La mesa todavía no abrió',
+            detalle: `Se pueden marcar votantes desde las ${horaOFecha(r.desde)}.`,
+          }
+        : {
+            titulo: 'La elección todavía no está abierta',
+            detalle: 'No se puede registrar ningún voto hasta que la comisión la abra.',
+          }
     case 'no_esta_en_padron':
       return {
         titulo: 'Esa persona no está en el padrón',

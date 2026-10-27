@@ -29,6 +29,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { esError } from '@/lib/elecciones-types'
+import { aperturaLocalPropia } from '@/lib/elecciones'
 import { canjearCodigoKiosco, firmarPase, leerSesionKiosco, terminalVigente } from '@/lib/kiosco'
 import { LIMITES, permitidoPorClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { claveTerminal, errorInterno, json } from '../_comun'
@@ -88,6 +89,13 @@ export async function POST(req: Request) {
     if (estado.bloqueado) return json({ error: 'bloqueado' })
     if (estado.ventana === 'no_abierta') {
       return json({ error: 'no_abierta', desde: estado.eleccion.fecha_apertura })
+    }
+    // Apertura propia del local (78_, 27/10/2026): la terminal es del local.
+    // La base también lo frena al validar y al emitir; cortarlo acá ahorra que
+    // la persona tipee los dígitos para enterarse después.
+    const abreLocal = await aperturaLocalPropia(admin, estado.eleccion.id)
+    if (abreLocal && Date.now() < new Date(abreLocal).getTime()) {
+      return json({ error: 'no_abierta', desde: abreLocal })
     }
     // NUEVO (E5a): acá NO se corta con `cerrada_web` — ver el punto 3 del
     // encabezado. `validar` y `emitir` usan la RPC de kiosco, que trae la

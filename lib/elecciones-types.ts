@@ -41,6 +41,11 @@ export interface EleccionPublica {
   /** Cierre del canal web, anterior al de la elección. `null` = cierran juntos. */
   fecha_cierre_web: string | null
   /**
+   * Apertura propia del local (mesas y terminal), desde 78_. `null` = abre con
+   * la elección (o la base no tiene la columna todavía).
+   */
+  fecha_apertura_presencial: string | null
+  /**
    * Los estados que alguien puede llegar a ver. Desde `53_` la elección sigue
    * publicada después del acto: el link personal y el `{base}/e/{slug}` ya están
    * repartidos, y hacerlos desaparecer hace que la página diga "el link no es
