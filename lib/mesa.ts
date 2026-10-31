@@ -19,6 +19,7 @@ import type {
   FilaRecuento,
   PapeletaMesa,
   PersonaPadron,
+  RespuestaActividad,
   RespuestaBoleta,
   RespuestaControl,
   RespuestaLogin,
@@ -117,8 +118,22 @@ export async function mesaLogin(
   admin: SupabaseClient,
   codigo: string,
   pin: string,
+  /**
+   * La sesión que ya tiene este navegador (79_). Si es la viva de esa mesa y
+   * ese PIN, la base la devuelve en vez de rechazar por `sesion_abierta`.
+   */
+  sesionActual: string | null,
 ): Promise<{ sesion: string; datos: RespuestaLogin } | { sesion: null; datos: ErrorMesa }> {
-  const d = await llamar(admin, 'mesa_login', { p_codigo: codigo, p_pin: pin })
+  let d: Record<string, unknown>
+  const r = await admin.rpc('mesa_login', { p_codigo: codigo, p_pin: pin, p_sesion_actual: sesionActual })
+  if (r.error && esRpcNoAplicada(r.error)) {
+    // Sin 79_ existe sólo la de dos argumentos.
+    d = await llamar(admin, 'mesa_login', { p_codigo: codigo, p_pin: pin })
+  } else {
+    if (r.error) throw new ErrorRpc(`mesa_login: ${r.error.message}`)
+    if (!r.data || typeof r.data !== 'object') throw new ErrorRpc('mesa_login: respuesta vacía')
+    d = r.data as Record<string, unknown>
+  }
   if (d.ok !== true) return { sesion: null, datos: d as unknown as ErrorMesa }
 
   const sesion = typeof d.sesion === 'string' ? d.sesion : ''
@@ -150,6 +165,38 @@ export async function mesaLogin(
         instructivo: texto(e.instructivo),
       },
     },
+  }
+}
+
+// ── Actividad del puesto (79_) ──────────────────────────────────────────────
+
+/**
+ * `tocar` = alguien usó la pantalla. Sin tocar, sólo pregunta cuándo vence y
+ * si la sesión sigue: así se entera la pantalla de que la comisión cambió los
+ * minutos o la cerró.
+ *
+ * `null` = la base no tiene 79_: no hay cierre por inactividad que vigilar.
+ */
+export async function mesaActividad(
+  admin: SupabaseClient,
+  sesion: string,
+  tocar: boolean,
+): Promise<RespuestaActividad | null> {
+  const { data, error } = await admin.rpc('mesa_actividad', { p_sesion: sesion, p_tocar: tocar })
+  if (error) {
+    if (esRpcNoAplicada(error)) return null
+    throw new ErrorRpc(`mesa_actividad: ${error.message}`)
+  }
+  if (!data || typeof data !== 'object') throw new ErrorRpc('mesa_actividad: respuesta vacía')
+  const d = data as Record<string, unknown>
+  if (d.ok !== true) {
+    return { error: String(d.error ?? 'sesion_invalida'), ...(texto(d.motivo) ? { motivo: String(d.motivo) } : {}) }
+  }
+  return {
+    ok: true,
+    minutos: entero(d.minutos, 10),
+    vence_at: String(d.vence_at ?? ''),
+    ahora: String(d.ahora ?? ''),
   }
 }
 

@@ -15,7 +15,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mesaLogin } from '@/lib/mesa'
-import { guardarSesionMesa } from '@/lib/mesa-sesion'
+import { guardarSesionMesa, leerSesionMesa } from '@/lib/mesa-sesion'
 import { codigoMesaValido, pinValido } from '@/lib/mesa-types'
 import { clientIp, LIMITES, permitidoPorIpYClave, RESPUESTA_429 } from '@/lib/rate-limit'
 import { errorInterno, json } from '../_comun'
@@ -64,7 +64,9 @@ export async function POST(req: Request) {
       return json({ error: 'pin_incorrecto' })
     }
 
-    const r = await mesaLogin(admin, body.codigo, (body.pin as string).trim())
+    // La sesión que ya tiene este navegador (79_): recargar o volver a /mesa no
+    // tiene que chocar con "la mesa ya está abierta en otro dispositivo".
+    const r = await mesaLogin(admin, body.codigo, (body.pin as string).trim(), await leerSesionMesa())
     if (r.sesion === null) return json(r.datos)
 
     const d = r.datos as Extract<typeof r.datos, { ok: true }>

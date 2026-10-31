@@ -18,6 +18,7 @@ import { esErrorMesa, mensajeErrorMesa, type ErrorMesa } from '@/lib/mesa-types'
 import { BarraMesa, Aviso, Marco } from '../Marco'
 import { BotonSalir } from '../LoginMesa'
 import { Recuento } from './Recuento'
+import { VigiaSesion } from '../VigiaSesion'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -107,6 +108,7 @@ export default async function RecuentoPage() {
         controlInicial={control}
         filasIniciales={guardado.filas}
       />
+      <VigiaSesion />
     </>,
   )
 }

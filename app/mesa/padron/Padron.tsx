@@ -60,7 +60,8 @@ export function Padron({
   const [padron, setPadron] = useState<Mapa>(() => new Map())
   const [fase, setFase] = useState<'cargando' | 'listo'>('cargando')
   const [caido, setCaido] = useState(false)
-  const [vencida, setVencida] = useState(false)
+  /** La sesión terminó: el motivo de 79_ ('inactividad', 'cancelada'…) o '' si no vino. */
+  const [vencida, setVencida] = useState<string | null>(null)
   /** Desde 61_: `mesa_padron` puede devolver `mesa_cerrada` con la hora real. */
   const [cerradaAt, setCerradaAt] = useState<string | null>(null)
   /** Desde 61_ (E5b): el canal web de esta elección sigue abierto. */
@@ -135,7 +136,7 @@ export function Padron({
       }
 
       if (d.error === 'sesion_invalida') {
-        setVencida(true)
+        setVencida(d.motivo ?? '')
         return
       }
       // Desde 61_ (U12): la sesión de una mesa recién cerrada contesta esto en
@@ -160,7 +161,7 @@ export function Padron({
   }, [cargar])
 
   useEffect(() => {
-    if (vencida || cerradaAt) return
+    if (vencida !== null || cerradaAt) return
     const t = setInterval(() => void cargar(false), REFRESCO_MS)
     // Volver a la pestaña después de un rato tiene que traer lo de las otras
     // mesas al instante, sin esperar el próximo tic.
@@ -266,7 +267,7 @@ export function Padron({
         })
         setPorMarcar(null)
       } else if (d.error === 'sesion_invalida') {
-        setVencida(true)
+        setVencida(d.motivo ?? '')
       } else if (d.error === 'sin_respuesta') {
         // Mismo camino que el corte de red: no sabemos si quedó, se recarga.
         setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
@@ -314,7 +315,7 @@ export function Padron({
         setPorDesmarcar(null)
         setMotivo('')
       } else if (d.error === 'sesion_invalida') {
-        setVencida(true)
+        setVencida(d.motivo ?? '')
       } else if (d.error === 'sin_respuesta') {
         setAviso({ ...mensajeErrorMesa(d), tono: 'alto' })
         setPorDesmarcar(null)
@@ -331,11 +332,12 @@ export function Padron({
 
   // ── Pantallas terminales ──────────────────────────────────────────────────
 
-  if (vencida) {
+  if (vencida !== null) {
+    const m = mensajeErrorMesa({ error: 'sesion_invalida', motivo: vencida || undefined })
     return (
       <Aviso
-        titulo="La sesión de la mesa venció"
-        detalle="Volvé a entrar con el código y el PIN. Lo que ya se marcó está guardado."
+        titulo={m.titulo}
+        detalle={vencida ? m.detalle : 'Volvé a entrar con el código y el PIN. Lo que ya se marcó está guardado.'}
         tono="alto"
       >
         <button type="button" className="btn-primary w-full mt-4" onClick={salir}>

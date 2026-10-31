@@ -15,6 +15,7 @@ import { leerInfoMesa, leerSesionMesa } from '@/lib/mesa-sesion'
 import { BarraMesa, Marco } from '../Marco'
 import { BotonSalir } from '../LoginMesa'
 import { Padron } from './Padron'
+import { VigiaSesion } from '../VigiaSesion'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -40,6 +41,7 @@ export default async function PadronPage() {
       {tramo && <p className="font-mono text-[13px] text-ink-3 -mt-3 mb-4">{tramo}</p>}
 
       <Padron mesaId={info.mesa_id} esPresidente={info.es_presidente} />
+      <VigiaSesion />
     </Marco>
   )
 }

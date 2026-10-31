@@ -169,9 +169,28 @@ export interface ErrorMesa {
   recuento?: number
   /** `requiere_observacion_cierre_anticipado` (76_): hasta cuándo se vota. */
   fecha_cierre?: string
-  /** `no_abierta` (78_): desde cuándo se puede marcar en el local. */
+  /**
+   * `no_abierta` (78_): desde cuándo se puede marcar en el local.
+   * `sesion_abierta` (79_): desde cuándo está abierta la otra sesión.
+   */
   desde?: string
+  /** `sesion_abierta` (79_): cuándo se libera si no se usa. */
+  libre_at?: string
 }
+
+/**
+ * `mesa_actividad` (79_). `vence_at` es cuándo se cierra la sesión si nadie
+ * toca la pantalla; `ahora` es el reloj del servidor, para descontar el
+ * desfase del dispositivo.
+ */
+export interface ActividadMesa {
+  ok: true
+  minutos: number
+  vence_at: string
+  ahora: string
+}
+
+export type RespuestaActividad = ActividadMesa | ErrorMesa
 
 export type RespuestaLogin = SesionMesa | ErrorMesa
 export type RespuestaPadronRpc = RespuestaPadron | ErrorMesa
@@ -420,9 +439,42 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
           : 'No se puede reabrir desde acá.',
       }
     case 'sesion_invalida':
+      // `motivo` desde 79_: por qué terminó. Sin él, el "venció" de siempre.
+      switch (r.motivo) {
+        case 'inactividad':
+          return {
+            titulo: 'La sesión se cerró por inactividad',
+            detalle: 'Volvé a entrar con el código y el PIN. Lo que ya se marcó está guardado.',
+          }
+        case 'cancelada':
+          return {
+            titulo: 'La comisión cerró esta sesión',
+            detalle: 'Se puede volver a entrar con el mismo código y PIN.',
+          }
+        case 'bloqueada':
+          return {
+            titulo: 'La comisión bloqueó la entrada a esta mesa',
+            detalle: 'Cuando la habilite, se entra con el mismo código y PIN.',
+          }
+        default:
+          return {
+            titulo: 'La sesión de la mesa venció',
+            detalle: 'Volvé a entrar con el código y el PIN.',
+          }
+      }
+    case 'sesion_abierta':
       return {
-        titulo: 'La sesión de la mesa venció',
-        detalle: 'Volvé a entrar con el código y el PIN.',
+        titulo: 'La mesa ya está abierta en otro dispositivo',
+        detalle:
+          (r.desde ? `Se entró a las ${horaCorta(r.desde)} con este mismo PIN. ` : 'Hay otra sesión con este mismo PIN. ') +
+          (r.libre_at
+            ? `Si ese dispositivo no se usa, se libera a las ${horaCorta(r.libre_at)}, o pedile a la comisión que cierre la sesión.`
+            : 'Esperá a que se cierre por inactividad o pedile a la comisión que la cierre.'),
+      }
+    case 'entrada_bloqueada':
+      return {
+        titulo: 'La comisión bloqueó la entrada a esta mesa',
+        detalle: 'Cuando la habilite, se entra con el mismo código y PIN.',
       }
     case 'requiere_presidente':
       return {

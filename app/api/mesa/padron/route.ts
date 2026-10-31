@@ -12,7 +12,7 @@
  * dispositivo. Ver docs/web/elecciones-mesa.md.
  */
 
-import { mesaPadron } from '@/lib/mesa'
+import { mesaActividad, mesaPadron } from '@/lib/mesa'
 import { renovarCookiesMesa } from '@/lib/mesa-sesion'
 import { conSesion, errorInterno, json } from '../_comun'
 
@@ -33,6 +33,12 @@ export async function GET(req: Request) {
     // Desde 76_ la sesión de la base se renueva con el uso; la cookie la sigue
     // para no vencerse a las 12 h del login con el puesto atendiendo.
     if ('ok' in r && r.ok === true) await renovarCookiesMesa()
+    // 79_: por qué terminó (inactividad, la comisión, bloqueo), para no
+    // decir "venció" a secas. Es una sola consulta más, y sólo en ese caso.
+    else if ('error' in r && r.error === 'sesion_invalida') {
+      const a = await mesaActividad(s.admin, s.sesion, false).catch(() => null)
+      if (a && 'error' in a && a.motivo) return json({ ...r, motivo: a.motivo })
+    }
     return json(r)
   } catch (err) {
     return errorInterno('GET /api/mesa/padron', err)
