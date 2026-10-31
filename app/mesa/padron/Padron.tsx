@@ -176,6 +176,9 @@ export function Padron({
 
   // ── Derivados ─────────────────────────────────────────────────────────────
 
+  /** Antes de la apertura del local (78_): se entra y se prepara, no se marca. */
+  const mesaSinAbrir = !!abrenMesas && Date.now() < new Date(abrenMesas).getTime()
+
   const lista = useMemo(() => Array.from(padron.values()), [padron])
   const encontradas = useMemo(() => buscarEnPadron(lista, q), [lista, q])
   const votaronAca = useMemo(
@@ -380,7 +383,7 @@ export function Padron({
 
       {/* Desde 78_: antes de la apertura del local la mesa entra y prepara,
           pero la base no la deja marcar. Se dice arriba de todo, con la hora. */}
-      {abrenMesas && Date.now() < new Date(abrenMesas).getTime() && (
+      {mesaSinAbrir && (
         <div className="voto-aviso voto-aviso--medio mb-3" role="status">
           <p className="text-ink-2 text-[15px] leading-relaxed">
             La mesa abre a las <strong>{horaOFecha(abrenMesas)}</strong>. Hasta entonces se puede
@@ -512,15 +515,27 @@ export function Padron({
           {porMarcar.categoria && (
             <p className="text-ink-3 text-sm mt-1">{porMarcar.categoria}</p>
           )}
-          <p className="text-ink-2 text-[15px] mt-4">
-            Queda registrado que esta persona votó. Se puede deshacer desde esta mesa mientras la
-            urna siga abierta.
-          </p>
+          {mesaSinAbrir ? (
+            // La base lo rechazaría igual (78_), pero el operador tiene que
+            // saberlo antes de confirmar y no con un error después.
+            <div className="voto-aviso voto-aviso--medio mt-4" role="status">
+              <p className="font-medium text-[15px] leading-snug">La mesa todavía no abrió</p>
+              <p className="text-ink-2 text-sm leading-relaxed mt-1">
+                Abre a las <strong>{horaOFecha(abrenMesas!)}</strong>. Hasta entonces no se puede
+                registrar que alguien votó.
+              </p>
+            </div>
+          ) : (
+            <p className="text-ink-2 text-[15px] mt-4">
+              Queda registrado que esta persona votó. Se puede deshacer desde esta mesa mientras la
+              urna siga abierta.
+            </p>
+          )}
           <div className="flex gap-2 mt-5">
             <button
               type="button"
               className="btn-primary flex-1"
-              disabled={ocupado}
+              disabled={ocupado || mesaSinAbrir}
               onClick={() => void marcar(porMarcar)}
             >
               {ocupado ? 'Registrando…' : 'Sí, votó'}
