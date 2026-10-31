@@ -36,7 +36,14 @@ export default async function PadronPage() {
         sede={info.sede}
         eleccion={info.eleccion}
         esPresidente={info.es_presidente}
-        derecha={<BotonSalir />}
+        derecha={
+          <div className="flex items-center gap-1 shrink-0">
+            <a href="/mesa/ayuda" className="btn-ghost text-sm">
+              Ayuda
+            </a>
+            <BotonSalir />
+          </div>
+        }
       />
       {tramo && <p className="font-mono text-[13px] text-ink-3 -mt-3 mb-4">{tramo}</p>}
 

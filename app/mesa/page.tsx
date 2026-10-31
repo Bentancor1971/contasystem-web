@@ -45,6 +45,12 @@ export default async function MesaLoginPage() {
         )}
 
         <LoginMesa />
+
+        <p className="text-center mt-6">
+          <a href="/mesa/ayuda" className="btn-ghost text-sm">
+            ¿Cómo se usa la mesa?
+          </a>
+        </p>
       </div>
     </Marco>
   )
