@@ -496,7 +496,7 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
       return r.desde
         ? {
             titulo: 'La mesa todavía no abrió',
-            detalle: `Se pueden marcar votantes desde las ${horaOFecha(r.desde)}.`,
+            detalle: `Se pueden marcar votantes ${cuandoUY(r.desde, 'desde')}.`,
           }
         : {
             titulo: 'La elección todavía no está abierta',
@@ -553,7 +553,7 @@ export function mensajeErrorMesa(r: ErrorMesa): MensajeMesa {
         titulo: 'La votación todavía no terminó',
         detalle:
           (r.fecha_cierre
-            ? `Se vota hasta las ${horaOFecha(r.fecha_cierre)}. `
+            ? `Se vota ${cuandoUY(r.fecha_cierre, 'hasta')}. `
             : 'La hora de cierre de la elección todavía no llegó. ') +
           'Para cerrar la urna antes, escribí en la observación por qué.',
       }
@@ -598,20 +598,26 @@ function diaUY(d: Date): string {
 }
 
 /**
- * "18:42" si es hoy en Montevideo, "23/10 18:42" si es otro día. Para los
- * cierres: "internet cerró a las 20:00" leído al día siguiente parece de hoy.
+ * El momento ya armado como frase, con la fecha sólo cuando no es hoy en
+ * Montevideo: "a las 18:42" o "el 23/10 a las 18:42"; con `'hasta'`, "hasta
+ * las 18:42" o "hasta el 23/10 a las 18:42". La fecha es por los cierres:
+ * "internet cerró a las 20:00" leído al día siguiente parece de hoy. Y va
+ * como frase porque "abre a las 23/10 18:42" no se lee (pedido del 02/11/2026).
  */
-export function horaOFecha(iso: string | null | undefined): string {
+export function cuandoUY(
+  iso: string | null | undefined,
+  prep: 'a' | 'desde' | 'hasta' = 'a',
+): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  if (diaUY(d) === diaUY(new Date())) return horaCorta(iso)
+  if (diaUY(d) === diaUY(new Date())) return `${prep} las ${horaCorta(iso)}`
   const dm = new Intl.DateTimeFormat('es-UY', {
     timeZone: TZ,
     day: '2-digit',
     month: '2-digit',
   }).format(d)
-  return `${dm} ${horaCorta(iso)}`
+  return `${prep === 'a' ? '' : `${prep} `}el ${dm} a las ${horaCorta(iso)}`
 }
 
 /**

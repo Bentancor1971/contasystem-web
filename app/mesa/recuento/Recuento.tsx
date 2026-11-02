@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   esErrorMesa,
-  horaOFecha,
+  cuandoUY,
   leerRespuestaMesa,
   mensajeErrorMesa,
   totalDeFilas,
@@ -265,7 +265,7 @@ export function Recuento({
       {antesDeHora && control.fecha_cierre && (
         <div className="mb-4">
           <Aviso
-            titulo={`La votación sigue abierta hasta las ${horaOFecha(control.fecha_cierre)}`}
+            titulo={`La votación sigue abierta ${cuandoUY(control.fecha_cierre, 'hasta')}`}
             detalle="Todavía puede llegar gente a votar. Si hay que cerrar la urna antes, escribí el motivo en la observación."
             tono="medio"
           />

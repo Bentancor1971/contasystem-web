@@ -26,7 +26,7 @@ import {
   esErrorMesa,
   estadoDe,
   horaCorta,
-  horaOFecha,
+  cuandoUY,
   indexar,
   leerRespuestaMesa,
   mensajeErrorMesa,
@@ -397,7 +397,7 @@ export function Padron({
       {mesaSinAbrir && (
         <div className="voto-aviso voto-aviso--medio mb-3" role="status">
           <p className="text-ink-2 text-[15px] leading-relaxed">
-            La mesa abre a las <strong>{horaOFecha(abrenMesas)}</strong>. Hasta entonces se puede
+            La mesa abre <strong>{cuandoUY(abrenMesas)}</strong>. Hasta entonces se puede
             revisar el padrón y preparar la urna, pero no marcar votantes.
           </p>
         </div>
@@ -407,19 +407,19 @@ export function Padron({
           de cierre y la línea no aparece. */}
       {cierres.mesas && (
         <p className="font-mono text-xs text-ink-2 mb-3">
-          {/* `horaOFecha`: con fecha cuando no es hoy (internet pudo cerrar
+          {/* `cuandoUY`: la fecha sólo cuando no es hoy (internet pudo cerrar
               ayer). `cierres.web` ya viene en null si no cierra antes que las
               mesas: ahí cierran juntos. */}
           {webSinAbrir
-            ? `Internet abre a las ${horaOFecha(abreWeb)}` +
+            ? `Internet abre ${cuandoUY(abreWeb)}` +
               (cierres.web
-                ? ` y cierra a las ${horaOFecha(cierres.web)} · las mesas cierran a las ${horaOFecha(cierres.mesas)}`
-                : ` · internet y las mesas cierran a las ${horaOFecha(cierres.mesas)}`)
+                ? ` y cierra ${cuandoUY(cierres.web)} · las mesas cierran ${cuandoUY(cierres.mesas)}`
+                : ` · internet y las mesas cierran ${cuandoUY(cierres.mesas)}`)
             : !cierres.web
-            ? `El voto por internet y las mesas cierran a las ${horaOFecha(cierres.mesas)}`
+            ? `El voto por internet y las mesas cierran ${cuandoUY(cierres.mesas)}`
             : canalWebAbierto
-              ? `Internet cierra a las ${horaOFecha(cierres.web)} · las mesas, a las ${horaOFecha(cierres.mesas)}`
-              : `Internet cerró a las ${horaOFecha(cierres.web)} · las mesas cierran a las ${horaOFecha(cierres.mesas)}`}
+              ? `Internet cierra ${cuandoUY(cierres.web)} · las mesas, ${cuandoUY(cierres.mesas)}`
+              : `Internet cerró ${cuandoUY(cierres.web)} · las mesas cierran ${cuandoUY(cierres.mesas)}`}
         </p>
       )}
 
@@ -537,7 +537,7 @@ export function Padron({
             <div className="voto-aviso voto-aviso--medio mt-4" role="status">
               <p className="font-medium text-[15px] leading-snug">La mesa todavía no abrió</p>
               <p className="text-ink-2 text-sm leading-relaxed mt-1">
-                Abre a las <strong>{horaOFecha(abrenMesas!)}</strong>. Hasta entonces no se puede
+                Abre <strong>{cuandoUY(abrenMesas!)}</strong>. Hasta entonces no se puede
                 registrar que alguien votó.
               </p>
             </div>
