@@ -73,6 +73,8 @@ export function Padron({
   })
   /** Desde 78_: desde cuándo se puede marcar en el local. */
   const [abrenMesas, setAbrenMesas] = useState<string | null>(null)
+  /** Desde 80_: desde cuándo se vota por internet. */
+  const [abreWeb, setAbreWeb] = useState<string | null>(null)
 
   const [q, setQ] = useState('')
   const [aviso, setAviso] = useState<(MensajeMesa & { tono: 'ok' | 'medio' | 'alto' }) | null>(null)
@@ -130,6 +132,7 @@ export function Padron({
           web: cierreWebEfectivo(d.fecha_cierre, d.fecha_cierre_web),
         })
         setAbrenMesas(d.fecha_apertura_mesas ?? null)
+        setAbreWeb(d.fecha_apertura_web ?? null)
         setCaido(false)
         setFase('listo')
         return
@@ -179,6 +182,12 @@ export function Padron({
 
   /** Antes de la apertura del local (78_): se entra y se prepara, no se marca. */
   const mesaSinAbrir = !!abrenMesas && Date.now() < new Date(abrenMesas).getTime()
+  /**
+   * Internet todavía no abrió (80_). El aviso de "sigue abierto" se apaga
+   * también acá y no sólo en la base: la advertencia de `mesa_marcar_voto` lo
+   * vuelve a prender sin mirar la apertura.
+   */
+  const webSinAbrir = !!abreWeb && Date.now() < new Date(abreWeb).getTime()
 
   const lista = useMemo(() => Array.from(padron.values()), [padron])
   const encontradas = useMemo(() => buscarEnPadron(lista, q), [lista, q])
@@ -401,7 +410,12 @@ export function Padron({
           {/* `horaOFecha`: con fecha cuando no es hoy (internet pudo cerrar
               ayer). `cierres.web` ya viene en null si no cierra antes que las
               mesas: ahí cierran juntos. */}
-          {!cierres.web
+          {webSinAbrir
+            ? `Internet abre a las ${horaOFecha(abreWeb)}` +
+              (cierres.web
+                ? ` y cierra a las ${horaOFecha(cierres.web)} · las mesas cierran a las ${horaOFecha(cierres.mesas)}`
+                : ` · internet y las mesas cierran a las ${horaOFecha(cierres.mesas)}`)
+            : !cierres.web
             ? `El voto por internet y las mesas cierran a las ${horaOFecha(cierres.mesas)}`
             : canalWebAbierto
               ? `Internet cierra a las ${horaOFecha(cierres.web)} · las mesas, a las ${horaOFecha(cierres.mesas)}`
@@ -413,7 +427,7 @@ export function Padron({
           era una alerta roja que pedía cerrar el canal cuanto antes; desde 74_
           la base cruza la credencial con este padrón en el acto y el doble voto
           no puede pasar, así que queda como dato, en tono medio. */}
-      {canalWebAbierto && (
+      {canalWebAbierto && !webSinAbrir && (
         <div className="voto-aviso voto-aviso--medio mb-4" role="status">
           <p className="font-medium text-[15px] leading-snug">El voto por internet sigue abierto</p>
           <p className="text-ink-2 text-sm leading-relaxed mt-1">

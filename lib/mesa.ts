@@ -231,6 +231,8 @@ export async function mesaPadron(
     fecha_cierre_web: typeof d.fecha_cierre_web === 'string' ? d.fecha_cierre_web : null,
     // Desde 78_.
     fecha_apertura_mesas: typeof d.fecha_apertura_mesas === 'string' ? d.fecha_apertura_mesas : null,
+    // Desde 80_.
+    fecha_apertura_web: typeof d.fecha_apertura_web === 'string' ? d.fecha_apertura_web : null,
   }
 }
 

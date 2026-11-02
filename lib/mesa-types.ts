@@ -86,6 +86,12 @@ export interface RespuestaPadron {
    * las mesas o, sin ella, la de la elección). Sin ese script no viene.
    */
   fecha_apertura_mesas: string | null
+  /**
+   * Desde 80_: desde cuándo se vota por internet. Con 80_, además,
+   * `canal_web_abierto` es `false` antes de esa hora (antes daba `true` desde
+   * que se publicaba la elección).
+   */
+  fecha_apertura_web?: string | null
 }
 
 export interface MarcaOk {
