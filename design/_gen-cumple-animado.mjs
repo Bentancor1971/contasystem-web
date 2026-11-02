@@ -195,8 +195,8 @@ function confetiFrame(t) {
 const DESTELLOS = [
   { x: 330, y: 95,  s: 16, c: C.tealDeep, fase: 0 },
   { x: 880, y: 80,  s: 20, c: C.orange,   fase: 0.35 },
-  { x: 395, y: 300, s: 11, c: C.orange,   fase: 0.6 },
-  { x: 820, y: 310, s: 12, c: C.teal,     fase: 0.15 },
+  { x: 340, y: 318, s: 11, c: C.orange,   fase: 0.6 },
+  { x: 865, y: 322, s: 12, c: C.teal,     fase: 0.15 },
   { x: 460, y: 55,  s: 8,  c: C.orange,   fase: 0.8 },
   { x: 760, y: 50,  s: 9,  c: C.tealDeep, fase: 0.5 },
 ]
@@ -251,15 +251,7 @@ function frameSvg(empresa, t) {
   ${globosFrame(t)}
   ${confetiFrame(t)}
 
-  <text x="600" y="118"
-        text-anchor="middle"
-        font-family="Arial, 'Segoe UI', sans-serif"
-        font-weight="700"
-        font-size="24"
-        letter-spacing="7"
-        fill="${C.orange}">¡FELIZ CUMPLEAÑOS!</text>
-
-  <text x="600" y="228"
+  <text x="600" y="168"
         text-anchor="middle"
         font-family="Arial Black, Arial, 'Segoe UI', sans-serif"
         font-weight="900"
@@ -267,13 +259,21 @@ function frameSvg(empresa, t) {
         letter-spacing="8"
         fill="${C.teal}">${empresa.sigla}</text>
 
-  <text x="600" y="272"
+  <text x="600" y="210"
         text-anchor="middle"
         font-family="Arial, 'Segoe UI', sans-serif"
         font-weight="600"
         font-size="16"
         letter-spacing="3.5"
         fill="${C.grayDark}">${empresa.nombre}</text>
+
+  <text x="600" y="282"
+        text-anchor="middle"
+        font-family="Arial, 'Segoe UI', sans-serif"
+        font-weight="700"
+        font-size="30"
+        letter-spacing="7"
+        fill="${C.orange}">¡FELIZ CUMPLEAÑOS!</text>
 </svg>
 `
 }
