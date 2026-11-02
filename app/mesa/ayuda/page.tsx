@@ -11,6 +11,7 @@
 
 import { leerInfoMesa } from '@/lib/mesa-sesion'
 import { Marco } from '../Marco'
+import { BotonPdf } from './BotonPdf'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,9 +71,12 @@ export default async function AyudaMesaPage() {
             Cómo se usa la mesa
           </h1>
         </div>
-        <a href={volver.href} className="btn-ghost text-sm shrink-0">
-          {volver.texto}
-        </a>
+        <div className="flex items-center gap-1 shrink-0 print:hidden">
+          <BotonPdf className="btn-ghost text-sm" />
+          <a href={volver.href} className="btn-ghost text-sm">
+            {volver.texto}
+          </a>
+        </div>
       </header>
       <p className="text-ink-2 text-[16px] leading-relaxed mt-4">
         El voto es en papel. Esta pantalla sirve para una sola cosa: dejar constancia de{' '}
@@ -217,10 +221,11 @@ export default async function AyudaMesaPage() {
         </dl>
       </Seccion>
 
-      <div className="mt-8 mb-4">
+      <div className="mt-8 mb-4 grid gap-2 print:hidden">
         <a href={volver.href} className="btn-primary w-full inline-block text-center">
           {volver.texto}
         </a>
+        <BotonPdf className="btn-secondary w-full" />
       </div>
     </Marco>
   )

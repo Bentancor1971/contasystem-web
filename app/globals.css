@@ -707,3 +707,26 @@ html, body {
 .rise > *:nth-child(5) { animation-delay: .28s; }
 .rise > *:nth-child(6) { animation-delay: .34s; }
 .rise > *:nth-child(7) { animation-delay: .40s; }
+
+/* ============================================================
+   Impresión / "Guardar como PDF" (ayuda de la mesa, 02/11/2026)
+   El PDF es la página misma: se saca lo que no va en el papel
+   (print:hidden en el marcado), fondo blanco, sin animaciones, y
+   que ningún recuadro ni paso quede partido entre dos hojas.
+   ============================================================ */
+
+@page {
+  size: A4;
+  margin: 16mm 15mm;
+}
+
+@media print {
+  html, body, main { background: white !important; }
+  main { min-height: 0 !important; }
+  main > div { max-width: none !important; padding: 0 !important; }
+  .rise > * { animation: none !important; }
+  .card, .voto-aviso, li, dl > div { break-inside: avoid; }
+  h1, h2 { break-after: avoid; }
+  .card, .voto-aviso { background: white !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
