@@ -147,13 +147,21 @@ export function renderBirthdayEmail({
   // el color sólido para mantener contraste con textoColor.
   const textoRow = `
       <tr>
-        <td class="text-pad" align="center" style="background-color:${panelColor};padding:24px 32px;text-align:center;">
-          <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:16px;line-height:1.5;">
+        <td class="text-pad" align="center" style="background-color:${panelColor};padding:30px 36px 34px;text-align:center;">
+          <div class="saludo" style="font-family:'Helvetica Neue',Arial,sans-serif;color:${textoColor};font-size:17px;line-height:1.6;">
             ${cuerpoHtml}
           </div>
         </td>
       </tr>`
 
+  // La animación del mail vive en la imagen (GIF): Gmail y Outlook
+  // descartan @keyframes. La entrada del saludo es un extra para Apple
+  // Mail / iOS; donde no se soporta, el texto se ve quieto y completo.
+  //
+  // El ancho tope va en un <div max-width>, no en la tabla: max-width
+  // sobre <table> no achica la tabla en Chrome/Gmail y en pantallas
+  // angostas aparecía scroll horizontal. Outlook (Word) ignora max-width
+  // en div, por eso la tabla fantasma de 600px entre comentarios MSO.
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -162,17 +170,28 @@ export function renderBirthdayEmail({
   <title>${escapeHtml(subject)}</title>
   <style>
     @media only screen and (max-width: 480px) {
-      .text-pad { padding: 20px 18px !important; }
+      .text-pad { padding: 24px 18px 26px !important; }
+    }
+    @keyframes saludo-entra {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .saludo { animation: saludo-entra 0.9s ease-out 0.3s both; }
     }
   </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f3f0;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f3f0;padding:28px 14px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f3f0;">
     <tr>
-      <td align="center">
-        <table role="presentation" width="${CARD_WIDTH}" cellpadding="0" cellspacing="0" style="width:${CARD_WIDTH}px;max-width:100%;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e3dd;">
-          ${imagenRow}${textoRow}
-        </table>
+      <td align="center" style="padding:28px 14px;">
+        <!--[if mso]><table role="presentation" width="${CARD_WIDTH}" cellpadding="0" cellspacing="0" align="center"><tr><td><![endif]-->
+        <div style="max-width:${CARD_WIDTH}px;margin:0 auto;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e3dd;">
+            ${imagenRow}${textoRow}
+          </table>
+        </div>
+        <!--[if mso]></td></tr></table><![endif]-->
       </td>
     </tr>
   </table>

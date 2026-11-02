@@ -24,6 +24,8 @@ const EXT_POR_TIPO: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
+  // GIF animado: la única animación que muestran Gmail y Outlook.
+  'image/gif': 'gif',
 }
 
 export async function POST(req: NextRequest) {
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
     const ext = EXT_POR_TIPO[file.type]
     if (!ext) {
       return NextResponse.json(
-        { error: 'Formato no permitido. Usá PNG, JPG o WebP.' },
+        { error: 'Formato no permitido. Usá PNG, JPG, WebP o GIF.' },
         { status: 400 },
       )
     }

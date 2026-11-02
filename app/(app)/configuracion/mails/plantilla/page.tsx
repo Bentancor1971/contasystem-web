@@ -545,7 +545,7 @@ export default function PlantillaMailPage() {
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     className="hidden"
                     onChange={(e) => void onArchivo(e)}
                   />
@@ -580,7 +580,7 @@ export default function PlantillaMailPage() {
                     )}
                   </div>
                   <p className="font-mono text-[11px] text-ink-3 mt-2">
-                    PNG, JPG o WebP · máx 3 MB · recomendado 1200×800 px
+                    PNG, JPG, WebP o GIF animado · máx 3 MB · recomendado 1200×380 px
                   </p>
                 </section>
 
